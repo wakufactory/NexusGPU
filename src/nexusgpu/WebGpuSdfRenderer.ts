@@ -3,7 +3,7 @@ import type { NexusRenderSettings, SceneSnapshot, Vec3 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const OBJECT_STRIDE_FLOATS = 12;
+const OBJECT_STRIDE_FLOATS = 16;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
   resolutionScale: 0.75,
@@ -168,6 +168,10 @@ export class WebGpuSdfRenderer {
       this.objectData[offset + 9] = node.color[1];
       this.objectData[offset + 10] = node.color[2];
       this.objectData[offset + 11] = 1;
+      this.objectData[offset + 12] = node.rotation[0];
+      this.objectData[offset + 13] = node.rotation[1];
+      this.objectData[offset + 14] = node.rotation[2];
+      this.objectData[offset + 15] = node.rotation[3];
     });
 
     this.device.queue.writeBuffer(this.objectBuffer, 0, this.objectData);

@@ -124,12 +124,13 @@ WebGPUの低レベル処理を担当します。
 
 ReactやJSXには依存せず、`SceneSnapshot`と`NexusRenderSettings`だけを受け取る設計です。
 
-### sdfShader.ts
+### sdfShader.ts / shaders
 
-WGSLコードを文字列として持ちます。
+WGSLコードを機能別の文字列パーツとして `src/nexusgpu/shaders` 配下に分け、`sdfShader.ts` で1つのシェーダ文字列へ組み立てます。TypeScript側のUniform/Storage Bufferレイアウトと一致させる必要があるため、バッファレイアウトは `shaderLayout.ts` に集約しています。
 
 シェーダ内の主な関数:
 
+- `vertexMain`: 画面全体を覆う三角形を描画
 - `sdSphere`: 球のSDF
 - `sdBox`: ボックスのSDF
 - `smoothMin`: SDF同士の滑らかな結合
@@ -164,6 +165,7 @@ type SdfNode = {
   id: symbol;
   kind: "sphere" | "box";
   position: Vec3;
+  rotation: Quaternion;
   color: Vec3;
   data: Vec3;
   smoothness: number;
@@ -184,15 +186,17 @@ struct SdfObject {
   positionKind: vec4<f32>,
   dataSmooth: vec4<f32>,
   color: vec4<f32>,
+  rotation: vec4<f32>,
 };
 ```
 
-1オブジェクトは12個の`f32`です。
+1オブジェクトは16個の`f32`です。
 
 ```text
 positionKind = [position.x, position.y, position.z, kind]
 dataSmooth   = [data.x, data.y, data.z, smoothness]
 color        = [color.r, color.g, color.b, 1]
+rotation     = [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
 ```
 
 `WebGpuSdfRenderer.uploadObjects()`がこのレイアウトへ詰め替えます。

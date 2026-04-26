@@ -1,0 +1,36 @@
+export const sceneMappingShader = /* wgsl */ `
+// シーン内の全SDFオブジェクトを走査し、指定点から最も近い表面距離を返す。
+fn mapScene(point: vec3<f32>) -> SceneHit {
+  var bestDistance = camera.renderInfo.y;
+  var bestColor = vec3<f32>(0.72, 0.82, 0.9);
+
+  for (var i = 0u; i < MAX_OBJECTS; i = i + 1u) {
+    if (f32(i) >= camera.objectInfo.x) {
+      break;
+    }
+
+    let object = objects[i];
+    let localPoint = rotateByQuaternion(point - object.positionKind.xyz, vec4<f32>(-object.rotation.xyz, object.rotation.w));
+    let kind = u32(object.positionKind.w + 0.5);
+    var distance = 0.0;
+
+    if (kind == 0u) {
+      distance = sdSphere(localPoint, object.dataSmooth.x);
+    } else {
+      distance = sdBox(localPoint, object.dataSmooth.xyz);
+    }
+
+    let smoothness = object.dataSmooth.w;
+    let merged = smoothMin(bestDistance, distance, smoothness);
+    let blend = smoothstep(0.0, max(0.001, smoothness + 0.001), abs(bestDistance - distance));
+
+    if (merged < bestDistance || distance < bestDistance) {
+      bestColor = mix(object.color.rgb, bestColor, blend * 0.28);
+    }
+
+    bestDistance = merged;
+  }
+
+  return SceneHit(bestDistance, bestColor);
+}
+`;
