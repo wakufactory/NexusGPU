@@ -24,8 +24,18 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
     let merged = smoothMin(bestDistance, distance, smoothness);
     let blend = smoothstep(0.0, max(0.001, smoothness + 0.001), abs(bestDistance - distance));
 
-    if (merged < bestDistance || distance < bestDistance) {
-      bestColor = mix(object.color.rgb, bestColor, blend * 0.28);
+    if (distance < bestDistance) {
+      if (smoothness <= 0.0001) {
+        bestColor = object.color.rgb;
+      } else {
+        let colorBlend = 1.0 - smoothstep(
+          0.0,
+          smoothness,
+          abs(bestDistance - distance)
+        );
+
+        bestColor = mix(object.color.rgb, bestColor, colorBlend * 0.28);
+      }
     }
 
     bestDistance = merged;
