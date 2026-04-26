@@ -25,7 +25,7 @@ input {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(280px, 390px) minmax(0, 1fr);
+  grid-template-columns:  minmax(0, 1fr) minmax(280px, 390px);
   min-height: 100vh;
   background:
     linear-gradient(120deg, rgba(25, 33, 36, 0.92), rgba(11, 13, 14, 0.94)),

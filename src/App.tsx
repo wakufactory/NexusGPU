@@ -10,7 +10,7 @@ const INITIAL_RENDER_SETTINGS: RenderSettings = {
   resolutionScale: 0.4,
   maxSteps: 64,
   maxDistance: 42,
-  shadows: false,
+  shadows: true,
   normalEpsilon: 0.0025,
   surfaceEpsilon: 0.0025,
 };
@@ -88,18 +88,6 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <Sparkles size={24} />
-          <div>
-            <h1>NexusGPU</h1>
-            <p>React driven SDF renderer for WebGPU.</p>
-          </div>
-        </div>
-
-        <RenderSettingsPanel settings={renderSettings} onChange={setRenderSettings} />
-      </aside>
-
       <section className="viewport">
         {/* renderSettingsを変えると、シェーダのステップ数や解像度が即座に変わる。 */}
         <NexusCanvas
@@ -111,6 +99,17 @@ export function App() {
           <AnimatedSdfScene />
         </NexusCanvas>
       </section>
+      <aside className="sidebar">
+        <div className="brand">
+          <Sparkles size={24} />
+          <div>
+            <h1>NexusGPU</h1>
+            <p>React driven SDF renderer for WebGPU.</p>
+          </div>
+        </div>
+
+        <RenderSettingsPanel settings={renderSettings} onChange={setRenderSettings} />
+      </aside>
     </main>
   );
 }
@@ -131,7 +130,7 @@ function AnimatedSdfScene() {
         position={[0, -0.06, 0]}
         size={[4.4, 0.12, 3.2]}
         color={[0.2, 0.23, 0.28]}
-        smoothness={0.02}
+        smoothness={0.2}
       />
       {ORBITING_SPHERES.map((sphere, index) => (
         <SdfSphere
@@ -139,7 +138,7 @@ function AnimatedSdfScene() {
           position={spherePositions[index]}
           radius={sphere.radius}
           color={sphere.color}
-          smoothness={0.2}
+          smoothness={0.7}
         />
       ))}
     </>
