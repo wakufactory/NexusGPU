@@ -17,7 +17,7 @@ fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32
   if (hit.distance > 0.0) {
     let point = camera.position.xyz + direction * hit.distance;
     let normal = estimateNormal(point);
-    let lightDirection = normalize(vec3<f32>(-0.45, 0.85, 0.35));
+    let lightDirection = normalize(camera.lightInfo.xyz);
     let diffuse = max(dot(normal, lightDirection), 0.0);
     let rim = pow(max(0.0, 1.0 - dot(normal, -direction)), 3.0);
     let ambient = 0.24 + 0.1 * normal.y;

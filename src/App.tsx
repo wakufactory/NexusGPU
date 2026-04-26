@@ -7,7 +7,7 @@ import { RenderSettingsPanel } from "./RenderSettingsPanel";
 type RenderSettings = Required<NexusRenderSettings>;
 
 const INITIAL_RENDER_SETTINGS: RenderSettings = {
-  resolutionScale: 0.65,
+  resolutionScale: 0.4,
   maxSteps: 64,
   maxDistance: 42,
   shadows: false,
@@ -38,6 +38,7 @@ export function App() {
         {/* renderSettingsを変えると、シェーダのステップ数や解像度が即座に変わる。 */}
         <NexusCanvas
           camera={{ position: [0, 0.7, 5.2], target: [0, 0, 0], fov: 48 }}
+          lighting={{ direction: [0.25, 0.85, 0.35] }}
           orbitControls
           renderSettings={renderSettings}
         >
@@ -85,8 +86,8 @@ function AnimatedSdfScene() {
       <SdfBox
         position={boxPosition}
         rotation={[0.2474, 0, 0, 0.9689]}
-        size={[1.35, 1.35, 1.35]}
-        color={[0.95, 0.55, 0.18]}
+        size={[0.35, 0.35, 0.35]}
+        color={[0.5, 0.05, 0.98]}
         smoothness={0.}
       />
       <SdfSphere

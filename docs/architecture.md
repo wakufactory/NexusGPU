@@ -216,6 +216,7 @@ struct CameraUniform {
   up: vec4<f32>,
   objectInfo: vec4<f32>,
   renderInfo: vec4<f32>,
+  lightInfo: vec4<f32>,
 };
 ```
 
@@ -235,6 +236,13 @@ x = maxSteps
 y = maxDistance
 z = shadows enabled: 1 or 0
 w = normalEpsilon
+```
+
+`lightInfo`:
+
+```text
+xyz = directional light direction
+w   = 未使用
 ```
 
 UniformはWebGPUのアライメント制約が厳しいため、`vec4`境界に揃える設計にしています。

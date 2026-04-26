@@ -11,6 +11,7 @@ struct CameraUniform {
   up: vec4<f32>,
   objectInfo: vec4<f32>,
   renderInfo: vec4<f32>,
+  lightInfo: vec4<f32>,
 };
 
 // 1つのSDFオブジェクトをStorage Buffer内で表す固定長レコード。

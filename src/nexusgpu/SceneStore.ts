@@ -1,9 +1,13 @@
-import type { NexusCamera, NexusFrameCallback, NexusFrameState, SceneSnapshot, SdfNode } from "./types";
+import type { NexusCamera, NexusFrameCallback, NexusFrameState, NexusLighting, SceneSnapshot, SdfNode } from "./types";
 
 const DEFAULT_CAMERA: Required<NexusCamera> = {
   position: [0, 0.5, 5],
   target: [0, 0, 0],
   fov: 45,
+};
+
+const DEFAULT_LIGHTING: Required<NexusLighting> = {
+  direction: [-0.45, 0.85, 0.35],
 };
 
 type SceneListener = (snapshot: SceneSnapshot) => void;
@@ -17,6 +21,7 @@ export class SceneStore {
   private listeners = new Set<SceneListener>();
   private frameListeners = new Set<NexusFrameCallback>();
   private camera = DEFAULT_CAMERA;
+  private lighting = DEFAULT_LIGHTING;
   private version = 0;
 
   /** カメラpropsをストアへ反映し、購読中のレンダラへ変更を通知する。 */
@@ -25,6 +30,14 @@ export class SceneStore {
       position: camera?.position ?? DEFAULT_CAMERA.position,
       target: camera?.target ?? DEFAULT_CAMERA.target,
       fov: camera?.fov ?? DEFAULT_CAMERA.fov,
+    };
+    this.emit();
+  }
+
+  /** ライティングpropsをストアへ反映し、購読中のレンダラへ変更を通知する。 */
+  setLighting(lighting: NexusLighting | undefined) {
+    this.lighting = {
+      direction: lighting?.direction ?? DEFAULT_LIGHTING.direction,
     };
     this.emit();
   }
@@ -72,6 +85,7 @@ export class SceneStore {
     return {
       nodes: [...this.nodes.values()],
       camera: this.camera,
+      lighting: this.lighting,
       version: this.version,
     };
   }

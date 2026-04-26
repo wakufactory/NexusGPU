@@ -13,6 +13,11 @@ export type NexusCamera = {
   fov?: number;
 };
 
+/** シーン全体のライティング設定。directionは平行光源が照らす向きを表す。 */
+export type NexusLighting = {
+  direction?: Vec3;
+};
+
 /** デバッグ用の描画品質設定。GPU負荷と見た目のバランスを実行時に調整する。 */
 export type NexusRenderSettings = {
   resolutionScale?: number;
@@ -60,6 +65,7 @@ export type SdfBoxProps = SdfPrimitiveProps & {
 /** NexusCanvasが受け取るReact側の公開props。 */
 export type NexusCanvasProps = {
   camera?: NexusCamera;
+  lighting?: NexusLighting;
   orbitControls?: boolean;
   renderSettings?: NexusRenderSettings;
   children?: ReactNode;
@@ -80,5 +86,6 @@ export type SdfNode = {
 export type SceneSnapshot = {
   nodes: readonly SdfNode[];
   camera: Required<NexusCamera>;
+  lighting: Required<NexusLighting>;
   version: number;
 };

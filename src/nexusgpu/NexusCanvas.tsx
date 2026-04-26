@@ -3,12 +3,16 @@ import { SceneStore } from "./SceneStore";
 import { SceneContext } from "./SceneContext";
 import { WebGpuSdfRenderer } from "./WebGpuSdfRenderer";
 import { clamp } from "./math";
-import type { NexusCamera, NexusCanvasProps, SceneSnapshot, Vec3 } from "./types";
+import type { NexusCamera, NexusCanvasProps, NexusLighting, SceneSnapshot, Vec3 } from "./types";
 
 const DEFAULT_CAMERA: Required<NexusCamera> = {
   position: [0, 0.5, 5],
   target: [0, 0, 0],
   fov: 45,
+};
+
+const DEFAULT_LIGHTING: Required<NexusLighting> = {
+  direction: [-0.45, 0.85, 0.35],
 };
 
 const MIN_POLAR_ANGLE = -Math.PI / 2 + 0.05;
@@ -28,7 +32,7 @@ type OrbitCameraState = {
  * ReactツリーとWebGPUレンダラを接続するルートコンポーネント。
  * 子のSDFプリミティブはContext経由でSceneStoreへ登録される。
  */
-export function NexusCanvas({ camera, orbitControls = false, renderSettings, children }: NexusCanvasProps) {
+export function NexusCanvas({ camera, lighting, orbitControls = false, renderSettings, children }: NexusCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
   const orbitStateRef = useRef<OrbitCameraState | null>(null);
@@ -48,6 +52,16 @@ export function NexusCanvas({ camera, orbitControls = false, renderSettings, chi
     camera?.target?.[0],
     camera?.target?.[1],
     camera?.target?.[2],
+    store,
+  ]);
+
+  // ライティングpropsが変わったらSceneStoreへ反映し、レンダラのUniform更新につなげる。
+  useEffect(() => {
+    store.setLighting(resolveLighting(lighting));
+  }, [
+    lighting?.direction?.[0],
+    lighting?.direction?.[1],
+    lighting?.direction?.[2],
     store,
   ]);
 
@@ -220,6 +234,12 @@ function resolveCamera(camera: NexusCamera | undefined): Required<NexusCamera> {
     position: camera?.position ?? DEFAULT_CAMERA.position,
     target: camera?.target ?? DEFAULT_CAMERA.target,
     fov: camera?.fov ?? DEFAULT_CAMERA.fov,
+  };
+}
+
+function resolveLighting(lighting: NexusLighting | undefined): Required<NexusLighting> {
+  return {
+    direction: lighting?.direction ?? DEFAULT_LIGHTING.direction,
   };
 }
 

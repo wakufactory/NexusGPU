@@ -1,7 +1,7 @@
 import { MAX_SDF_OBJECTS, sdfShader } from "./sdfShader";
 import type { NexusRenderSettings, SceneSnapshot, Vec3 } from "./types";
 
-const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4;
+const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const OBJECT_STRIDE_FLOATS = 16;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -187,6 +187,7 @@ export class WebGpuSdfRenderer {
     const worldUp: Vec3 = [0, 1, 0];
     const right = normalize(cross(forward, worldUp));
     const up = normalize(cross(right, forward));
+    const lightDirection = normalize(snapshot.lighting.direction, [-0.45, 0.85, 0.35]);
     const time = (performance.now() - this.startTime) / 1000;
 
     this.cameraData.set([width, height, time, snapshot.camera.fov], 0);
@@ -207,6 +208,7 @@ export class WebGpuSdfRenderer {
       ],
       24,
     );
+    this.cameraData.set([...lightDirection, 0], 28);
 
     this.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraData);
   }
@@ -272,10 +274,10 @@ function cross(a: Vec3, b: Vec3): Vec3 {
 }
 
 /** 3次元ベクトルを単位ベクトル化する。ゼロ長に近い場合は安全な前方向を返す。 */
-function normalize(value: Vec3): Vec3 {
+function normalize(value: Vec3, fallback: Vec3 = [0, 0, 1]): Vec3 {
   const length = Math.hypot(value[0], value[1], value[2]);
   if (length <= 0.00001) {
-    return [0, 0, 1];
+    return fallback;
   }
 
   return [value[0] / length, value[1] / length, value[2] / length];
