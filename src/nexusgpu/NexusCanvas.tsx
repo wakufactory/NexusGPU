@@ -24,6 +24,28 @@ export function NexusCanvas({ camera, renderSettings, children }: NexusCanvasPro
     rendererRef.current?.setRenderSettings(renderSettings);
   }, [renderSettings]);
 
+  // 子コンポーネント向けのフレームループ。useFrameでSDF propsを動かせるようにする。
+  useEffect(() => {
+    let frameId = 0;
+    let startTime: number | null = null;
+    let lastTime: number | null = null;
+
+    const tick = (time: number) => {
+      startTime ??= time;
+      lastTime ??= time;
+
+      const elapsed = (time - startTime) / 1000;
+      const delta = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      store.advanceFrame({ time, elapsed, delta });
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [store]);
+
   // CanvasのWebGPU初期化、SceneStore購読、アンマウント時の破棄をまとめて管理する。
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -1,5 +1,6 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { SceneStore } from "./SceneStore";
+import type { NexusFrameCallback } from "./types";
 
 // NexusCanvas配下のプリミティブが、現在のSceneStoreへアクセスするためのContext。
 export const SceneContext = createContext<SceneStore | null>(null);
@@ -12,4 +13,18 @@ export function useSceneStore() {
   }
 
   return store;
+}
+
+/** NexusCanvas配下で毎フレーム処理を実行する。SDF propsのアニメーションに使う。 */
+export function useFrame(callback: NexusFrameCallback) {
+  const store = useSceneStore();
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  useEffect(() => {
+    return store.subscribeFrame((state) => callbackRef.current(state));
+  }, [store]);
 }

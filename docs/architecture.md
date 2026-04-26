@@ -24,8 +24,8 @@ src/
     index.ts                 公開APIの再エクスポート
     types.ts                 React props、シーン、レンダリング設定の型定義
     NexusCanvas.tsx          ReactツリーとWebGPUレンダラの接続点
-    SceneContext.ts          プリミティブがSceneStoreへアクセスするContext
-    SceneStore.ts            React側シーン状態の保持と変更通知
+    SceneContext.ts          プリミティブとuseFrameがSceneStoreへアクセスするContext
+    SceneStore.ts            React側シーン状態とフレーム購読の保持、変更通知
     primitives.tsx           SdfSphere / SdfBox コンポーネント
     WebGpuSdfRenderer.ts     WebGPU初期化、バッファ更新、描画ループ
     sdfShader.ts             WGSLレイマーチングシェーダ
@@ -52,7 +52,33 @@ React世界とWebGPU世界の接続点です。
 - `SceneStore.subscribe()`でシーン変更を購読する
 - 変更された`SceneSnapshot`を`renderer.setScene()`へ渡す
 - デバッグ設定を`renderer.setRenderSettings()`へ渡す
+- `requestAnimationFrame`でReact側の`useFrame`購読者へ時刻を渡す
 - アンマウント時にレンダラと購読を破棄する
+
+### SceneContext.ts
+
+`NexusCanvas`配下のReactコンポーネントが、現在の`SceneStore`へアクセスするためのContextです。
+
+公開API:
+
+- `useSceneStore()`: SDFプリミティブがノード登録に使う内部向けhook
+- `useFrame(callback)`: `NexusCanvas`のフレームループを購読する公開hook
+
+`useFrame`のcallbackには`time`、`elapsed`、`delta`が渡されます。SDFオブジェクトを動かす場合は、callback内でReact stateを更新し、そのstateを`<SdfSphere position={...} />`や`<SdfBox position={...} />`へ渡します。
+
+例:
+
+```tsx
+function AnimatedSphere() {
+  const [position, setPosition] = useState<Vec3>([-1, 0, 0]);
+
+  useFrame(({ elapsed }) => {
+    setPosition([-1, Math.sin(elapsed * 1.5) * 0.35, 0]);
+  });
+
+  return <SdfSphere position={position} radius={1} />;
+}
+```
 
 ### primitives.tsx
 
@@ -75,8 +101,11 @@ React propsから生成されたシーン状態を保持するストアです。
 - カメラ設定
 - シーンバージョン
 - 購読リスナー
+- フレーム購読リスナー
 
 `SceneStore`はGPU APIを直接触りません。責務は、React側の変化を`SceneSnapshot`としてレンダラへ通知することです。
+
+`useFrame`用には`subscribeFrame()`と`advanceFrame()`を持ちます。`advanceFrame()`は`NexusCanvas`のフレームループから呼ばれ、登録済みcallbackへ同じ`NexusFrameState`を配信します。
 
 ### WebGpuSdfRenderer.ts
 
@@ -251,6 +280,29 @@ sequenceDiagram
 React propsが変わるたびに、対応する`SdfNode`が更新されます。現在は簡潔さを優先し、ノード変更時にオブジェクトバッファ全体を書き直しています。
 
 今後の最適化では、変更されたノードだけをdirty rangeとして部分書き込みする予定です。
+
+## useFrameアニメーションフロー
+
+```mermaid
+sequenceDiagram
+  participant RAF as requestAnimationFrame
+  participant NexusCanvas
+  participant Store as SceneStore
+  participant Component as Animated SDF Component
+  participant Primitive as SdfSphere / SdfBox
+  participant Renderer as WebGpuSdfRenderer
+
+  Component->>Store: useFrame(callback)でsubscribeFrame()
+  RAF->>NexusCanvas: tick(time)
+  NexusCanvas->>Store: advanceFrame({ time, elapsed, delta })
+  Store->>Component: callback(frameState)
+  Component->>Component: setPosition(nextPosition)
+  Component->>Primitive: position propsを更新
+  Primitive->>Store: upsertNode(SdfNode)
+  Store->>Renderer: setScene(snapshot)
+```
+
+`useFrame`はSDFプリミティブを直接GPU上で移動させるAPIではありません。React stateやpropsを毎フレーム更新するためのhookです。更新されたpropsは通常のプリミティブ登録フローに入り、`SceneStore`から`WebGpuSdfRenderer`へ同期されます。
 
 ## フレーム描画フロー
 

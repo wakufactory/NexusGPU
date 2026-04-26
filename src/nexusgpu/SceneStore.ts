@@ -1,4 +1,4 @@
-import type { NexusCamera, SceneSnapshot, SdfNode } from "./types";
+import type { NexusCamera, NexusFrameCallback, NexusFrameState, SceneSnapshot, SdfNode } from "./types";
 
 const DEFAULT_CAMERA: Required<NexusCamera> = {
   position: [0, 0.5, 5],
@@ -15,6 +15,7 @@ type SceneListener = (snapshot: SceneSnapshot) => void;
 export class SceneStore {
   private nodes = new Map<symbol, SdfNode>();
   private listeners = new Set<SceneListener>();
+  private frameListeners = new Set<NexusFrameCallback>();
   private camera = DEFAULT_CAMERA;
   private version = 0;
 
@@ -48,6 +49,22 @@ export class SceneStore {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /** NexusCanvasのフレームループを購読する。アニメーション用途の軽量なuseFrame基盤。 */
+  subscribeFrame(listener: NexusFrameCallback) {
+    this.frameListeners.add(listener);
+
+    return () => {
+      this.frameListeners.delete(listener);
+    };
+  }
+
+  /** NexusCanvasから毎フレーム呼ばれ、登録されたReact側コールバックへ時刻を渡す。 */
+  advanceFrame(state: NexusFrameState) {
+    for (const listener of this.frameListeners) {
+      listener(state);
+    }
   }
 
   /** 現在のシーン状態を、レンダラへ渡せる不変データとして作る。 */

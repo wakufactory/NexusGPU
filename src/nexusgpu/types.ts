@@ -20,6 +20,19 @@ export type NexusRenderSettings = {
   surfaceEpsilon?: number;
 };
 
+/** NexusCanvasのフレームループからReact側へ渡す時刻情報。 */
+export type NexusFrameState = {
+  /** requestAnimationFrameから渡された高精度タイムスタンプ。 */
+  time: number;
+  /** NexusCanvasのフレームループ開始からの経過秒数。 */
+  elapsed: number;
+  /** 前フレームからの経過秒数。タブ復帰時の跳ねを抑えるため上限を持つ。 */
+  delta: number;
+};
+
+/** NexusCanvas内で毎フレーム呼ばれるコールバック。 */
+export type NexusFrameCallback = (state: NexusFrameState) => void;
+
 /** 現在サポートしているSDFプリミティブ種別。 */
 export type SdfPrimitiveKind = "sphere" | "box";
 
