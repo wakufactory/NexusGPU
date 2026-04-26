@@ -34,7 +34,7 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
           abs(bestDistance - distance)
         );
 
-        bestColor = mix(object.color.rgb, bestColor, colorBlend * 0.28);
+        bestColor = mix(object.color.rgb, bestColor, colorBlend * 0.3);
       }
     }
 

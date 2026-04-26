@@ -18,7 +18,7 @@ export function SdfSphere({
   const store = useSceneStore();
   const id = useStableId();
 
-  // props変更ごとにGPUへ渡すノード情報を作り直し、アンマウント時はストアから削除する。
+  // props変更ごとにGPUへ渡すノード情報を作り直す。
   useEffect(() => {
     const node: SdfNode = {
       id,
@@ -31,8 +31,11 @@ export function SdfSphere({
     };
 
     store.upsertNode(node);
-    return () => store.removeNode(id);
   }, [color, id, position, radius, rotation, smoothness, store]);
+
+  useEffect(() => {
+    return () => store.removeNode(id);
+  }, [id, store]);
 
   return null;
 }
@@ -59,8 +62,11 @@ export function SdfBox({ position, rotation, size = [1, 1, 1], color, smoothness
     };
 
     store.upsertNode(node);
-    return () => store.removeNode(id);
   }, [color, id, position, rotation, size, smoothness, store]);
+
+  useEffect(() => {
+    return () => store.removeNode(id);
+  }, [id, store]);
 
   return null;
 }

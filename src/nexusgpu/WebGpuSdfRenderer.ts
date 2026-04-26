@@ -151,7 +151,6 @@ export class WebGpuSdfRenderer {
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
   private uploadObjects(snapshot: SceneSnapshot) {
-    this.objectData.fill(0);
     const nodes = snapshot.nodes.slice(0, MAX_SDF_OBJECTS);
 
     nodes.forEach((node, index) => {
@@ -174,7 +173,10 @@ export class WebGpuSdfRenderer {
       this.objectData[offset + 15] = node.rotation[3];
     });
 
-    this.device.queue.writeBuffer(this.objectBuffer, 0, this.objectData);
+    const bytesToUpload = nodes.length * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+    if (bytesToUpload > 0) {
+      this.device.queue.writeBuffer(this.objectBuffer, 0, this.objectData, 0, nodes.length * OBJECT_STRIDE_FLOATS);
+    }
   }
 
   /** カメラベクトルとデバッグ設定をUniform Bufferへ書き込み、シェーダから参照できるようにする。 */
