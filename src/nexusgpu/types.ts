@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 /** 3次元ベクトル。座標、色、サイズなどで共通利用する。 */
 export type Vec3 = readonly [number, number, number];
 
+/** Quaternion。回転を[x, y, z, w]の順で表す。 */
+export type Quaternion = readonly [number, number, number, number];
+
 /** SDFシーンを眺めるカメラ設定。省略された値はSceneStore側の初期値を使う。 */
 export type NexusCamera = {
   position?: Vec3;
@@ -39,6 +42,7 @@ export type SdfPrimitiveKind = "sphere" | "box";
 /** SDFプリミティブに共通するReact props。 */
 export type SdfPrimitiveProps = {
   position?: Vec3;
+  rotation?: Quaternion;
   color?: Vec3;
   smoothness?: number;
 };
@@ -65,6 +69,7 @@ export type SdfNode = {
   id: symbol;
   kind: SdfPrimitiveKind;
   position: Vec3;
+  rotation: Quaternion;
   color: Vec3;
   data: Vec3;
   smoothness: number;

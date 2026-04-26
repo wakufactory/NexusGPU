@@ -6,6 +6,7 @@ export type {
   NexusFrameState,
   NexusCamera,
   NexusRenderSettings,
+  Quaternion,
   SdfBoxProps,
   SdfPrimitiveProps,
   SdfSphereProps,

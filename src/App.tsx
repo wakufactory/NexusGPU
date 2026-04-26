@@ -77,21 +77,22 @@ function AnimatedSdfScene() {
     <>
       <SdfSphere
         position={spherePosition}
-        radius={1.05}
+        radius={0.8}
         color={[0.05, 0.74, 0.7]}
         smoothness={0.2}
       />
       <SdfBox
         position={boxPosition}
+        rotation={[0.2474, 0, 0, 0.9689]}
         size={[1.35, 1.35, 1.35]}
         color={[0.95, 0.55, 0.18]}
-        smoothness={0.12}
+        smoothness={0.}
       />
       <SdfSphere
         position={accentPosition}
         radius={0.55}
         color={[0.9, 0.18, 0.38]}
-        smoothness={0.08}
+        smoothness={0.0}
       />
     </>
   );

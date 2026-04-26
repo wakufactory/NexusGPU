@@ -1,14 +1,16 @@
 import { useEffect, useMemo } from "react";
-import { clamp, normalizeVec3 } from "./math";
+import { clamp, normalizeQuaternion, normalizeVec3 } from "./math";
 import { useSceneStore } from "./SceneContext";
 import type { SdfBoxProps, SdfNode, SdfSphereProps } from "./types";
 
 const DEFAULT_COLOR = [0.18, 0.78, 0.72] as const;
 const DEFAULT_POSITION = [0, 0, 0] as const;
+const DEFAULT_ROTATION = [0, 0, 0, 1] as const;
 
 /** React propsからSDF球を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfSphere({
   position,
+  rotation,
   radius = 1,
   color,
   smoothness = 0,
@@ -22,6 +24,7 @@ export function SdfSphere({
       id,
       kind: "sphere",
       position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
       color: normalizeVec3(color, DEFAULT_COLOR),
       data: [Math.max(0.001, radius), 0, 0],
       smoothness: clamp(smoothness, 0, 2),
@@ -29,13 +32,13 @@ export function SdfSphere({
 
     store.upsertNode(node);
     return () => store.removeNode(id);
-  }, [color, id, position, radius, smoothness, store]);
+  }, [color, id, position, radius, rotation, smoothness, store]);
 
   return null;
 }
 
 /** React propsからSDFボックスを作り、SceneStoreへ登録する宣言的プリミティブ。 */
-export function SdfBox({ position, size = [1, 1, 1], color, smoothness = 0 }: SdfBoxProps) {
+export function SdfBox({ position, rotation, size = [1, 1, 1], color, smoothness = 0 }: SdfBoxProps) {
   const store = useSceneStore();
   const id = useStableId();
 
@@ -45,6 +48,7 @@ export function SdfBox({ position, size = [1, 1, 1], color, smoothness = 0 }: Sd
       id,
       kind: "box",
       position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
       color: normalizeVec3(color, DEFAULT_COLOR),
       data: normalizeVec3(size, [1, 1, 1]).map((value) => Math.max(0.001, value * 0.5)) as [
         number,
@@ -56,7 +60,7 @@ export function SdfBox({ position, size = [1, 1, 1], color, smoothness = 0 }: Sd
 
     store.upsertNode(node);
     return () => store.removeNode(id);
-  }, [color, id, position, size, smoothness, store]);
+  }, [color, id, position, rotation, size, smoothness, store]);
 
   return null;
 }
