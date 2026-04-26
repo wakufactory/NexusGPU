@@ -2,7 +2,8 @@ export const fragmentShader = /* wgsl */ `
 // ピクセルごとにレイを作り、SDFシーンの色を計算する。
 @fragment
 fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-  let uv = (position.xy / camera.resolution) * 2.0 - vec2<f32>(1.0);
+  let screenUv = position.xy / camera.resolution;
+  let uv = vec2<f32>(screenUv.x * 2.0 - 1.0, 1.0 - screenUv.y * 2.0);
   let aspect = camera.resolution.x / camera.resolution.y;
   let focal = 1.0 / tan(radians(camera.fov) * 0.5);
   let direction = normalize(
@@ -29,8 +30,7 @@ fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32
     color = hit.color * (ambient + diffuse * shadow) + rim * vec3<f32>(0.45, 0.75, 0.86) ;
   }
 
-  let vignetteUv = position.xy / camera.resolution;
-  let vignette = smoothstep(0.82, 0.22, distance(vignetteUv, vec2<f32>(0.5)));
+  let vignette = smoothstep(0.82, 0.22, distance(screenUv, vec2<f32>(0.5)));
   color = pow(color * vignette, vec3<f32>(0.92));
 
   return vec4<f32>(color, 1.0);
