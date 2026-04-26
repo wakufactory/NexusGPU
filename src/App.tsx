@@ -139,7 +139,7 @@ function AnimatedSdfScene() {
           position={spherePositions[index]}
           radius={sphere.radius}
           color={sphere.color}
-          smoothness={0.02}
+          smoothness={0.2}
         />
       ))}
     </>
