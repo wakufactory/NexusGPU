@@ -2,7 +2,7 @@
 
 NexusGPU is a WebGPU-first experiment for rendering SDF primitives from declarative React components.
 
-This repository implements phase 1 of the roadmap in `/Users/waku/Downloads/NexusGPU_Framework_Roadmap.md`:
+This repository implements phase 1 of the roadmap in `NexusGPU_Framework_Roadmap.md`:
 
 - React components for `<NexusCanvas>`, `<SdfSphere>`, and `<SdfBox>`
 - A `useFrame` hook for driving React-side SDF animations
