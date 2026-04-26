@@ -38,6 +38,7 @@ export function App() {
         {/* renderSettingsを変えると、シェーダのステップ数や解像度が即座に変わる。 */}
         <NexusCanvas
           camera={{ position: [0, 0.7, 5.2], target: [0, 0, 0], fov: 48 }}
+          orbitControls
           renderSettings={renderSettings}
         >
           <AnimatedSdfScene />

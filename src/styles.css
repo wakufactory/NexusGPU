@@ -185,6 +185,16 @@ input {
   background: #0b0d0e;
 }
 
+.nexus-canvas.has-orbit-controls {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.nexus-canvas.is-orbiting {
+  cursor: grabbing;
+}
+
 .nexus-fallback {
   display: grid;
   place-items: center;

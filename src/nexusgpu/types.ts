@@ -60,6 +60,7 @@ export type SdfBoxProps = SdfPrimitiveProps & {
 /** NexusCanvasが受け取るReact側の公開props。 */
 export type NexusCanvasProps = {
   camera?: NexusCamera;
+  orbitControls?: boolean;
   renderSettings?: NexusRenderSettings;
   children?: ReactNode;
 };
