@@ -1,0 +1,3 @@
+これはWebGPU対応のreact上に構築した独自フレームワークです
+
+概要はdocs/architecture.mdを参照のこと
