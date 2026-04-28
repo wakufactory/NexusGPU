@@ -170,9 +170,31 @@ input {
 }
 
 .viewport {
+  position: relative;
   min-width: 0;
   min-height: 100vh;
   padding: 18px;
+}
+
+.fullscreen-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 30px;
+  right: 30px;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #f8fafc;
+  background: rgba(11, 13, 14, 0.72);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}
+
+.fullscreen-toggle:hover {
+  background: rgba(23, 27, 29, 0.86);
 }
 
 .nexus-canvas {
@@ -210,6 +232,36 @@ input {
   line-height: 1.55;
 }
 
+.app-shell.is-fullscreen {
+  grid-template-columns: 1fr;
+  min-height: 100dvh;
+  background: #0b0d0e;
+}
+
+.app-shell.is-fullscreen .sidebar {
+  display: none;
+}
+
+.app-shell.is-fullscreen .viewport {
+  min-height: 100dvh;
+  height: var(--fullscreen-height, 100dvh);
+  padding: 0;
+}
+
+.app-shell.is-fullscreen .fullscreen-toggle {
+  top: 12px;
+  right: 12px;
+}
+
+.app-shell.is-fullscreen .nexus-canvas,
+.app-shell.is-fullscreen .nexus-fallback {
+  width: 100%;
+  height: var(--fullscreen-height, 100dvh);
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -228,5 +280,16 @@ input {
   .nexus-fallback {
     height: 64vh;
     min-height: 420px;
+  }
+
+  .fullscreen-toggle {
+    top: 30px;
+    right: 30px;
+  }
+
+  .app-shell.is-fullscreen .nexus-canvas,
+  .app-shell.is-fullscreen .nexus-fallback {
+    height: var(--fullscreen-height, 100dvh);
+    min-height: 0;
   }
 }

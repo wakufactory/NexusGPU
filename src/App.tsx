@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { Maximize2, Minimize2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { NexusCanvas, SdfBox, SdfSphere, useFrame } from "./nexusgpu";
 import type { NexusRenderSettings, Vec3 } from "./nexusgpu";
 import { RenderSettingsPanel } from "./RenderSettingsPanel";
@@ -14,6 +15,10 @@ const INITIAL_RENDER_SETTINGS: RenderSettings = {
   normalEpsilon: 0.0025,
   surfaceEpsilon: 0.0025,
 };
+
+const INITIAL_SPHERE_SMOOTHNESS = 0.7;
+
+const getViewportHeight = () => Math.round(window.visualViewport?.height ?? window.innerHeight);
 
 type OrbitingSphereConfig = {
   center: Vec3;
@@ -83,12 +88,83 @@ function getOrbitPosition({ center, basisA, basisB, distance, period, phase }: O
 
 /** NexusGPUの現在のAPIを触るためのデモアプリ。デバッグUIもここで管理する。 */
 export function App() {
+  const appShellRef = useRef<HTMLElement | null>(null);
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
   const [renderSettings, setRenderSettings] = useState<RenderSettings>(INITIAL_RENDER_SETTINGS);
+  const [sphereSmoothness, setSphereSmoothness] = useState(INITIAL_SPHERE_SMOOTHNESS);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenHeight, setFullscreenHeight] = useState(getViewportHeight);
+
+  const requestViewportResize = useCallback(() => {
+    requestAnimationFrame(() => {
+      setFullscreenHeight(getViewportHeight());
+    });
+  }, []);
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === appShellRef.current);
+      requestViewportResize();
+    };
+
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, [requestViewportResize]);
+
+  useEffect(() => {
+    const handleViewportChange = () => requestViewportResize();
+
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
+    window.visualViewport?.addEventListener("resize", handleViewportChange);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
+      window.visualViewport?.removeEventListener("resize", handleViewportChange);
+    };
+  }, [requestViewportResize]);
+
+  const toggleFullscreen = async () => {
+    if (isFullscreen) {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        setIsFullscreen(false);
+        requestViewportResize();
+      }
+      return;
+    }
+
+    const shell = appShellRef.current;
+    if (!shell) {
+      return;
+    }
+
+    try {
+      await shell.requestFullscreen();
+    } catch (error) {
+      console.error("Failed to enter fullscreen mode.", error);
+      setIsFullscreen(true);
+      requestViewportResize();
+    }
+  };
+
+  const fullscreenStyle = isFullscreen
+    ? ({ "--fullscreen-height": `${fullscreenHeight}px` } as CSSProperties)
+    : undefined;
 
   return (
-    <main className="app-shell">
-      <section className="viewport">
+    <main ref={appShellRef} className={isFullscreen ? "app-shell is-fullscreen" : "app-shell"}>
+      <section className="viewport" style={fullscreenStyle}>
+        <button
+          className="fullscreen-toggle"
+          type="button"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          aria-pressed={isFullscreen}
+          onClick={toggleFullscreen}
+        >
+          {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        </button>
         {/* renderSettingsを変えると、シェーダのステップ数や解像度が即座に変わる。 */}
         <NexusCanvas
           camera={{ position: [0, 0.7, 5.2], target: [0, 0, 0], fov: 48 }}
@@ -96,7 +172,7 @@ export function App() {
           orbitControls
           renderSettings={renderSettings}
         >
-          <AnimatedSdfScene />
+          <AnimatedSdfScene sphereSmoothness={sphereSmoothness} />
         </NexusCanvas>
       </section>
       <aside className="sidebar">
@@ -108,14 +184,38 @@ export function App() {
           </div>
         </div>
 
+        <section className="panel debug-panel">
+          <div className="panel-title">
+            <SlidersHorizontal size={18} />
+            <h2>Parameters</h2>
+          </div>
+
+          <label className="control-row">
+            <span>Sphere smoothness</span>
+            <output>{sphereSmoothness.toFixed(2)}</output>
+            <input
+              type="range"
+              min="0"
+              max="1.5"
+              step="0.05"
+              value={sphereSmoothness}
+              onChange={(event) => setSphereSmoothness(Number(event.target.value))}
+            />
+          </label>
+        </section>
+
         <RenderSettingsPanel settings={renderSettings} onChange={setRenderSettings} />
       </aside>
     </main>
   );
 }
 
+type AnimatedSdfSceneProps = {
+  sphereSmoothness: number;
+};
+
 /** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
-function AnimatedSdfScene() {
+function AnimatedSdfScene({ sphereSmoothness }: AnimatedSdfSceneProps) {
   const [spherePositions, setSpherePositions] = useState<readonly Vec3[]>(
     ORBITING_SPHERES.map((sphere) => getOrbitPosition(sphere, 0)),
   );
@@ -138,7 +238,7 @@ function AnimatedSdfScene() {
           position={spherePositions[index]}
           radius={sphere.radius}
           color={sphere.color}
-          smoothness={0.7}
+          smoothness={sphereSmoothness}
         />
       ))}
     </>
