@@ -5,6 +5,7 @@ import { raymarchShader } from "./raymarchShader";
 import { sceneMappingShader } from "./sceneMappingShader";
 import { sdfPrimitivesShader } from "./sdfPrimitivesShader";
 import { shaderLayout } from "./shaderLayout";
+import { resolveShaderIncludes, shaderChunkLibrary } from "./shaderLibrary";
 import { vertexShader } from "./vertexShader";
 
 const shaderSections = [
@@ -18,5 +19,8 @@ const shaderSections = [
 ];
 
 export function assembleSdfShader(maxObjects: number) {
-  return [createShaderConstants(maxObjects), ...shaderSections].join("\n\n");
+  return resolveShaderIncludes([createShaderConstants(maxObjects), ...shaderSections].join("\n\n"));
 }
+
+export { resolveShaderIncludes, shaderChunkLibrary };
+export type { ShaderChunkLibrary } from "./shaderLibrary";

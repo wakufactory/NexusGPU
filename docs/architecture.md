@@ -211,6 +211,8 @@ Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ16個の`f32
 
 WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects)`が各セクションを結合し、`sdfShader.ts`が`MAX_SDF_OBJECTS = 128`を渡して最終的な`shaderModule`用文字列を作ります。
 
+各WGSLセクション内では、組み込みチャンクライブラリから`#include <sdf/sphere>`の形式で関数群を取り込めます。includeは`assembleSdfShader()`の最後に再帰的に解決され、未登録チャンクや循環参照は例外として検出されます。組み込みチャンクは`src/nexusgpu/shaders/shaderLibrary.ts`に定義します。
+
 結合順:
 
 ```text
