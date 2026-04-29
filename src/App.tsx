@@ -5,7 +5,7 @@ import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { NexusCanvas } from "./nexusgpu";
 import { SceneParametersPanel } from "./panels/SceneParametersPanel";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
-import { AnimatedSdfScene } from "./scenes/AnimatedSdfScene";
+import { AnimatedSdfScene, SCENE_CAMERA, SCENE_LIGHTING } from "./scenes/AnimatedSdfScene";
 
 const INITIAL_SPHERE_SMOOTHNESS = 0.7;
 
@@ -28,10 +28,9 @@ export function App() {
         >
           {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
         </button>
-        {/* renderSettingsを変えると、シェーダのステップ数や解像度が即座に変わる。 */}
         <NexusCanvas
-          camera={{ position: [0, 0.7, 5.2], target: [0, 0, 0], fov: 48 }}
-          lighting={{ direction: [0.25, 0.85, 0.35] }}
+          camera={SCENE_CAMERA}
+          lighting={SCENE_LIGHTING}
           orbitControls
           renderSettings={renderSettings}
         >

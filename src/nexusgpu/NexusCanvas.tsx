@@ -2,18 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SceneStore } from "./SceneStore";
 import { SceneContext } from "./SceneContext";
 import { WebGpuSdfRenderer } from "./WebGpuSdfRenderer";
+import { DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
 import { clamp } from "./math";
 import type { NexusCamera, NexusCanvasProps, NexusLighting, SceneSnapshot, Vec3 } from "./types";
-
-const DEFAULT_CAMERA: Required<NexusCamera> = {
-  position: [0, 0.5, 5],
-  target: [0, 0, 0],
-  fov: 45,
-};
-
-const DEFAULT_LIGHTING: Required<NexusLighting> = {
-  direction: [-0.45, 0.85, 0.35],
-};
 
 const MIN_POLAR_ANGLE = -Math.PI / 2 + 0.05;
 const MAX_POLAR_ANGLE = Math.PI / 2 - 0.05;

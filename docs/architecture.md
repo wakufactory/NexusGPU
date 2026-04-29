@@ -20,17 +20,18 @@ src/
   App.tsx                    デモアプリの画面構成と状態の配線
   main.tsx                   Reactエントリポイント
   styles.css                 画面レイアウトとデバッグUIのスタイル
-  RenderSettingsPanel.tsx    レンダリング品質を調整するデバッグUI
   app/
-    renderSettings.ts        レンダリング設定の型と初期値
+    renderSettings.ts        デモアプリ用レンダリング設定の初期値
     useFullscreenViewport.ts フルスクリーン表示とviewport高さ同期のhook
   panels/
     SceneParametersPanel.tsx シーン固有パラメータの操作UI
+    RenderSettingsPanel.tsx  レンダリング品質を調整するデバッグUI
   scenes/
-    AnimatedSdfScene.tsx     デモ用SDFシーンとアニメーション実装
+    AnimatedSdfScene.tsx     デモ用SDFシーン、scene camera / lighting、アニメーション実装
   nexusgpu/
     index.ts                 公開APIの再エクスポート
     types.ts                 React props、シーン、レンダリング設定の型定義
+    defaults.ts              NexusCanvas / SceneStoreが使うライブラリ側fallback値
     NexusCanvas.tsx          ReactツリーとWebGPUレンダラの接続点
     SceneContext.ts          プリミティブとuseFrameがSceneStoreへアクセスするContext
     SceneStore.ts            React側シーン状態とフレーム購読の保持、変更通知
@@ -56,20 +57,23 @@ src/
 
 デモアプリの画面構成と状態の配線を担当するアプリケーション層です。
 
-`renderSettings`とシーン固有パラメータのstateを保持し、`NexusCanvas`、`AnimatedSdfScene`、各パネルへ渡します。`App.tsx`自体にはシーンのプリミティブ定義やフルスクリーン制御の詳細を置かず、画面全体の組み立てに寄せています。
+`renderSettings`とシーン固有パラメータのstateを保持し、`NexusCanvas`、`AnimatedSdfScene`、各パネルへ渡します。`App.tsx`自体にはシーンのプリミティブ定義、scene camera / lighting、フルスクリーン制御の詳細を置かず、画面全体の組み立てに寄せています。
 
 主な接続:
 
 - `useFullscreenViewport()`で`main`要素のref、フルスクリーン状態、表示高さ用style、切り替え関数を受け取る
 - `INITIAL_RENDER_SETTINGS`を初期値として`renderSettings`を保持する
 - `renderSettings`を`NexusCanvas`と`RenderSettingsPanel`へ渡す
+- `SCENE_CAMERA`と`SCENE_LIGHTING`を選択中のsceneから受け取り、`NexusCanvas`へ渡す
 - `sphereSmoothness`を`AnimatedSdfScene`と`SceneParametersPanel`へ渡す
 
 ### app/renderSettings.ts
 
-`NexusRenderSettings`を必須化した`RenderSettings`型と、デモアプリで使う初期レンダリング設定を定義します。
+デモアプリで使う初期レンダリング設定を定義します。
 
 `resolutionScale`、`maxSteps`、`shadows`などの値は`NexusCanvas`の`renderSettings`へ渡されます。これにより、UI操作がWebGPUのUniform Bufferへ反映されます。
+
+この値はアプリ体験用の初期値です。`NexusCanvas`へ`renderSettings`が渡されなかった場合のライブラリ側fallbackとは別物として扱います。
 
 ### app/useFullscreenViewport.ts
 
@@ -87,6 +91,13 @@ src/
 デモ用SDFシーンの実装です。
 
 薄い床の`SdfBox`と、複数の`SdfSphere`を配置します。球の周回軌道設定、座標計算、`useFrame`によるアニメーションstateはこのファイルに閉じています。
+
+sceneごとの見え方もこのファイルに寄せています。
+
+- `SCENE_CAMERA`: このsceneを表示するときの初期カメラ
+- `SCENE_LIGHTING`: このsceneを表示するときのライト方向
+
+`App.tsx`は選択中のsceneからこれらをimportし、`NexusCanvas`の`camera` / `lighting` propsへ渡します。これにより、sceneを増やす場合も各sceneが自分の推奨視点とライトを持てます。
 
 ### panels/SceneParametersPanel.tsx / RenderSettingsPanel.tsx
 
@@ -107,9 +118,21 @@ React世界とWebGPU世界の接続点です。
 - `WebGpuSdfRenderer.create(canvas)`でWebGPUレンダラを初期化する
 - `SceneStore.subscribe()`でシーン変更を購読する
 - 変更された`SceneSnapshot`を`renderer.setScene()`へ渡す
+- `camera` / `lighting` propsを`SceneStore`へ反映する
 - デバッグ設定を`renderer.setRenderSettings()`へ渡す
 - `requestAnimationFrame`でReact側の`useFrame`購読者へ時刻を渡す
 - アンマウント時にレンダラと購読を破棄する
+
+`camera`や`lighting`の一部または全体が省略された場合は、`src/nexusgpu/defaults.ts`のライブラリ側fallback値で補完します。scene固有の初期値は`scenes/*`側から渡す設計です。
+
+### nexusgpu/defaults.ts
+
+`NexusCanvas`や`SceneStore`がprops未指定時に使うライブラリ側fallback値を定義します。
+
+- `DEFAULT_CAMERA`: `camera` propsが省略された場合の基準カメラ
+- `DEFAULT_LIGHTING`: `lighting` propsが省略された場合の基準ライト
+
+これらはsceneやアプリの推奨初期値ではなく、ライブラリ単体で安全に動くためのfallbackです。sceneごとに見え方を変える場合は、`SCENE_CAMERA` / `SCENE_LIGHTING`をscene側で定義し、`NexusCanvas`へ明示的に渡します。
 
 ### SceneContext.ts
 
@@ -155,6 +178,7 @@ React propsから生成されたシーン状態を保持するストアです。
 
 - SDFノード一覧
 - カメラ設定
+- ライティング設定
 - シーンバージョン
 - 購読リスナー
 - フレーム購読リスナー
@@ -466,6 +490,8 @@ RenderSettingsPanel
 | `surfaceEpsilon` | `objectInfo.y` | 表面ヒット判定のしきい値 |
 
 重い場合は、まず`resolutionScale`を下げ、次に`maxSteps`を下げます。`shadows`は追加のレイマーチを発生させるため、デバッグ中はOFFが基本です。
+
+`src/app/renderSettings.ts`の`INITIAL_RENDER_SETTINGS`はデモアプリの初期UI値です。`NexusCanvas`へ`renderSettings`が渡されない場合は、`WebGpuSdfRenderer.ts`内のレンダラ側fallbackが使われます。アプリごとに初期品質を変えたい場合は、アプリ層の初期値だけを変更します。
 
 ## 現在の制約
 

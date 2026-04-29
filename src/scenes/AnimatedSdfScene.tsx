@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { SdfBox, SdfSphere, useFrame } from "../nexusgpu";
-import type { Vec3 } from "../nexusgpu";
+import type { NexusCamera, NexusLighting, Vec3 } from "../nexusgpu";
+
+export const SCENE_CAMERA: Required<NexusCamera> = {
+  position: [0, 0.7, 5.2],
+  target: [0, 0, 0],
+  fov: 48,
+};
+
+export const SCENE_LIGHTING: Required<NexusLighting> = {
+  direction: [0.25, 0.85, 0.35],
+};
 
 type OrbitingSphereConfig = {
   center: Vec3;

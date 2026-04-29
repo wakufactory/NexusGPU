@@ -1,14 +1,5 @@
 import type { NexusCamera, NexusFrameCallback, NexusFrameState, NexusLighting, SceneSnapshot, SdfNode } from "./types";
-
-const DEFAULT_CAMERA: Required<NexusCamera> = {
-  position: [0, 0.5, 5],
-  target: [0, 0, 0],
-  fov: 45,
-};
-
-const DEFAULT_LIGHTING: Required<NexusLighting> = {
-  direction: [-0.45, 0.85, 0.35],
-};
+import { DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
 
 type SceneListener = (snapshot: SceneSnapshot) => void;
 

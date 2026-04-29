@@ -1,5 +1,5 @@
 import { Gauge } from "lucide-react";
-import type { NexusRenderSettings } from "./nexusgpu";
+import type { NexusRenderSettings } from "../nexusgpu";
 
 type RenderSettings = Required<NexusRenderSettings>;
 

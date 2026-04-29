@@ -4,7 +4,7 @@ export type RenderSettings = Required<NexusRenderSettings>;
 
 export const INITIAL_RENDER_SETTINGS: RenderSettings = {
   resolutionScale: 0.4,
-  maxSteps: 64,
+  maxSteps: 100,
   maxDistance: 42,
   shadows: true,
   normalEpsilon: 0.0025,
