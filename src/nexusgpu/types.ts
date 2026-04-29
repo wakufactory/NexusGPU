@@ -26,6 +26,9 @@ export type NexusRenderSettings = {
   shadows?: boolean;
   normalEpsilon?: number;
   surfaceEpsilon?: number;
+  stereoSbs?: boolean;
+  stereoBase?: number;
+  stereoSwapEyes?: boolean;
 };
 
 /** NexusCanvasのフレームループからReact側へ渡す時刻情報。 */

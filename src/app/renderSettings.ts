@@ -9,4 +9,7 @@ export const INITIAL_RENDER_SETTINGS: RenderSettings = {
   shadows: true,
   normalEpsilon: 0.0025,
   surfaceEpsilon: 0.0025,
+  stereoSbs: false,
+  stereoBase: 0.08,
+  stereoSwapEyes: false,
 };

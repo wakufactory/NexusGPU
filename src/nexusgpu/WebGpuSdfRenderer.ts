@@ -1,7 +1,7 @@
 import { MAX_SDF_OBJECTS, sdfShader } from "./sdfShader";
 import type { NexusRenderSettings, SceneSnapshot, Vec3 } from "./types";
 
-const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
+const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const OBJECT_STRIDE_FLOATS = 16;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -12,6 +12,9 @@ const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
   shadows: false,
   normalEpsilon: 0.002,
   surfaceEpsilon: 0.002,
+  stereoSbs: false,
+  stereoBase: 0.08,
+  stereoSwapEyes: false,
 };
 
 /**
@@ -211,6 +214,15 @@ export class WebGpuSdfRenderer {
       24,
     );
     this.cameraData.set([...lightDirection, 0], 28);
+    this.cameraData.set(
+      [
+        this.renderSettings.stereoSbs ? 1 : 0,
+        this.renderSettings.stereoBase,
+        this.renderSettings.stereoSwapEyes ? 1 : 0,
+        0,
+      ],
+      32,
+    );
 
     this.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraData);
   }
@@ -257,6 +269,9 @@ function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Req
     shadows: settings?.shadows ?? DEFAULT_RENDER_SETTINGS.shadows,
     normalEpsilon: clamp(settings?.normalEpsilon ?? DEFAULT_RENDER_SETTINGS.normalEpsilon, 0.0008, 0.01),
     surfaceEpsilon: clamp(settings?.surfaceEpsilon ?? DEFAULT_RENDER_SETTINGS.surfaceEpsilon, 0.0008, 0.02),
+    stereoSbs: settings?.stereoSbs ?? DEFAULT_RENDER_SETTINGS.stereoSbs,
+    stereoBase: clamp(settings?.stereoBase ?? DEFAULT_RENDER_SETTINGS.stereoBase, 0, 1),
+    stereoSwapEyes: settings?.stereoSwapEyes ?? DEFAULT_RENDER_SETTINGS.stereoSwapEyes,
   };
 }
 

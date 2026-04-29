@@ -17,6 +17,43 @@ export function RenderSettingsPanel({ settings, onChange }: RenderSettingsPanelP
   };
 
   return (
+    <>
+    <section className="panel">
+      <h2>STEREO</h2>
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={settings.stereoSbs}
+          onChange={(event) => updateSetting("stereoSbs", event.target.checked)}
+        />
+        <span>Stereo SBS</span>
+      </label>
+
+      <label className="control-row">
+        <span>Stereo base</span>
+        <output>{settings.stereoBase.toFixed(3)}</output>
+        <input
+          type="range"
+          min="0"
+          max="0.5"
+          step="0.005"
+          value={settings.stereoBase}
+          disabled={!settings.stereoSbs}
+          onChange={(event) => updateSetting("stereoBase", Number(event.target.value))}
+        />
+      </label>
+
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={settings.stereoSwapEyes}
+          disabled={!settings.stereoSbs}
+          onChange={(event) => updateSetting("stereoSwapEyes", event.target.checked)}
+        />
+        <span>Cross-eye swap</span>
+      </label>
+    </section>
+
     <section className="panel debug-panel">
       <div className="panel-title">
         <Gauge size={18} />
@@ -96,6 +133,8 @@ export function RenderSettingsPanel({ settings, onChange }: RenderSettingsPanelP
         />
         <span>Shadows</span>
       </label>
+
     </section>
+  </>
   );
 }
