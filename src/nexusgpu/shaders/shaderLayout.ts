@@ -18,8 +18,10 @@ struct CameraUniform {
 // 1つのSDFオブジェクトをStorage Buffer内で表す固定長レコード。
 struct SdfObject {
   positionKind: vec4<f32>,
-  dataSmooth: vec4<f32>,
-  color: vec4<f32>,
+  data0: vec4<f32>,
+  data1: vec4<f32>,
+  data2: vec4<f32>,
+  colorSmooth: vec4<f32>,
   rotation: vec4<f32>,
 };
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { clamp, normalizeQuaternion, normalizeVec3 } from "./math";
 import { useSceneStore } from "./SceneContext";
-import type { SdfBoxProps, SdfNode, SdfSphereProps } from "./types";
+import type { SdfBoxProps, SdfData, SdfNode, SdfSphereProps, Vec3, Vec4 } from "./types";
 
 const DEFAULT_COLOR = [0.18, 0.78, 0.72] as const;
 const DEFAULT_POSITION = [0, 0, 0] as const;
@@ -26,7 +26,7 @@ export function SdfSphere({
       position: normalizeVec3(position, DEFAULT_POSITION),
       rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
       color: normalizeVec3(color, DEFAULT_COLOR),
-      data: [Math.max(0.001, radius), 0, 0],
+      data: createSdfData([Math.max(0.001, radius), 0, 0, 0]),
       smoothness: clamp(smoothness, 0, 2),
     };
 
@@ -53,11 +53,7 @@ export function SdfBox({ position, rotation, size = [1, 1, 1], color, smoothness
       position: normalizeVec3(position, DEFAULT_POSITION),
       rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
       color: normalizeVec3(color, DEFAULT_COLOR),
-      data: normalizeVec3(size, [1, 1, 1]).map((value) => Math.max(0.001, value * 0.5)) as [
-        number,
-        number,
-        number,
-      ],
+      data: createSdfData([...toHalfSize(size), 0]),
       smoothness: clamp(smoothness, 0, 2),
     };
 
@@ -74,4 +70,16 @@ export function SdfBox({ position, rotation, size = [1, 1, 1], color, smoothness
 /** React再レンダーをまたいで同じSDFノードIDを保つ。 */
 function useStableId() {
   return useMemo(() => Symbol("nexusgpu.sdf"), []);
+}
+
+function createSdfData(data0: Vec4, data1: Vec4 = [0, 0, 0, 0], data2: Vec4 = [0, 0, 0, 0]): SdfData {
+  return [data0, data1, data2];
+}
+
+function toHalfSize(size: Vec3 | undefined): Vec3 {
+  return normalizeVec3(size, [1, 1, 1]).map((value) => Math.max(0.001, value * 0.5)) as [
+    number,
+    number,
+    number,
+  ];
 }

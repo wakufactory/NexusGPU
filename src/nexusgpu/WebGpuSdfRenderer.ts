@@ -1,9 +1,10 @@
 import { MAX_SDF_OBJECTS, sdfShader } from "./sdfShader";
+import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 import type { NexusRenderSettings, SceneSnapshot, Vec3 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const OBJECT_STRIDE_FLOATS = 16;
+const OBJECT_STRIDE_FLOATS = 24;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
   resolutionScale: 0.75,
@@ -161,19 +162,18 @@ export class WebGpuSdfRenderer {
       this.objectData[offset + 0] = node.position[0];
       this.objectData[offset + 1] = node.position[1];
       this.objectData[offset + 2] = node.position[2];
-      this.objectData[offset + 3] = node.kind === "sphere" ? 0 : 1;
-      this.objectData[offset + 4] = node.data[0];
-      this.objectData[offset + 5] = node.data[1];
-      this.objectData[offset + 6] = node.data[2];
-      this.objectData[offset + 7] = node.smoothness;
-      this.objectData[offset + 8] = node.color[0];
-      this.objectData[offset + 9] = node.color[1];
-      this.objectData[offset + 10] = node.color[2];
-      this.objectData[offset + 11] = 1;
-      this.objectData[offset + 12] = node.rotation[0];
-      this.objectData[offset + 13] = node.rotation[1];
-      this.objectData[offset + 14] = node.rotation[2];
-      this.objectData[offset + 15] = node.rotation[3];
+      this.objectData[offset + 3] = SDF_PRIMITIVE_KIND_IDS[node.kind];
+      this.objectData.set(node.data[0], offset + 4);
+      this.objectData.set(node.data[1], offset + 8);
+      this.objectData.set(node.data[2], offset + 12);
+      this.objectData[offset + 16] = node.color[0];
+      this.objectData[offset + 17] = node.color[1];
+      this.objectData[offset + 18] = node.color[2];
+      this.objectData[offset + 19] = node.smoothness;
+      this.objectData[offset + 20] = node.rotation[0];
+      this.objectData[offset + 21] = node.rotation[1];
+      this.objectData[offset + 22] = node.rotation[2];
+      this.objectData[offset + 23] = node.rotation[3];
     });
 
     const bytesToUpload = nodes.length * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;

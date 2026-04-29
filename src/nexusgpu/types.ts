@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
+import type { SdfPrimitiveKind } from "./sdfKinds";
 
 /** 3次元ベクトル。座標、色、サイズなどで共通利用する。 */
 export type Vec3 = readonly [number, number, number];
+
+/** 4次元ベクトル。GPUのvec4境界に揃えたSDF拡張データで使う。 */
+export type Vec4 = readonly [number, number, number, number];
+
+/** SDFプリミティブごとの拡張パラメータ。WGSL側のdata0/data1/data2に対応する。 */
+export type SdfData = readonly [Vec4, Vec4, Vec4];
 
 /** Quaternion。回転を[x, y, z, w]の順で表す。 */
 export type Quaternion = readonly [number, number, number, number];
@@ -44,9 +51,6 @@ export type NexusFrameState = {
 /** NexusCanvas内で毎フレーム呼ばれるコールバック。 */
 export type NexusFrameCallback = (state: NexusFrameState) => void;
 
-/** 現在サポートしているSDFプリミティブ種別。 */
-export type SdfPrimitiveKind = "sphere" | "box";
-
 /** SDFプリミティブに共通するReact props。 */
 export type SdfPrimitiveProps = {
   position?: Vec3;
@@ -81,7 +85,7 @@ export type SdfNode = {
   position: Vec3;
   rotation: Quaternion;
   color: Vec3;
-  data: Vec3;
+  data: SdfData;
   smoothness: number;
 };
 
