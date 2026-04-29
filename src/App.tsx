@@ -5,16 +5,24 @@ import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { NexusCanvas } from "./nexusgpu";
 import { SceneParametersPanel } from "./panels/SceneParametersPanel";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
-import { AnimatedSdfScene, SCENE_CAMERA, SCENE_LIGHTING } from "./scenes/AnimatedSdfScene2";
-
-const INITIAL_SPHERE_SMOOTHNESS = 0.7;
+import {
+  AnimatedSdfScene,
+  INITIAL_SCENE_PARAMETERS,
+  SCENE_CAMERA,
+  SCENE_LIGHTING,
+} from "./scenes/AnimatedSdfScene2";
+import type { AnimatedSdfSceneParameters } from "./scenes/AnimatedSdfScene2";
 
 /** NexusGPUの現在のAPIを触るためのデモアプリ。 */
 export function App() {
   const { shellRef, isFullscreen, fullscreenStyle, toggleFullscreen } = useFullscreenViewport();
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
   const [renderSettings, setRenderSettings] = useState(INITIAL_RENDER_SETTINGS);
-  const [sphereSmoothness, setSphereSmoothness] = useState(INITIAL_SPHERE_SMOOTHNESS);
+  const [sceneParameters, setSceneParameters] = useState(INITIAL_SCENE_PARAMETERS);
+
+  const updateSceneParameters = (patch: Partial<AnimatedSdfSceneParameters>) => {
+    setSceneParameters((current) => ({ ...current, ...patch }));
+  };
 
   return (
     <main ref={shellRef} className={isFullscreen ? "app-shell is-fullscreen" : "app-shell"}>
@@ -34,7 +42,7 @@ export function App() {
           orbitControls
           renderSettings={renderSettings}
         >
-          <AnimatedSdfScene sphereSmoothness={sphereSmoothness} />
+          <AnimatedSdfScene parameters={sceneParameters} />
         </NexusCanvas>
       </section>
       <aside className="sidebar">
@@ -46,10 +54,7 @@ export function App() {
           </div>
         </div>
 
-        <SceneParametersPanel
-          sphereSmoothness={sphereSmoothness}
-          onSphereSmoothnessChange={setSphereSmoothness}
-        />
+        <SceneParametersPanel parameters={sceneParameters} onChange={updateSceneParameters} />
         <RenderSettingsPanel settings={renderSettings} onChange={setRenderSettings} />
       </aside>
     </main>

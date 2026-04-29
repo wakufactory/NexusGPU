@@ -3,7 +3,7 @@ import { SdfBox, SdfSphere, useFrame } from "../nexusgpu";
 import type { NexusCamera, NexusLighting, SdfSphereProps, Vec3 } from "../nexusgpu";
 
 export const SCENE_CAMERA: Required<NexusCamera> = {
-  position: [0, 0.7, 5.2],
+  position: [0, 3.7, 5.2],
   target: [0, 0, 0],
   fov: 48,
 };
@@ -80,35 +80,43 @@ function getOrbitPosition({ center, basisA, basisB, distance, period, phase }: O
 
 type SphereRenderProps = Pick<Required<SdfSphereProps>, "position" | "radius" | "color" | "smoothness">;
 
+export type AnimatedSdfSceneParameters = {
+  sphereSmoothness: number;
+};
+
+export const INITIAL_SCENE_PARAMETERS: AnimatedSdfSceneParameters = {
+  sphereSmoothness: 0.7,
+};
+
 function getSphereProps(
   sphere: OrbitingSphereConfig,
   elapsed: number,
-  sphereSmoothness: number,
+  parameters: AnimatedSdfSceneParameters,
 ): SphereRenderProps {
   return {
     position: getOrbitPosition(sphere, elapsed),
     radius: sphere.radius,
     color: sphere.color,
-    smoothness: sphereSmoothness,
+    smoothness: parameters.sphereSmoothness,
   };
 }
 
-function getSpherePropsList(elapsed: number, sphereSmoothness: number): readonly SphereRenderProps[] {
-  return ORBITING_SPHERES.map((sphere) => getSphereProps(sphere, elapsed, sphereSmoothness));
+function getSpherePropsList(elapsed: number, parameters: AnimatedSdfSceneParameters): readonly SphereRenderProps[] {
+  return ORBITING_SPHERES.map((sphere) => getSphereProps(sphere, elapsed, parameters));
 }
 
 type AnimatedSdfSceneProps = {
-  sphereSmoothness: number;
+  parameters: AnimatedSdfSceneParameters;
 };
 
 /** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
-export function AnimatedSdfScene({ sphereSmoothness }: AnimatedSdfSceneProps) {
+export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
   const [spherePropsList, setSpherePropsList] = useState<readonly SphereRenderProps[]>(() =>
-    getSpherePropsList(0, sphereSmoothness),
+    getSpherePropsList(0, parameters),
   );
 
   useFrame(({ elapsed }) => {
-    setSpherePropsList(getSpherePropsList(elapsed, sphereSmoothness));
+    setSpherePropsList(getSpherePropsList(elapsed, parameters));
   });
 
   return (

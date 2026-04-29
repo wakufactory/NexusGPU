@@ -1,14 +1,14 @@
 import { SlidersHorizontal } from "lucide-react";
+import type { AnimatedSdfSceneParameters } from "../scenes/AnimatedSdfScene2";
 
 type SceneParametersPanelProps = {
-  sphereSmoothness: number;
-  onSphereSmoothnessChange: (sphereSmoothness: number) => void;
+  parameters: AnimatedSdfSceneParameters;
+  onChange: (patch: Partial<AnimatedSdfSceneParameters>) => void;
 };
 
-export function SceneParametersPanel({
-  sphereSmoothness,
-  onSphereSmoothnessChange,
-}: SceneParametersPanelProps) {
+export function SceneParametersPanel({ parameters, onChange }: SceneParametersPanelProps) {
+  const { sphereSmoothness } = parameters;
+
   return (
     <section className="panel debug-panel">
       <div className="panel-title">
@@ -25,7 +25,7 @@ export function SceneParametersPanel({
           max="1.5"
           step="0.05"
           value={sphereSmoothness}
-          onChange={(event) => onSphereSmoothnessChange(Number(event.target.value))}
+          onChange={(event) => onChange({ sphereSmoothness: Number(event.target.value) })}
         />
       </label>
     </section>

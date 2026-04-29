@@ -65,7 +65,7 @@ src/
 - `INITIAL_RENDER_SETTINGS`を初期値として`renderSettings`を保持する
 - `renderSettings`を`NexusCanvas`と`RenderSettingsPanel`へ渡す
 - `SCENE_CAMERA`と`SCENE_LIGHTING`を選択中のsceneから受け取り、`NexusCanvas`へ渡す
-- `sphereSmoothness`を`AnimatedSdfScene`と`SceneParametersPanel`へ渡す
+- `sceneParameters`を`AnimatedSdfScene`と`SceneParametersPanel`へ渡す
 
 ### app/renderSettings.ts
 
@@ -103,7 +103,7 @@ sceneごとの見え方もこのファイルに寄せています。
 
 サイドバー上の操作UIです。
 
-`SceneParametersPanel`は`AnimatedSdfScene`に渡すシーン固有パラメータを扱います。現在は`sphereSmoothness`のみを持ちます。
+`SceneParametersPanel`は`AnimatedSdfScene`に渡すシーン固有パラメータを扱います。現在は`sphereSmoothness`のみを持ちますが、`AnimatedSdfSceneParameters`のpartial updateとして更新するため、パラメータを追加しても呼び出し側のpropsは増えません。
 
 `RenderSettingsPanel`はWebGPUレンダリング品質に関わる共通デバッグ設定を扱います。`resolutionScale`、`maxSteps`、`maxDistance`、`normalEpsilon`、`surfaceEpsilon`、`shadows`を更新します。
 
