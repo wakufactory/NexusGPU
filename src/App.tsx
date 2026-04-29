@@ -5,7 +5,7 @@ import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { NexusCanvas } from "./nexusgpu";
 import { SceneParametersPanel } from "./panels/SceneParametersPanel";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
-import { AnimatedSdfScene, SCENE_CAMERA, SCENE_LIGHTING } from "./scenes/AnimatedSdfScene";
+import { AnimatedSdfScene, SCENE_CAMERA, SCENE_LIGHTING } from "./scenes/AnimatedSdfScene2";
 
 const INITIAL_SPHERE_SMOOTHNESS = 0.7;
 
