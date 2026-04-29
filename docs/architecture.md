@@ -31,6 +31,7 @@ src/
   nexusgpu/
     index.ts                 公開APIの再エクスポート
     types.ts                 React props、シーン、レンダリング設定の型定義
+    sdfKinds.ts              SDFプリミティブ名とGPU側kind IDの対応表
     defaults.ts              NexusCanvas / SceneStoreが使うライブラリ側fallback値
     NexusCanvas.tsx          ReactツリーとWebGPUレンダラの接続点
     SceneContext.ts          プリミティブとuseFrameがSceneStoreへアクセスするContext
@@ -71,7 +72,7 @@ src/
 
 デモアプリで使う初期レンダリング設定を定義します。
 
-`resolutionScale`、`maxSteps`、`shadows`などの値は`NexusCanvas`の`renderSettings`へ渡されます。これにより、UI操作がWebGPUのUniform Bufferへ反映されます。
+`resolutionScale`、`maxSteps`、`shadows`、`stereoSbs`などの値は`NexusCanvas`の`renderSettings`へ渡されます。これにより、UI操作がWebGPUのUniform Bufferへ反映されます。
 
 この値はアプリ体験用の初期値です。`NexusCanvas`へ`renderSettings`が渡されなかった場合のライブラリ側fallbackとは別物として扱います。
 
@@ -105,7 +106,7 @@ sceneごとの見え方もこのファイルに寄せています。
 
 `SceneParametersPanel`は`AnimatedSdfScene`に渡すシーン固有パラメータを扱います。現在は`sphereSmoothness`のみを持ちますが、`AnimatedSdfSceneParameters`のpartial updateとして更新するため、パラメータを追加しても呼び出し側のpropsは増えません。
 
-`RenderSettingsPanel`はWebGPUレンダリング品質に関わる共通デバッグ設定を扱います。`resolutionScale`、`maxSteps`、`maxDistance`、`normalEpsilon`、`surfaceEpsilon`、`shadows`を更新します。
+`RenderSettingsPanel`はWebGPUレンダリング品質に関わる共通デバッグ設定を扱います。`resolutionScale`、`maxSteps`、`maxDistance`、`normalEpsilon`、`surfaceEpsilon`、`shadows`に加え、ステレオSBS表示のON/OFF、`stereoBase`、左右eye反転を更新します。
 
 ### NexusCanvas.tsx
 
@@ -170,6 +171,19 @@ Reactで使うSDFプリミティブを定義します。
 
 各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、`SceneStore.upsertNode()`で登録します。アンマウント時は`SceneStore.removeNode()`で削除します。
 
+### sdfKinds.ts
+
+React側のSDFプリミティブ名と、GPU buffer / WGSL側で使う`kind` IDの対応表を定義します。
+
+```ts
+export const SDF_PRIMITIVE_KIND_IDS = {
+  sphere: 0,
+  box: 1,
+} as const;
+```
+
+`SdfPrimitiveKind`はこの対応表のkeyから導出します。`WebGpuSdfRenderer`はこの表を使って`SdfNode.kind`を数値IDへ変換し、`sceneMappingShader.ts`も同じ表からWGSL文字列内の分岐値を埋め込みます。新しいSDFプリミティブを追加する場合は、まずこの表へ名前とIDを追加します。
+
 ### SceneStore.ts
 
 React propsから生成されたシーン状態を保持するストアです。
@@ -201,11 +215,13 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決める
 - `setScene(snapshot)`で`SceneSnapshot.nodes`を最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
-- 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向をUniform Bufferへアップロードする
+- 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定をUniform Bufferへアップロードする
 - フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
 - `destroy()`で`requestAnimationFrame`、`ResizeObserver`、GPU Bufferを解放する
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ16個の`f32`レコードに合わせています。`kind`は`sphere = 0`、`box = 1`として`positionKind.w`へ格納します。
+ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
+
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。
 
 ### sdfShader.ts / shaders
 
@@ -274,19 +290,19 @@ createShaderConstants(MAX_SDF_OBJECTS)
 ```ts
 type SdfNode = {
   id: symbol;
-  kind: "sphere" | "box";
+  kind: SdfPrimitiveKind;
   position: Vec3;
   rotation: Quaternion;
   color: Vec3;
-  data: Vec3;
+  data: SdfData;
   smoothness: number;
 };
 ```
 
-`data`の意味はプリミティブごとに異なります。
+`SdfPrimitiveKind`は`sdfKinds.ts`の`SDF_PRIMITIVE_KIND_IDS`から導出されます。`data`はWGSL側の`data0`、`data1`、`data2`へ対応する`vec4 * 3`相当の拡張パラメータです。各要素の意味はプリミティブごとに異なります。
 
-- sphere: `data.x`が半径
-- box: `data.xyz`が中心から各面までの半径ベクトル
+- sphere: `data[0].x`が半径
+- box: `data[0].xyz`が中心から各面までの半径ベクトル
 
 ### GPU側のSdfObject
 
@@ -295,18 +311,22 @@ WGSLでは固定長の構造体として扱います。
 ```wgsl
 struct SdfObject {
   positionKind: vec4<f32>,
-  dataSmooth: vec4<f32>,
-  color: vec4<f32>,
+  data0: vec4<f32>,
+  data1: vec4<f32>,
+  data2: vec4<f32>,
+  colorSmooth: vec4<f32>,
   rotation: vec4<f32>,
 };
 ```
 
-1オブジェクトは16個の`f32`です。
+1オブジェクトは24個の`f32`です。
 
 ```text
 positionKind = [position.x, position.y, position.z, kind]
-dataSmooth   = [data.x, data.y, data.z, smoothness]
-color        = [color.r, color.g, color.b, 1]
+data0        = [data[0].x, data[0].y, data[0].z, data[0].w]
+data1        = [data[1].x, data[1].y, data[1].z, data[1].w]
+data2        = [data[2].x, data[2].y, data[2].z, data[2].w]
+colorSmooth  = [color.r, color.g, color.b, smoothness]
 rotation     = [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
 ```
 
@@ -328,6 +348,7 @@ struct CameraUniform {
   objectInfo: vec4<f32>,
   renderInfo: vec4<f32>,
   lightInfo: vec4<f32>,
+  stereoInfo: vec4<f32>,
 };
 ```
 
@@ -354,6 +375,15 @@ w = normalEpsilon
 ```text
 xyz = directional light direction
 w   = 未使用
+```
+
+`stereoInfo`:
+
+```text
+x = stereo SBS enabled: 1 or 0
+y = stereoBase
+z = swap eyes: 1 or 0
+w = 未使用
 ```
 
 UniformはWebGPUのアライメント制約が厳しいため、`vec4`境界に揃える設計にしています。
@@ -465,6 +495,10 @@ sequenceDiagram
 
 `maxSteps`と`maxDistance`を小さくすると軽くなりますが、形状が欠けたり遠景が消えたりしやすくなります。
 
+`stereoSbs`が有効な場合、`fragmentMain()`はcanvas全体の`screenUv`から左右どちらのviewportかを判定し、片目ごとのローカルUVへ変換します。左eye / 右eyeは`stereoBase`の半分だけ`camera.right`方向にずらした`rayOrigin`を使います。`stereoSwapEyes`が有効な場合は左右の割り当てを反転し、交差法向けのSBS表示にします。
+
+このSBS実装は通常カメラから左右eyeを疑似生成するプレビュー用です。WebXRでは`XRFrame.getViewerPose(referenceSpace).views`からdevice APIが与えるeyeごとのpose、projection、viewportを受け取り、同じレイ生成の入力を`RenderEyeView`相当の構造から供給する方針です。
+
 ## デバッグ設定の流れ
 
 レンダリング品質のデバッグUIは`RenderSettingsPanel.tsx`にあります。stateは`App.tsx`で保持し、パネルから更新された値を`NexusCanvas`へ渡します。
@@ -477,6 +511,7 @@ RenderSettingsPanel
   -> normalizeRenderSettings()
   -> resize() / uploadCamera()
   -> CameraUniform.renderInfo
+  -> CameraUniform.stereoInfo
   -> WGSL raymarch()
 ```
 
@@ -490,6 +525,9 @@ RenderSettingsPanel
 | `shadows` | `renderInfo.z` | 影用の追加レイマーチを有効化 |
 | `normalEpsilon` | `renderInfo.w` | 法線近似の細かさ |
 | `surfaceEpsilon` | `objectInfo.y` | 表面ヒット判定のしきい値 |
+| `stereoSbs` | `stereoInfo.x` | canvasを左右に分割したSBS表示を有効化 |
+| `stereoBase` | `stereoInfo.y` | 左右eyeの原点間隔 |
+| `stereoSwapEyes` | `stereoInfo.z` | 左右eyeの割り当てを反転し、交差法向けにする |
 
 重い場合は、まず`resolutionScale`を下げ、次に`maxSteps`を下げます。`shadows`は追加のレイマーチを発生させるため、デバッグ中はOFFが基本です。
 
@@ -504,6 +542,7 @@ RenderSettingsPanel
 - Compute Shaderはまだ未使用
 - 専用`react-reconciler`は未実装
 - 3DGS統合は未実装
+- WebXRのdevice pose / projection / viewportはまだ未接続
 
 ## 今後の拡張方針
 
@@ -514,3 +553,4 @@ RenderSettingsPanel
 5. マテリアル、ブレンド演算、CSG演算を型として表現する
 6. デバッグビューで距離場、法線、ステップ数、ヒット距離を可視化する
 7. 3DGS用のソートと合成パスを追加する
+8. `RenderEyeView[]`相当の抽象を追加し、SBS、mono、WebXRを同じeye単位の描画フローへ統合する
