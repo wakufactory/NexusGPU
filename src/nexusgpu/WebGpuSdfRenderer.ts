@@ -1,6 +1,7 @@
-import { MAX_SDF_OBJECTS, sdfShader } from "./sdfShader";
-import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-import type { NexusRenderSettings, SceneSnapshot, Vec3 } from "./types";
+import { MAX_SDF_OBJECTS } from "./sdfShader";
+import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
+import { CUSTOM_SDF_PRIMITIVE_KIND_START, SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
+import type { NexusRenderSettings, SceneSnapshot, SdfNode, Vec3 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -25,13 +26,15 @@ const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
 export class WebGpuSdfRenderer {
   private readonly context: GPUCanvasContext;
   private readonly format: GPUTextureFormat;
-  private readonly pipeline: GPURenderPipeline;
   private readonly cameraBuffer: GPUBuffer;
   private readonly objectBuffer: GPUBuffer;
-  private readonly bindGroup: GPUBindGroup;
   private readonly resizeObserver: ResizeObserver;
   private readonly objectData = new Float32Array(MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS);
   private readonly cameraData = new Float32Array(CAMERA_FLOATS);
+  private pipeline: GPURenderPipeline;
+  private bindGroup: GPUBindGroup;
+  private customSdfSignature = "";
+  private customSdfKindIds = new Map<string, number>();
   private snapshot: SceneSnapshot | null = null;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
   private frameId = 0;
@@ -66,36 +69,9 @@ export class WebGpuSdfRenderer {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    const shaderModule = device.createShaderModule({
-      label: "NexusGPU SDF Raymarcher",
-      code: sdfShader,
-    });
-
-    this.pipeline = device.createRenderPipeline({
-      label: "NexusGPU SDF Pipeline",
-      layout: "auto",
-      vertex: {
-        module: shaderModule,
-        entryPoint: "vertexMain",
-      },
-      fragment: {
-        module: shaderModule,
-        entryPoint: "fragmentMain",
-        targets: [{ format: this.format }],
-      },
-      primitive: {
-        topology: "triangle-list",
-      },
-    });
-
-    this.bindGroup = device.createBindGroup({
-      label: "NexusGPU Scene Bind Group",
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.cameraBuffer } },
-        { binding: 1, resource: { buffer: this.objectBuffer } },
-      ],
-    });
+    const pipelineState = this.createPipeline([]);
+    this.pipeline = pipelineState.pipeline;
+    this.bindGroup = pipelineState.bindGroup;
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -124,6 +100,7 @@ export class WebGpuSdfRenderer {
   /** 新しいシーンスナップショットを受け取り、SDFオブジェクト用Storage Bufferを更新する。 */
   setScene(snapshot: SceneSnapshot) {
     this.snapshot = snapshot;
+    this.configureCustomSdfFunctions(snapshot);
     this.uploadObjects(snapshot);
   }
 
@@ -162,7 +139,7 @@ export class WebGpuSdfRenderer {
       this.objectData[offset + 0] = node.position[0];
       this.objectData[offset + 1] = node.position[1];
       this.objectData[offset + 2] = node.position[2];
-      this.objectData[offset + 3] = SDF_PRIMITIVE_KIND_IDS[node.kind];
+      this.objectData[offset + 3] = this.getSdfKindId(node);
       this.objectData.set(node.data[0], offset + 4);
       this.objectData.set(node.data[1], offset + 8);
       this.objectData.set(node.data[2], offset + 12);
@@ -180,6 +157,81 @@ export class WebGpuSdfRenderer {
     if (bytesToUpload > 0) {
       this.device.queue.writeBuffer(this.objectBuffer, 0, this.objectData, 0, nodes.length * OBJECT_STRIDE_FLOATS);
     }
+  }
+
+  /** SdfFunctionごとのWGSL関数をshader moduleへ差し込み、必要なときだけpipelineを作り直す。 */
+  private configureCustomSdfFunctions(snapshot: SceneSnapshot) {
+    const sdfFunctions = unique(
+      snapshot.nodes.flatMap((node) => (node.kind === "function" && node.sdfFunction ? [node.sdfFunction] : [])),
+    );
+    const signature = sdfFunctions.join("\n/* nexusgpu-sdf-function */\n");
+
+    if (signature === this.customSdfSignature) {
+      return;
+    }
+
+    const customShaders = sdfFunctions.map<CustomSdfFunctionShader>((sdfFunction, index) => {
+      const functionName = `customSdfFunction${index}`;
+      const kindId = CUSTOM_SDF_PRIMITIVE_KIND_START + index;
+
+      return {
+        kindId,
+        functionName,
+        source: createCustomSdfFunctionSource(sdfFunction, functionName),
+      };
+    });
+
+    this.customSdfSignature = signature;
+    this.customSdfKindIds = new Map(
+      sdfFunctions.map((sdfFunction, index) => [sdfFunction, CUSTOM_SDF_PRIMITIVE_KIND_START + index]),
+    );
+
+    const pipelineState = this.createPipeline(customShaders);
+    this.pipeline = pipelineState.pipeline;
+    this.bindGroup = pipelineState.bindGroup;
+  }
+
+  private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[]) {
+    const shaderModule = this.device.createShaderModule({
+      label: "NexusGPU SDF Raymarcher",
+      code: assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions),
+    });
+
+    const pipeline = this.device.createRenderPipeline({
+      label: "NexusGPU SDF Pipeline",
+      layout: "auto",
+      vertex: {
+        module: shaderModule,
+        entryPoint: "vertexMain",
+      },
+      fragment: {
+        module: shaderModule,
+        entryPoint: "fragmentMain",
+        targets: [{ format: this.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+
+    const bindGroup = this.device.createBindGroup({
+      label: "NexusGPU Scene Bind Group",
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.cameraBuffer } },
+        { binding: 1, resource: { buffer: this.objectBuffer } },
+      ],
+    });
+
+    return { pipeline, bindGroup };
+  }
+
+  private getSdfKindId(node: SdfNode) {
+    if (node.kind === "function") {
+      return node.sdfFunction ? (this.customSdfKindIds.get(node.sdfFunction) ?? 999999) : 999999;
+    }
+
+    return SDF_PRIMITIVE_KIND_IDS[node.kind];
   }
 
   /** カメラベクトルとデバッグ設定をUniform Bufferへ書き込み、シェーダから参照できるようにする。 */
@@ -258,6 +310,33 @@ export class WebGpuSdfRenderer {
 
     this.device.queue.submit([encoder.finish()]);
   };
+}
+
+function unique(values: readonly string[]) {
+  return [...new Set(values)];
+}
+
+function createCustomSdfFunctionSource(source: string, functionName: string) {
+  const trimmed = source.trim();
+  if (!trimmed) {
+    throw new Error("SdfFunction requires a non-empty WGSL function string.");
+  }
+
+  if (/\bfn\s+sdfFunction\s*\(/.test(trimmed)) {
+    return trimmed.replace(/\bfn\s+sdfFunction\s*\(/, `fn ${functionName}(`);
+  }
+
+  if (/^\s*fn\s+/.test(trimmed)) {
+    return trimmed.replace(/\bfn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/, `fn ${functionName}(`);
+  }
+
+  const body = trimmed.includes(";") || /\breturn\b/.test(trimmed) ? trimmed : `return ${trimmed};`;
+
+  return /* wgsl */ `
+fn ${functionName}(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> f32 {
+  ${body}
+}
+`;
 }
 
 /** UI由来の設定値を、シェーダが想定する安全な範囲に丸める。 */

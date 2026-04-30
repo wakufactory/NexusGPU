@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SdfBox, SdfSphere, useFrame } from "../nexusgpu";
+import { SdfBox, SdfSphere, useFrame,SdfFunction } from "../nexusgpu";
 import type { NexusCamera, NexusLighting, SdfSphereProps, Vec3 } from "../nexusgpu";
 
 export const SCENE_CAMERA: Required<NexusCamera> = {
@@ -136,6 +136,13 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
           smoothness={sphereProps.smoothness}
         />
       ))}
+      <SdfFunction
+        sdfFunction="  let k0 = length(point / data0.xyz);let k1 = length(point / (data0.xyz * data0.xyz));return k0 * (k0 - 1.0) / k1;"
+        data0={[0.7, 0.5, 0.2, 0.3]}
+        position={[0,1,0]}
+        color={[0.8, 0.8, 0.8]}
+        smoothness={0.3}
+/>
     </>
   );
 }

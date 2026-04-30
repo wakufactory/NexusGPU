@@ -168,8 +168,18 @@ Reactで使うSDFプリミティブを定義します。
 
 - `<SdfSphere />`
 - `<SdfBox />`
+- `<SdfFunction />`
 
 各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、`SceneStore.upsertNode()`で登録します。アンマウント時は`SceneStore.removeNode()`で削除します。
+
+`<SdfFunction />`は、WGSLのSDF関数を文字列として渡す汎用プリミティブです。`data0`、`data1`、`data2`は`Vec4`として受け取り、GPU側の`object.data0`、`object.data1`、`object.data2`へそのまま渡されます。渡した関数には、オブジェクトの`position`と`rotation`を適用済みのローカル座標`point`と、`data0-2`が渡されます。
+
+```tsx
+<SdfFunction
+  sdfFunction="return length(point) - data0.x;"
+  data0={[0.8, 0, 0, 0]}
+/>
+```
 
 ### sdfKinds.ts
 
@@ -182,7 +192,9 @@ export const SDF_PRIMITIVE_KIND_IDS = {
 } as const;
 ```
 
-`SdfPrimitiveKind`はこの対応表のkeyから導出します。`WebGpuSdfRenderer`はこの表を使って`SdfNode.kind`を数値IDへ変換し、`sceneMappingShader.ts`も同じ表からWGSL文字列内の分岐値を埋め込みます。新しいSDFプリミティブを追加する場合は、まずこの表へ名前とIDを追加します。
+`sphere`と`box`のような組み込みプリミティブは、この対応表から固定のkind IDを使います。`SdfFunction`は対応表には追加せず、`CUSTOM_SDF_PRIMITIVE_KIND_START`以降のIDを`WebGpuSdfRenderer`がシーン内の関数文字列ごとに動的に割り当てます。
+
+新しい組み込みSDFプリミティブを追加する場合は、まずこの表へ名前とIDを追加します。ユーザー定義の一時的なSDFは`SdfFunction`で扱い、専用kindとして固定登録しません。
 
 ### SceneStore.ts
 
@@ -210,10 +222,11 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `create(canvas)`でWebGPU Adapter / Deviceを取得する
 - `GPUCanvasContext`を取得し、`navigator.gpu.getPreferredCanvasFormat()`でCanvasを設定する
 - `CameraUniform`用のUniform Bufferと、`SdfObject`配列用のStorage Bufferを作成する
-- `sdfShader`文字列からShader Moduleを作成し、`vertexMain` / `fragmentMain`を使うRender Pipelineを作る
+- `assembleSdfShader()`で生成したWGSL文字列からShader Moduleを作成し、`vertexMain` / `fragmentMain`を使うRender Pipelineを作る
 - bind group 0 に camera buffer と object buffer を束ねる
 - `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決める
 - `setScene(snapshot)`で`SceneSnapshot.nodes`を最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
+- `SdfFunction`の関数文字列セットが変わった場合は、custom SDF関数を差し込んだShader ModuleとRender Pipelineを作り直す
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
 - 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定をUniform Bufferへアップロードする
 - フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
@@ -221,11 +234,13 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。
 
 ### sdfShader.ts / shaders
 
-WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects)`が各セクションを結合し、`sdfShader.ts`が`MAX_SDF_OBJECTS = 128`を渡して最終的な`shaderModule`用文字列を作ります。
+WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects, customSdfFunctions)`が各セクションを結合し、最終的な`shaderModule`用文字列を作ります。
+
+組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名と動的kind IDを割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じkind IDと同じWGSL関数を共有します。
 
 各WGSLセクション内では、組み込みチャンクライブラリから`#include <sdf/sphere>`の形式で関数群を取り込めます。includeは`assembleSdfShader()`の最後に再帰的に解決され、未登録チャンクや循環参照は例外として検出されます。組み込みチャンクは`src/nexusgpu/shaders/shaderLibrary.ts`に定義します。
 
@@ -236,6 +251,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
   -> shaderLayout
   -> vertexShader
   -> sdfPrimitivesShader
+  -> custom SDF function sources
   -> sceneMappingShader
   -> raymarchShader
   -> lightingShader
@@ -248,7 +264,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `shaderLayout.ts`: `CameraUniform`、`SdfObject`、`SceneHit`、`@group(0)`のbuffer bindingを定義する
 - `vertexShader.ts`: 画面全体を覆う三角形を1枚描く`vertexMain`を定義する
 - `sdfPrimitivesShader.ts`: `sdSphere`、`sdBox`、`smoothMin`、`rotateByQuaternion`を定義する
-- `sceneMappingShader.ts`: `objects` Storage Bufferを走査し、点から最も近いSDF距離と色を返す`mapScene`を定義する
+- `sceneMappingShader.ts`: `objects` Storage Bufferを走査し、点から最も近いSDF距離と色を返す`mapScene`を生成する。custom SDF関数がある場合はkind IDごとの分岐も追加する
 - `raymarchShader.ts`: `mapScene`を使ってレイを進める`raymarch`を定義する
 - `lightingShader.ts`: `estimateNormal`と未ヒット時の`background`を定義する
 - `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す
@@ -258,6 +274,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `vertexMain`: 画面全体を覆う三角形を描画
 - `sdSphere`: 球のSDF
 - `sdBox`: ボックスのSDF
+- `customSdfFunctionN`: `SdfFunction`から生成されたユーザー定義SDF
 - `smoothMin`: SDF同士の滑らかな結合
 - `rotateByQuaternion`: SDFオブジェクトのローカル座標変換
 - `mapScene`: 全SDFオブジェクトを評価し、最短距離を返す
@@ -296,13 +313,21 @@ type SdfNode = {
   color: Vec3;
   data: SdfData;
   smoothness: number;
+  sdfFunction?: string;
 };
 ```
 
-`SdfPrimitiveKind`は`sdfKinds.ts`の`SDF_PRIMITIVE_KIND_IDS`から導出されます。`data`はWGSL側の`data0`、`data1`、`data2`へ対応する`vec4 * 3`相当の拡張パラメータです。各要素の意味はプリミティブごとに異なります。
+`SdfPrimitiveKind`は、組み込みkindと`"function"`で構成されます。`data`はWGSL側の`data0`、`data1`、`data2`へ対応する`vec4 * 3`相当の拡張パラメータです。各要素の意味はプリミティブごとに異なります。
 
 - sphere: `data[0].x`が半径
 - box: `data[0].xyz`が中心から各面までの半径ベクトル
+- function: `data[0]`、`data[1]`、`data[2]`を`sdfFunction`へそのまま渡す
+
+`sdfFunction`は`kind: "function"`のときだけ使います。文字列はWGSL関数全体、または関数body / 式として指定できます。レンダラは内部で関数名を`customSdfFunctionN`へ差し替え、呼び出しシグネチャを次の形に揃えます。
+
+```wgsl
+fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> f32
+```
 
 ### GPU側のSdfObject
 
@@ -330,7 +355,7 @@ colorSmooth  = [color.r, color.g, color.b, smoothness]
 rotation     = [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
 ```
 
-`WebGpuSdfRenderer.uploadObjects()`がこのレイアウトへ詰め替えます。
+`WebGpuSdfRenderer.uploadObjects()`がこのレイアウトへ詰め替えます。`SdfFunction`もGPU側のレコード構造は変えず、`kind`だけを動的kind IDにして、`data0-2`をcustom SDF関数の引数として使います。
 
 ### CameraUniform
 
@@ -535,7 +560,9 @@ RenderSettingsPanel
 
 ## 現在の制約
 
-- SDFプリミティブはsphereとboxのみ
+- 組み込みSDFプリミティブはsphereとboxのみ
+- `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
+- ユニークな`SdfFunction`が増えるほど`mapScene()`のkind分岐が長くなる
 - オブジェクト数上限は`MAX_SDF_OBJECTS = 128`
 - Storage Bufferは変更時に全体再アップロード
 - BVHや空間分割は未実装

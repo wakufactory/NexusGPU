@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { clamp, normalizeQuaternion, normalizeVec3 } from "./math";
 import { useSceneStore } from "./SceneContext";
-import type { SdfBoxProps, SdfData, SdfNode, SdfSphereProps, Vec3, Vec4 } from "./types";
+import type { SdfBoxProps, SdfData, SdfFunctionProps, SdfNode, SdfSphereProps, Vec3, Vec4 } from "./types";
 
 const DEFAULT_COLOR = [0.18, 0.78, 0.72] as const;
 const DEFAULT_POSITION = [0, 0, 0] as const;
 const DEFAULT_ROTATION = [0, 0, 0, 1] as const;
+const DEFAULT_DATA = [0, 0, 0, 0] as const;
 
 /** React propsからSDF球を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfSphere({
@@ -59,6 +60,42 @@ export function SdfBox({ position, rotation, size = [1, 1, 1], color, smoothness
 
     store.upsertNode(node);
   }, [color, id, position, rotation, size, smoothness, store]);
+
+  useEffect(() => {
+    return () => store.removeNode(id);
+  }, [id, store]);
+
+  return null;
+}
+
+/** WGSLのSDF関数文字列とdata0-2をそのまま渡す汎用SDFプリミティブ。 */
+export function SdfFunction({
+  position,
+  rotation,
+  color,
+  smoothness = 0,
+  sdfFunction,
+  data0 = DEFAULT_DATA,
+  data1 = DEFAULT_DATA,
+  data2 = DEFAULT_DATA,
+}: SdfFunctionProps) {
+  const store = useSceneStore();
+  const id = useStableId();
+
+  useEffect(() => {
+    const node: SdfNode = {
+      id,
+      kind: "function",
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData(data0, data1, data2),
+      smoothness: clamp(smoothness, 0, 2),
+      sdfFunction,
+    };
+
+    store.upsertNode(node);
+  }, [color, data0, data1, data2, id, position, rotation, sdfFunction, smoothness, store]);
 
   useEffect(() => {
     return () => store.removeNode(id);

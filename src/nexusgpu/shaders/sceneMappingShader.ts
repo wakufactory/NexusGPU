@@ -1,6 +1,20 @@
 import { SDF_PRIMITIVE_KIND_IDS } from "../sdfKinds";
 
-export const sceneMappingShader = /* wgsl */ `
+export type CustomSdfFunctionShaderEntry = {
+  kindId: number;
+  functionName: string;
+};
+
+export function createSceneMappingShader(customSdfFunctions: readonly CustomSdfFunctionShaderEntry[] = []) {
+  const customBranches = customSdfFunctions
+    .map(
+      ({ kindId, functionName }) => /* wgsl */ `    } else if (kind == ${kindId}u) {
+      distance = ${functionName}(localPoint, object.data0, object.data1, object.data2);
+`,
+    )
+    .join("");
+
+  return /* wgsl */ `
 // シーン内の全SDFオブジェクトを走査し、指定点から最も近い表面距離を返す。
 fn mapScene(point: vec3<f32>) -> SceneHit {
   var bestDistance = camera.renderInfo.y;
@@ -20,7 +34,7 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
       distance = sdSphere(localPoint, object.data0.x);
     } else if (kind == ${SDF_PRIMITIVE_KIND_IDS.box}u) {
       distance = sdBox(localPoint, object.data0.xyz);
-    } else {
+${customBranches}    } else {
       distance = camera.renderInfo.y;
     }
 
@@ -48,3 +62,6 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
   return SceneHit(bestDistance, bestColor);
 }
 `;
+}
+
+export const sceneMappingShader = createSceneMappingShader();

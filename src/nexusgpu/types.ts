@@ -69,6 +69,14 @@ export type SdfBoxProps = SdfPrimitiveProps & {
   size?: Vec3;
 };
 
+/** WGSLのSDF関数を直接渡す汎用プリミティブのprops。 */
+export type SdfFunctionProps = SdfPrimitiveProps & {
+  sdfFunction: string;
+  data0?: Vec4;
+  data1?: Vec4;
+  data2?: Vec4;
+};
+
 /** NexusCanvasが受け取るReact側の公開props。 */
 export type NexusCanvasProps = {
   camera?: NexusCamera;
@@ -87,6 +95,7 @@ export type SdfNode = {
   color: Vec3;
   data: SdfData;
   smoothness: number;
+  sdfFunction?: string;
 };
 
 /** SceneStoreからレンダラへ渡す一貫したシーン状態。 */
