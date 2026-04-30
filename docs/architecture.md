@@ -194,7 +194,7 @@ export const SDF_PRIMITIVE_KIND_IDS = {
 
 `sphere`と`box`のような組み込みプリミティブは、この対応表から固定のkind IDを使います。`SdfFunction`は対応表には追加せず、`CUSTOM_SDF_PRIMITIVE_KIND_START`以降のIDを`WebGpuSdfRenderer`がシーン内の関数文字列ごとに動的に割り当てます。
 
-新しい組み込みSDFプリミティブを追加する場合は、まずこの表へ名前とIDを追加します。ユーザー定義の一時的なSDFは`SdfFunction`で扱い、専用kindとして固定登録しません。
+新しい組み込みSDFプリミティブを追加する場合は、まずこの表へ名前とIDを追加し、`CUSTOM_SDF_PRIMITIVE_KIND_START`を組み込みkind IDの最大値 + 1 に更新します。ユーザー定義の一時的なSDFは`SdfFunction`で扱い、専用kindとして固定登録しません。
 
 ### SceneStore.ts
 

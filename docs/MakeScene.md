@@ -200,9 +200,9 @@ export function MyScene({ parameters }: MySceneProps) {
 
 ここからは、scene作者が新しい形状を組み込みprimitiveとして追加したいときの最小手順です。試作だけなら、まず`SdfFunction`でWGSLを直接渡す方が少ない変更で済みます。例として`SdfTorus`を追加します。
 
-### 1. kind IDを追加する
+### 1. kind IDとcustom ID開始値を更新する
 
-`src/nexusgpu/sdfKinds.ts`にprimitive名とIDを追加します。
+`src/nexusgpu/sdfKinds.ts`にprimitive名とIDを追加します。`SdfFunction`用の動的kind IDは`CUSTOM_SDF_PRIMITIVE_KIND_START`以降を使うため、新しい組み込みprimitiveのIDと重ならないように開始値も更新します。
 
 ```ts
 export const SDF_PRIMITIVE_KIND_IDS = {
@@ -210,9 +210,11 @@ export const SDF_PRIMITIVE_KIND_IDS = {
   box: 1,
   torus: 2,
 } as const;
+
+export const CUSTOM_SDF_PRIMITIVE_KIND_START = 3;
 ```
 
-IDは既存の値と重複しないようにします。
+IDは既存の値と重複しないようにします。組み込みprimitiveを増やしたら、`CUSTOM_SDF_PRIMITIVE_KIND_START`は「組み込みkind IDの最大値 + 1」にします。
 
 ### 2. Props型を追加する
 
@@ -326,7 +328,7 @@ export function TorusScene() {
 
 ## SDF追加時のチェックリスト
 
-- `sdfKinds.ts`に一意なkind IDを追加した
+- `sdfKinds.ts`に一意なkind IDを追加し、`CUSTOM_SDF_PRIMITIVE_KIND_START`を組み込みkind IDの最大値 + 1 に更新した
 - `types.ts`にprops型を追加した
 - `primitives.tsx`でpropsを正規化し、`SdfNode.data`へ必要な値を入れた
 - `shaderLibrary.ts`にWGSL関数を追加した
