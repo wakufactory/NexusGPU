@@ -19,7 +19,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -188,6 +189,30 @@ input {
   grid-column: 1 / -1;
   width: 100%;
   accent-color: #38d9c2;
+}
+
+.select-row {
+  display: grid;
+  gap: 8px;
+  color: rgba(248, 250, 252, 0.78);
+  font-size: 13px;
+}
+
+.select-row select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: #f8fafc;
+  background: #171d1e;
+}
+
+.panel-description {
+  margin: 0;
+  color: rgba(248, 250, 252, 0.68);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .toggle-row {

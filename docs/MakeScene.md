@@ -109,7 +109,7 @@ export function RoundedBoxScene() {
 
 ## Sceneファイルの形
 
-sceneごとの推奨カメラとライトは、scene側でexportして`App.tsx`から`NexusCanvas`へ渡します。
+sceneごとの推奨カメラとライトは、scene側でexportします。`App.tsx`は個別sceneを直接importせず、`src/scenes/registry.ts`に登録されたscene定義から`NexusCanvas`へ渡します。
 
 ```tsx
 import { SdfBox, SdfSphere } from "../nexusgpu";
@@ -135,20 +135,31 @@ export function MyScene() {
 }
 ```
 
-`App.tsx`では次のように使います。
+作成したsceneをアプリの切り替え対象にするには、`src/scenes/registry.ts`の`SCENES`へ追加します。
 
-```tsx
-import { NexusCanvas } from "./nexusgpu";
-import { MyScene, SCENE_CAMERA, SCENE_LIGHTING } from "./scenes/MyScene";
+```ts
+import {
+  MyScene,
+  SCENE_CAMERA as MY_SCENE_CAMERA,
+  SCENE_LIGHTING as MY_SCENE_LIGHTING,
+} from "./MyScene";
+import type { AnyNexusSceneDefinition } from "./types";
 
-export function App() {
-  return (
-    <NexusCanvas camera={SCENE_CAMERA} lighting={SCENE_LIGHTING} orbitControls>
-      <MyScene />
-    </NexusCanvas>
-  );
-}
+export const SCENES = [
+  // existing scene definitions...
+  {
+    id: "my-scene",
+    title: "My Scene",
+    description: "Short description shown in the sidebar.",
+    camera: MY_SCENE_CAMERA,
+    lighting: MY_SCENE_LIGHTING,
+    initialParameters: {},
+    Component: MyScene,
+  },
+] satisfies readonly AnyNexusSceneDefinition[];
 ```
+
+`App.tsx`は`SCENES`の選択中定義から`camera`、`lighting`、`Component`、`ParametersPanel`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
 
 ## アニメーション
 
@@ -194,7 +205,79 @@ export function MyScene({ parameters }: MySceneProps) {
 }
 ```
 
-`App.tsx`で`useState(INITIAL_SCENE_PARAMETERS)`を持ち、サイドパネルからpartial updateする形にすると、パラメータが増えても呼び出し側を大きく変えずに済みます。
+パラメータをsidebarから変更したい場合は、`src/panels/`にscene用panelを作ります。panelは`parameters`と`onChange`を受け取り、変更した値だけをpartial updateとして渡します。
+
+```tsx
+import type { MySceneParameters } from "../scenes/MyScene";
+
+type MySceneParametersPanelProps = {
+  parameters: MySceneParameters;
+  onChange: (patch: Partial<MySceneParameters>) => void;
+};
+
+export function MySceneParametersPanel({ parameters, onChange }: MySceneParametersPanelProps) {
+  return (
+    <label className="control-row">
+      <span>Sphere smoothness</span>
+      <output>{parameters.sphereSmoothness.toFixed(2)}</output>
+      <input
+        type="range"
+        min="0"
+        max="1.5"
+        step="0.05"
+        value={parameters.sphereSmoothness}
+        onChange={(event) => onChange({ sphereSmoothness: Number(event.target.value) })}
+      />
+    </label>
+  );
+}
+```
+
+registryには`initialParameters`と`ParametersPanel`をセットで登録します。
+
+```ts
+import { MySceneParametersPanel } from "../panels/MySceneParametersPanel";
+import {
+  MyScene,
+  INITIAL_SCENE_PARAMETERS as MY_SCENE_INITIAL_PARAMETERS,
+  SCENE_CAMERA as MY_SCENE_CAMERA,
+  SCENE_LIGHTING as MY_SCENE_LIGHTING,
+} from "./MyScene";
+
+{
+  id: "my-scene",
+  title: "My Scene",
+  description: "Short description shown in the sidebar.",
+  camera: MY_SCENE_CAMERA,
+  lighting: MY_SCENE_LIGHTING,
+  initialParameters: MY_SCENE_INITIAL_PARAMETERS,
+  Component: MyScene,
+  ParametersPanel: MySceneParametersPanel,
+}
+```
+
+この形にすると、パラメータが増えてもscene componentとpanelの型を更新し、registryの1件を保つだけで済みます。
+
+## Scene Registry
+
+`src/scenes/registry.ts`は、アプリで選べるsceneの一覧です。各scene定義は次の項目を持ちます。
+
+- `id`: scene selector用の一意なID
+- `title`: sidebarに表示する名前
+- `description`: sidebarに表示する説明
+- `camera`: scene側でexportした推奨カメラ
+- `lighting`: scene側でexportした推奨ライト
+- `initialParameters`: scene固有パラメータの初期値
+- `Component`: `parameters` propsを受け取るscene component
+- `ParametersPanel`: 任意のscene固有パラメータUI
+
+新しいsceneを追加するときの最小手順は次の通りです。
+
+1. `src/scenes/MyScene.tsx`にscene component、`SCENE_CAMERA`、`SCENE_LIGHTING`、必要なら`INITIAL_SCENE_PARAMETERS`を作る
+2. 必要なら`src/panels/MySceneParametersPanel.tsx`に操作UIを作る
+3. `src/scenes/registry.ts`でscene本体とpanelをimportする
+4. `SCENES`へscene定義を1件追加する
+5. `npm run build`で型とbundleを確認する
 
 ## 新しいSDF Primitiveを追加する
 

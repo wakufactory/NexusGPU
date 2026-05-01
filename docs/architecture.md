@@ -24,10 +24,14 @@ src/
     renderSettings.ts        デモアプリ用レンダリング設定の初期値
     useFullscreenViewport.ts フルスクリーン表示とviewport高さ同期のhook
   panels/
-    SceneParametersPanel.tsx シーン固有パラメータの操作UI
+    SceneParametersPanel.tsx AnimatedSdfScene2用パラメータ操作UI
+    WaveSdfSceneParametersPanel.tsx WaveSdfScene用パラメータ操作UI
     RenderSettingsPanel.tsx  レンダリング品質を調整するデバッグUI
   scenes/
-    AnimatedSdfScene.tsx     デモ用SDFシーン、scene camera / lighting、アニメーション実装
+    AnimatedSdfScene2.tsx    デモ用SDFシーン、scene camera / lighting、アニメーション実装
+    WaveSdfScene.tsx         SdfFunctionで波面を描くデモシーン
+    registry.ts              Appで切り替え可能なscene定義の一覧
+    types.ts                 scene registry用の型定義
   nexusgpu/
     index.ts                 公開APIの再エクスポート
     types.ts                 React props、シーン、レンダリング設定の型定義
@@ -59,7 +63,7 @@ src/
 
 デモアプリの画面構成と状態の配線を担当するアプリケーション層です。
 
-`renderSettings`とシーン固有パラメータのstateを保持し、`NexusCanvas`、`AnimatedSdfScene`、各パネルへ渡します。`App.tsx`自体にはシーンのプリミティブ定義、scene camera / lighting、フルスクリーン制御の詳細を置かず、画面全体の組み立てに寄せています。
+`renderSettings`、選択中scene、シーン固有パラメータのstateを保持し、`NexusCanvas`、選択中scene component、各パネルへ渡します。`App.tsx`自体には個別sceneのimportやプリミティブ定義、scene camera / lightingを置かず、`src/scenes/registry.ts`から選択中のscene定義を受け取ります。
 
 主な接続:
 
@@ -67,8 +71,29 @@ src/
 - `INITIAL_RENDER_SETTINGS`を初期値として`renderSettings`を保持する
 - `renderSettings`を`NexusCanvas`と`RenderSettingsPanel`へ渡す
 - `NexusCanvas`から受け取る`NexusRenderStats`を保持し、`RenderSettingsPanel`へ渡す
-- `SCENE_CAMERA`と`SCENE_LIGHTING`を選択中のsceneから受け取り、`NexusCanvas`へ渡す
-- `sceneParameters`を`AnimatedSdfScene`と`SceneParametersPanel`へ渡す
+- `SCENES`から選択中のscene定義を取得し、scene selectorを表示する
+- 選択中sceneの`camera`と`lighting`を`NexusCanvas`へ渡す
+- 選択中sceneの`Component`へ`sceneParameters`を渡す
+- 選択中sceneの`ParametersPanel`へ`sceneParameters`とpartial update関数を渡す
+
+sceneを切り替えるときは、`activeSceneId`と`sceneParameters`を同じイベント内で更新します。これにより、新しいsceneのパネルに前のscene用パラメータが一時的に渡ることを避けます。
+
+### scenes/registry.ts / scenes/types.ts
+
+`src/scenes/registry.ts`は、アプリで切り替え可能なsceneをまとめる薄い登録ファイルです。`App.tsx`は個別sceneを直接importせず、registryの定義だけを参照します。
+
+各scene定義は`NexusSceneDefinition`として次の情報を持ちます。
+
+- `id`: scene selectorで使う一意なID
+- `title`: sidebarに表示するscene名
+- `description`: sceneの短い説明
+- `camera`: そのsceneの推奨カメラ
+- `lighting`: そのsceneの推奨ライト
+- `initialParameters`: scene固有パラメータの初期値
+- `Component`: `parameters`を受け取るscene component
+- `ParametersPanel`: 任意のscene固有パラメータUI
+
+sceneを追加する場合、基本的にはscene本体と必要なpanelを作り、`SCENES`へ1件追加します。`App.tsx`のimportやJSXをsceneごとに書き換える必要はありません。
 
 ### app/renderSettings.ts
 
@@ -89,24 +114,26 @@ src/
 - `resize`、`orientationchange`、`visualViewport.resize`で高さを再計算する
 - フルスクリーン時にCSSカスタムプロパティ`--fullscreen-height`を渡す
 
-### scenes/AnimatedSdfScene.tsx
+### scenes/AnimatedSdfScene2.tsx / scenes/WaveSdfScene.tsx
 
 デモ用SDFシーンの実装です。
 
-薄い床の`SdfBox`と、複数の`SdfSphere`を配置します。球の周回軌道設定、座標計算、`useFrame`によるアニメーションstateはこのファイルに閉じています。
+`AnimatedSdfScene2.tsx`は、薄い床の`SdfBox`と、複数の`SdfSphere`を配置します。球の周回軌道設定、座標計算、`useFrame`によるアニメーションstateはこのファイルに閉じています。
+
+`WaveSdfScene.tsx`は、`SdfFunction`で波面の高さ場を描くsceneです。波の振幅、周波数、速度はscene固有パラメータとして受け取ります。
 
 sceneごとの見え方もこのファイルに寄せています。
 
 - `SCENE_CAMERA`: このsceneを表示するときの初期カメラ
 - `SCENE_LIGHTING`: このsceneを表示するときのライト方向
 
-`App.tsx`は選択中のsceneからこれらをimportし、`NexusCanvas`の`camera` / `lighting` propsへ渡します。これにより、sceneを増やす場合も各sceneが自分の推奨視点とライトを持てます。
+registryは各sceneからこれらをimportし、`App.tsx`は選択中のregistry定義を通して`NexusCanvas`の`camera` / `lighting` propsへ渡します。これにより、sceneを増やす場合も各sceneが自分の推奨視点とライトを持てます。
 
-### panels/SceneParametersPanel.tsx / RenderSettingsPanel.tsx
+### panels/*ParametersPanel.tsx / RenderSettingsPanel.tsx
 
 サイドバー上の操作UIです。
 
-`SceneParametersPanel`は`AnimatedSdfScene`に渡すシーン固有パラメータを扱います。現在は`sphereSmoothness`のみを持ちますが、`AnimatedSdfSceneParameters`のpartial updateとして更新するため、パラメータを追加しても呼び出し側のpropsは増えません。
+`SceneParametersPanel`は`AnimatedSdfScene2`に渡すシーン固有パラメータを扱います。`WaveSdfSceneParametersPanel`は`WaveSdfScene`に渡す波面パラメータを扱います。どちらもsceneの`initialParameters`と同じ型の`parameters`、およびpartial update関数を受け取ります。
 
 `RenderSettingsPanel`はWebGPUレンダリング品質に関わる共通デバッグ設定を扱います。`resolutionScale`、`maxSteps`、`maxDistance`、`normalEpsilon`、`surfaceEpsilon`、`shadows`に加え、ステレオSBS表示のON/OFF、`stereoBase`、左右eye反転を更新します。
 
