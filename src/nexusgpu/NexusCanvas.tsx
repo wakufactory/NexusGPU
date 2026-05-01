@@ -1,29 +1,38 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { SceneStore } from "./SceneStore";
 import { SceneContext } from "./SceneContext";
 import { WebGpuSdfRenderer } from "./WebGpuSdfRenderer";
 import { DEFAULT_LIGHTING } from "./defaults";
 import { useOrbitCameraControls } from "./useOrbitCameraControls";
-import type { NexusCanvasProps, NexusLighting, SceneSnapshot } from "./types";
+import type { NexusCanvasHandle, NexusCanvasProps, NexusLighting, SceneSnapshot } from "./types";
 
 /**
  * ReactツリーとWebGPUレンダラを接続するルートコンポーネント。
  * 子のSDFプリミティブはContext経由でSceneStoreへ登録される。
  */
-export function NexusCanvas({
+export const NexusCanvas = forwardRef<NexusCanvasHandle, NexusCanvasProps>(function NexusCanvas({
   camera,
   lighting,
   orbitControls = false,
   renderSettings,
   onRenderStatsChange,
   children,
-}: NexusCanvasProps) {
+}: NexusCanvasProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
 
   useOrbitCameraControls({ canvasRef, camera, enabled: orbitControls, store });
+
+  useImperativeHandle(ref, () => ({
+    startXrSbsSession: async () => {
+      await rendererRef.current?.startXrSbsSession();
+    },
+    endXrSession: async () => {
+      await rendererRef.current?.endXrSession();
+    },
+  }), []);
 
   // ライティングpropsが変わったらSceneStoreへ反映し、レンダラのUniform更新につなげる。
   useEffect(() => {
@@ -119,7 +128,7 @@ export function NexusCanvas({
       {children}
     </SceneContext.Provider>
   );
-}
+});
 
 function resolveLighting(lighting: NexusLighting | undefined): Required<NexusLighting> {
   return {

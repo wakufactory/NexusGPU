@@ -26,7 +26,9 @@ input {
 .app-shell {
   display: grid;
   grid-template-columns:  minmax(0, 1fr) minmax(280px, 390px);
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
   background:
     linear-gradient(120deg, rgba(25, 33, 36, 0.92), rgba(11, 13, 14, 0.94)),
     radial-gradient(circle at 70% 20%, rgba(30, 180, 160, 0.16), transparent 35%);
@@ -36,6 +38,11 @@ input {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-height: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 26px;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(14, 17, 18, 0.76);
@@ -120,6 +127,38 @@ input {
 .debug-panel {
   display: grid;
   gap: 14px;
+}
+
+.xr-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.xr-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  width: 100%;
+  border: 1px solid rgba(56, 217, 194, 0.34);
+  border-radius: 8px;
+  color: #061614;
+  background: #38d9c2;
+  cursor: pointer;
+}
+
+.xr-button:disabled {
+  color: rgba(248, 250, 252, 0.42);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: not-allowed;
+}
+
+.panel-error {
+  margin: 0;
+  color: #ffb4a8;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .control-row {
@@ -273,9 +312,14 @@ input {
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
   }
 
   .sidebar {
+    height: auto;
+    overflow: visible;
+    overscroll-behavior: auto;
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }

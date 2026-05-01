@@ -48,6 +48,7 @@ export type NexusCanvasPixelSize = {
 export type NexusRenderStats = {
   canvasPixelSize: NexusCanvasPixelSize;
   fps: number;
+  xrPresenting?: boolean;
 };
 
 /** NexusCanvasのフレームループからReact側へ渡す時刻情報。 */
@@ -97,6 +98,12 @@ export type NexusCanvasProps = {
   renderSettings?: NexusRenderSettings;
   onRenderStatsChange?: (stats: NexusRenderStats) => void;
   children?: ReactNode;
+};
+
+/** NexusCanvasが親コンポーネントへ公開する命令型API。 */
+export type NexusCanvasHandle = {
+  startXrSbsSession: () => Promise<void>;
+  endXrSession: () => Promise<void>;
 };
 
 /** SceneStoreが保持し、WebGPU側へアップロードする1プリミティブ分の正規化済みデータ。 */

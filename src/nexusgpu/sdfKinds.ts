@@ -4,7 +4,7 @@ export const SDF_PRIMITIVE_KIND_IDS = {
   box: 1,
 } as const;
 
-export const CUSTOM_SDF_PRIMITIVE_KIND_START = 2;
+export const CUSTOM_SDF_PRIMITIVE_KIND_START = 1000;
 
 export type BuiltinSdfPrimitiveKind = keyof typeof SDF_PRIMITIVE_KIND_IDS;
 export type SdfPrimitiveKind = BuiltinSdfPrimitiveKind | "function";

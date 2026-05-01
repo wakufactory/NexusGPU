@@ -4,6 +4,7 @@ export { useFrame } from "./SceneContext";
 export { SdfBox, SdfFunction, SdfSphere } from "./primitives";
 export type {
   NexusCanvasPixelSize,
+  NexusCanvasHandle,
   NexusFrameCallback,
   NexusFrameState,
   NexusRenderStats,
