@@ -23,7 +23,14 @@ type OrbitCameraState = {
  * ReactツリーとWebGPUレンダラを接続するルートコンポーネント。
  * 子のSDFプリミティブはContext経由でSceneStoreへ登録される。
  */
-export function NexusCanvas({ camera, lighting, orbitControls = false, renderSettings, children }: NexusCanvasProps) {
+export function NexusCanvas({
+  camera,
+  lighting,
+  orbitControls = false,
+  renderSettings,
+  onCanvasPixelSizeChange,
+  children,
+}: NexusCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
   const orbitStateRef = useRef<OrbitCameraState | null>(null);
@@ -171,7 +178,7 @@ export function NexusCanvas({ camera, lighting, orbitControls = false, renderSet
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
-    WebGpuSdfRenderer.create(canvas)
+    WebGpuSdfRenderer.create(canvas, { onCanvasPixelSizeChange })
       .then((renderer) => {
         if (cancelled) {
           renderer.destroy();
@@ -195,7 +202,7 @@ export function NexusCanvas({ camera, lighting, orbitControls = false, renderSet
       rendererRef.current?.destroy();
       rendererRef.current = null;
     };
-  }, [store]);
+  }, [onCanvasPixelSizeChange, store]);
 
   if (error) {
     return (

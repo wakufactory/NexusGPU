@@ -11,6 +11,7 @@ import {
   SCENE_CAMERA,
   SCENE_LIGHTING,
 } from "./scenes/AnimatedSdfScene2";
+import type { CanvasPixelSize } from "./nexusgpu";
 import type { AnimatedSdfSceneParameters } from "./scenes/AnimatedSdfScene2";
 
 /** NexusGPUの現在のAPIを触るためのデモアプリ。 */
@@ -19,6 +20,7 @@ export function App() {
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
   const [renderSettings, setRenderSettings] = useState(INITIAL_RENDER_SETTINGS);
   const [sceneParameters, setSceneParameters] = useState(INITIAL_SCENE_PARAMETERS);
+  const [canvasPixelSize, setCanvasPixelSize] = useState<CanvasPixelSize | null>(null);
 
   const updateSceneParameters = (patch: Partial<AnimatedSdfSceneParameters>) => {
     setSceneParameters((current) => ({ ...current, ...patch }));
@@ -41,6 +43,7 @@ export function App() {
           lighting={SCENE_LIGHTING}
           orbitControls
           renderSettings={renderSettings}
+          onCanvasPixelSizeChange={setCanvasPixelSize}
         >
           <AnimatedSdfScene parameters={sceneParameters} />
         </NexusCanvas>
@@ -55,7 +58,11 @@ export function App() {
         </div>
 
         <SceneParametersPanel parameters={sceneParameters} onChange={updateSceneParameters} />
-        <RenderSettingsPanel settings={renderSettings} onChange={setRenderSettings} />
+        <RenderSettingsPanel
+          settings={renderSettings}
+          canvasPixelSize={canvasPixelSize}
+          onChange={setRenderSettings}
+        />
       </aside>
     </main>
   );

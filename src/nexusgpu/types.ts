@@ -38,6 +38,12 @@ export type NexusRenderSettings = {
   stereoSwapEyes?: boolean;
 };
 
+/** Canvasの実描画ピクセル数。CSSサイズではなくWebGPUへ渡すbacking storeサイズを表す。 */
+export type CanvasPixelSize = {
+  width: number;
+  height: number;
+};
+
 /** NexusCanvasのフレームループからReact側へ渡す時刻情報。 */
 export type NexusFrameState = {
   /** requestAnimationFrameから渡された高精度タイムスタンプ。 */
@@ -83,6 +89,7 @@ export type NexusCanvasProps = {
   lighting?: NexusLighting;
   orbitControls?: boolean;
   renderSettings?: NexusRenderSettings;
+  onCanvasPixelSizeChange?: (size: CanvasPixelSize) => void;
   children?: ReactNode;
 };
 
