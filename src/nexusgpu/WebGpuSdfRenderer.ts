@@ -22,6 +22,7 @@ const SBS_SOURCE_RECTS = {
   left: [0, 0, 0.5, 1] as const,
   right: [0.5, 0, 0.5, 1] as const,
 };
+const XR_DEPTH_STENCIL_FORMAT = "depth24plus";
 
 type XRSessionMode = "inline" | "immersive-vr" | "immersive-ar";
 type XRSessionInit = {
@@ -76,7 +77,7 @@ type XrProjectionLayer = XRLayer & {
 
 type XrGpuSubImage = {
   colorTexture: GPUTexture;
-  imageIndex?: number;
+  getViewDescriptor?: () => GPUTextureViewDescriptor;
   viewport?: XRViewport;
   colorTextureWidth?: number;
   colorTextureHeight?: number;
@@ -97,9 +98,9 @@ export class WebGpuSdfRenderer {
   private pipeline: GPURenderPipeline;
   private bindGroup: GPUBindGroup;
   private readonly blitSampler: GPUSampler;
-  private readonly blitRectBuffers: Record<"left" | "right", GPUBuffer>;
-  private blitPipeline: GPURenderPipeline;
-  private blitBindGroups: Partial<Record<"left" | "right", GPUBindGroup>> = {};
+  private readonly blitUniformBuffers: Record<"left" | "right", GPUBuffer>;
+  private readonly blitPipelines = new Map<GPUTextureFormat, GPURenderPipeline>();
+  private blitBindGroups = new Map<string, GPUBindGroup>();
   private sbsTexture: GPUTexture | null = null;
   private sbsTextureSize: NexusCanvasPixelSize = { width: 0, height: 0 };
   private customSdfSignature = "";
@@ -109,6 +110,7 @@ export class WebGpuSdfRenderer {
   private xrReferenceSpace: XRReferenceSpace | null = null;
   private xrBinding: XrGpuBinding | null = null;
   private xrProjectionLayer: XrProjectionLayer | null = null;
+  private xrColorFormat: GPUTextureFormat | null = null;
   private xrFrameId = 0;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
   private renderStats: NexusRenderStats = {
@@ -124,6 +126,7 @@ export class WebGpuSdfRenderer {
     private readonly canvas: HTMLCanvasElement,
     private readonly device: GPUDevice,
     private readonly onRenderStatsChange?: (stats: NexusRenderStats) => void,
+    private readonly onAnimationFrame?: (time: DOMHighResTimeStamp) => void,
   ) {
     const context = canvas.getContext("webgpu");
     if (!context) {
@@ -158,11 +161,10 @@ export class WebGpuSdfRenderer {
       magFilter: "linear",
       minFilter: "linear",
     });
-    this.blitRectBuffers = {
-      left: createBlitRectBuffer(device, "left", SBS_SOURCE_RECTS.left),
-      right: createBlitRectBuffer(device, "right", SBS_SOURCE_RECTS.right),
+    this.blitUniformBuffers = {
+      left: createBlitUniformBuffer(device, "left"),
+      right: createBlitUniformBuffer(device, "right"),
     };
-    this.blitPipeline = this.createBlitPipeline();
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -173,7 +175,10 @@ export class WebGpuSdfRenderer {
   /** WebGPUアダプタとデバイスを確保し、レンダラを初期化するファクトリ。 */
   static async create(
     canvas: HTMLCanvasElement,
-    options: { onRenderStatsChange?: (stats: NexusRenderStats) => void } = {},
+    options: {
+      onRenderStatsChange?: (stats: NexusRenderStats) => void;
+      onAnimationFrame?: (time: DOMHighResTimeStamp) => void;
+    } = {},
   ) {
     if (!navigator.gpu) {
       throw new Error("WebGPU is not enabled. Use a current Chromium, Edge, or Safari Technology Preview build.");
@@ -189,7 +194,7 @@ export class WebGpuSdfRenderer {
     }
 
     const device = await adapter.requestDevice();
-    return new WebGpuSdfRenderer(canvas, device, options.onRenderStatsChange);
+    return new WebGpuSdfRenderer(canvas, device, options.onRenderStatsChange, options.onAnimationFrame);
   }
 
   /** 新しいシーンスナップショットを受け取り、SDFオブジェクト用Storage Bufferを更新する。 */
@@ -211,8 +216,8 @@ export class WebGpuSdfRenderer {
     cancelAnimationFrame(this.frameId);
     this.resizeObserver.disconnect();
     this.sbsTexture?.destroy();
-    this.blitRectBuffers.left.destroy();
-    this.blitRectBuffers.right.destroy();
+    this.blitUniformBuffers.left.destroy();
+    this.blitUniformBuffers.right.destroy();
     this.cameraBuffer.destroy();
     this.objectBuffer.destroy();
   }
@@ -238,7 +243,8 @@ export class WebGpuSdfRenderer {
     });
     const referenceSpace = await requestReferenceSpace(session);
     const binding = new XrGpuBinding(session, this.device);
-    const projectionLayer = createProjectionLayer(binding, binding.getPreferredColorFormat?.() ?? this.format);
+    const xrColorFormat = binding.getPreferredColorFormat?.() ?? this.format;
+    const projectionLayer = createProjectionLayer(binding, xrColorFormat);
 
     session.updateRenderState({ layers: [projectionLayer] } as XRRenderStateInit);
     session.addEventListener("end", this.handleXrEnd, { once: true });
@@ -247,6 +253,7 @@ export class WebGpuSdfRenderer {
     this.xrReferenceSpace = referenceSpace;
     this.xrBinding = binding;
     this.xrProjectionLayer = projectionLayer;
+    this.xrColorFormat = xrColorFormat;
     this.setRenderStats({ xrPresenting: true });
     this.xrFrameId = session.requestAnimationFrame(this.xrFrame);
   }
@@ -260,6 +267,10 @@ export class WebGpuSdfRenderer {
     session.cancelAnimationFrame(this.xrFrameId);
     await session.end().catch(() => undefined);
     this.clearXrState();
+  }
+
+  isXrPresenting() {
+    return this.xrSession !== null;
   }
 
   /** CSSサイズ、devicePixelRatio、解像度スケールから実際の描画ピクセル数を決める。 */
@@ -395,12 +406,18 @@ export class WebGpuSdfRenderer {
     return { pipeline, bindGroup };
   }
 
-  private createBlitPipeline() {
+  private getBlitPipeline(format: GPUTextureFormat) {
+    const existingPipeline = this.blitPipelines.get(format);
+    if (existingPipeline) {
+      return existingPipeline;
+    }
+
     const shaderModule = this.device.createShaderModule({
       label: "NexusGPU SBS Blit Shader",
       code: /* wgsl */ `
 struct BlitRect {
   source: vec4<f32>,
+  viewport: vec4<f32>,
 };
 
 @group(0) @binding(0) var blitSampler: sampler;
@@ -428,13 +445,14 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-  let uv = blitRect.source.xy + input.uv * blitRect.source.zw;
+  let localUv = (input.position.xy - blitRect.viewport.xy) / blitRect.viewport.zw;
+  let uv = blitRect.source.xy + vec2<f32>(localUv.x, 1.0 - localUv.y) * blitRect.source.zw;
   return textureSample(blitTexture, blitSampler, uv);
 }
 `,
     });
 
-    return this.device.createRenderPipeline({
+    const pipeline = this.device.createRenderPipeline({
       label: "NexusGPU SBS Blit Pipeline",
       layout: "auto",
       vertex: {
@@ -450,6 +468,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         topology: "triangle-list",
       },
     });
+    this.blitPipelines.set(format, pipeline);
+    return pipeline;
   }
 
   private getSdfKindId(node: SdfNode) {
@@ -563,17 +583,19 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     );
   };
 
-  private xrFrame = (_time: DOMHighResTimeStamp, frame: XRFrame) => {
+  private xrFrame = (time: DOMHighResTimeStamp, frame: XRFrame) => {
     const session = this.xrSession;
     const referenceSpace = this.xrReferenceSpace;
     const binding = this.xrBinding;
     const projectionLayer = this.xrProjectionLayer;
+    const xrColorFormat = this.xrColorFormat;
 
-    if (!session || !referenceSpace || !binding || !projectionLayer) {
+    if (!session || !referenceSpace || !binding || !projectionLayer || !xrColorFormat) {
       return;
     }
 
     this.xrFrameId = session.requestAnimationFrame(this.xrFrame);
+    this.onAnimationFrame?.(time);
 
     const pose = frame.getViewerPose(referenceSpace);
     if (!pose || !this.snapshot || pose.views.length === 0) {
@@ -597,16 +619,12 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     const encoder = this.device.createCommandEncoder({ label: "NexusGPU XR SBS Encoder" });
     pose.views.forEach((view) => {
       const subImage = binding.getViewSubImage(projectionLayer, view);
-      const textureView = subImage.colorTexture.createView(
-        subImage.imageIndex === undefined
-          ? undefined
-          : { baseArrayLayer: subImage.imageIndex, arrayLayerCount: 1 },
-      );
+      const textureView = subImage.colorTexture.createView(subImage.getViewDescriptor?.());
       const sourceRect = view.eye === "right"
         ? (this.renderSettings.stereoSwapEyes ? SBS_SOURCE_RECTS.left : SBS_SOURCE_RECTS.right)
         : (this.renderSettings.stereoSwapEyes ? SBS_SOURCE_RECTS.right : SBS_SOURCE_RECTS.left);
 
-      this.encodeBlit(encoder, sbsTexture, textureView, sourceRect, subImage.viewport);
+      this.encodeBlit(encoder, sbsTexture, textureView, sourceRect, subImage.viewport, xrColorFormat);
     });
 
     this.device.queue.submit([encoder.finish()]);
@@ -621,6 +639,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     this.xrReferenceSpace = null;
     this.xrBinding = null;
     this.xrProjectionLayer = null;
+    this.xrColorFormat = null;
     this.xrFrameId = 0;
     this.setRenderStats({ xrPresenting: false });
   }
@@ -642,7 +661,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
       format: this.format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
-    this.blitBindGroups = {};
+    this.blitBindGroups.clear();
     return this.sbsTexture;
   }
 
@@ -652,35 +671,59 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     targetView: GPUTextureView,
     sourceRect: readonly [number, number, number, number],
     viewport: XRViewport | undefined,
+    targetFormat: GPUTextureFormat,
   ) {
     const sourceKey = sourceRect === SBS_SOURCE_RECTS.left ? "left" : "right";
+    const pipeline = this.getBlitPipeline(targetFormat);
+    const bindGroupKey = `${targetFormat}:${sourceKey}`;
+    const targetViewport = viewport ?? {
+      x: 0,
+      y: 0,
+      width: this.sbsTextureSize.width / 2,
+      height: this.sbsTextureSize.height,
+    };
 
-    const bindGroup = this.blitBindGroups[sourceKey] ??= this.device.createBindGroup({
-      label: "NexusGPU SBS Blit Bind Group",
-      layout: this.blitPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: this.blitSampler },
-        { binding: 1, resource: sourceTexture.createView() },
-        { binding: 2, resource: { buffer: this.blitRectBuffers[sourceKey] } },
-      ],
-    });
+    this.device.queue.writeBuffer(
+      this.blitUniformBuffers[sourceKey],
+      0,
+      new Float32Array([
+        ...sourceRect,
+        targetViewport.x,
+        targetViewport.y,
+        targetViewport.width,
+        targetViewport.height,
+      ]),
+    );
+
+    let bindGroup = this.blitBindGroups.get(bindGroupKey);
+    if (!bindGroup) {
+      bindGroup = this.device.createBindGroup({
+        label: "NexusGPU SBS Blit Bind Group",
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: this.blitSampler },
+          { binding: 1, resource: sourceTexture.createView() },
+          { binding: 2, resource: { buffer: this.blitUniformBuffers[sourceKey] } },
+        ],
+      });
+      this.blitBindGroups.set(bindGroupKey, bindGroup);
+    }
 
     const pass = encoder.beginRenderPass({
       label: "NexusGPU XR SBS Blit Pass",
       colorAttachments: [
         {
           view: targetView,
-          loadOp: "load",
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
           storeOp: "store",
         },
       ],
     });
 
-    if (viewport) {
-      pass.setViewport(viewport.x, viewport.y, viewport.width, viewport.height, 0, 1);
-    }
+    pass.setViewport(targetViewport.x, targetViewport.y, targetViewport.width, targetViewport.height, 0, 1);
 
-    pass.setPipeline(this.blitPipeline);
+    pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);
     pass.end();
@@ -707,7 +750,7 @@ function createProjectionLayer(binding: XrGpuBinding, format: GPUTextureFormat) 
   try {
     return binding.createProjectionLayer({
       colorFormat: format,
-      textureType: "texture-array",
+      depthStencilFormat: XR_DEPTH_STENCIL_FORMAT,
     });
   } catch {
     return binding.createProjectionLayer({
@@ -716,17 +759,15 @@ function createProjectionLayer(binding: XrGpuBinding, format: GPUTextureFormat) 
   }
 }
 
-function createBlitRectBuffer(
+function createBlitUniformBuffer(
   device: GPUDevice,
   label: string,
-  sourceRect: readonly [number, number, number, number],
 ) {
   const buffer = device.createBuffer({
-    label: `NexusGPU SBS Blit Rect ${label}`,
-    size: 4 * Float32Array.BYTES_PER_ELEMENT,
+    label: `NexusGPU SBS Blit Uniforms ${label}`,
+    size: 8 * Float32Array.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(buffer, 0, new Float32Array(sourceRect));
   return buffer;
 }
 

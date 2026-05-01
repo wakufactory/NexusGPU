@@ -20,10 +20,26 @@ export const NexusCanvas = forwardRef<NexusCanvasHandle, NexusCanvasProps>(funct
 }: NexusCanvasProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
+  const frameClockRef = useRef<{ startTime: number | null; lastTime: number | null }>({
+    startTime: null,
+    lastTime: null,
+  });
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
 
   useOrbitCameraControls({ canvasRef, camera, enabled: orbitControls, store });
+
+  const advanceStoreFrame = (time: DOMHighResTimeStamp) => {
+    const clock = frameClockRef.current;
+    clock.startTime ??= time;
+    clock.lastTime ??= time;
+
+    const elapsed = (time - clock.startTime) / 1000;
+    const delta = Math.min((time - clock.lastTime) / 1000, 0.1);
+    clock.lastTime = time;
+
+    store.advanceFrame({ time, elapsed, delta });
+  };
 
   useImperativeHandle(ref, () => ({
     startXrSbsSession: async () => {
@@ -52,18 +68,11 @@ export const NexusCanvas = forwardRef<NexusCanvasHandle, NexusCanvasProps>(funct
   // 子コンポーネント向けのフレームループ。useFrameでSDF propsを動かせるようにする。
   useEffect(() => {
     let frameId = 0;
-    let startTime: number | null = null;
-    let lastTime: number | null = null;
 
     const tick = (time: number) => {
-      startTime ??= time;
-      lastTime ??= time;
-
-      const elapsed = (time - startTime) / 1000;
-      const delta = Math.min((time - lastTime) / 1000, 0.1);
-      lastTime = time;
-
-      store.advanceFrame({ time, elapsed, delta });
+      if (!rendererRef.current?.isXrPresenting()) {
+        advanceStoreFrame(time);
+      }
       frameId = requestAnimationFrame(tick);
     };
 
@@ -81,7 +90,7 @@ export const NexusCanvas = forwardRef<NexusCanvasHandle, NexusCanvasProps>(funct
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
-    WebGpuSdfRenderer.create(canvas, { onRenderStatsChange })
+    WebGpuSdfRenderer.create(canvas, { onRenderStatsChange, onAnimationFrame: advanceStoreFrame })
       .then((renderer) => {
         if (cancelled) {
           renderer.destroy();
