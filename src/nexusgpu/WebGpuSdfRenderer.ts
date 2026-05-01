@@ -1,7 +1,22 @@
 import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
-import { CUSTOM_SDF_PRIMITIVE_KIND_START, SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-import type { NexusCanvasPixelSize, NexusRenderSettings, NexusRenderStats, SceneSnapshot, SdfNode, Vec3 } from "./types";
+import {
+  CUSTOM_SDF_PRIMITIVE_KIND_START,
+  SDF_BOOLEAN_OPERATION_IDS,
+  SDF_OPERATION_KIND_IDS,
+  SDF_PRIMITIVE_KIND_IDS,
+} from "./sdfKinds";
+import type {
+  NexusCanvasPixelSize,
+  NexusRenderSettings,
+  NexusRenderStats,
+  SceneSnapshot,
+  SdfBooleanOperation,
+  SdfBoundingSphere,
+  SdfNode,
+  SdfSceneNode,
+  Vec3,
+} from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -167,30 +182,17 @@ export class WebGpuSdfRenderer {
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
   private uploadObjects(snapshot: SceneSnapshot) {
-    const nodes = snapshot.nodes.slice(0, MAX_SDF_OBJECTS);
+    const records = compileSdfRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
+    this.objectData.fill(0);
 
-    nodes.forEach((node, index) => {
+    records.forEach((record, index) => {
       const offset = index * OBJECT_STRIDE_FLOATS;
-      this.objectData[offset + 0] = node.position[0];
-      this.objectData[offset + 1] = node.position[1];
-      this.objectData[offset + 2] = node.position[2];
-      this.objectData[offset + 3] = this.getSdfKindId(node);
-      this.objectData.set(node.data[0], offset + 4);
-      this.objectData.set(node.data[1], offset + 8);
-      this.objectData.set(node.data[2], offset + 12);
-      this.objectData[offset + 16] = node.color[0];
-      this.objectData[offset + 17] = node.color[1];
-      this.objectData[offset + 18] = node.color[2];
-      this.objectData[offset + 19] = node.smoothness;
-      this.objectData[offset + 20] = node.rotation[0];
-      this.objectData[offset + 21] = node.rotation[1];
-      this.objectData[offset + 22] = node.rotation[2];
-      this.objectData[offset + 23] = node.rotation[3];
+      this.objectData.set(record, offset);
     });
 
-    const bytesToUpload = nodes.length * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+    const bytesToUpload = records.length * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
     if (bytesToUpload > 0) {
-      this.device.queue.writeBuffer(this.objectBuffer, 0, this.objectData, 0, nodes.length * OBJECT_STRIDE_FLOATS);
+      this.device.queue.writeBuffer(this.objectBuffer, 0, this.objectData, 0, records.length * OBJECT_STRIDE_FLOATS);
     }
   }
 
@@ -288,7 +290,12 @@ export class WebGpuSdfRenderer {
     this.cameraData.set([...right, 0], 12);
     this.cameraData.set([...up, 0], 16);
     this.cameraData.set(
-      [Math.min(snapshot.nodes.length, MAX_SDF_OBJECTS), this.renderSettings.surfaceEpsilon, 0, 0],
+      [
+        Math.min(compileSdfRecordCount(snapshot.sceneNodes), MAX_SDF_OBJECTS),
+        this.renderSettings.surfaceEpsilon,
+        0,
+        0,
+      ],
       20,
     );
     this.cameraData.set(
@@ -347,6 +354,105 @@ export class WebGpuSdfRenderer {
 
     this.device.queue.submit([encoder.finish()]);
   };
+}
+
+type SdfRecord = number[];
+type GetSdfKindId = (node: SdfNode) => number;
+
+function compileSdfRecords(sceneNodes: readonly SdfSceneNode[], getSdfKindId: GetSdfKindId) {
+  const records: SdfRecord[] = [];
+
+  for (const node of sceneNodes) {
+    appendSdfRecord(node, records, getSdfKindId);
+  }
+
+  return records;
+}
+
+function compileSdfRecordCount(sceneNodes: readonly SdfSceneNode[]): number {
+  return sceneNodes.reduce((count, node) => {
+    if (node.type === "primitive") {
+      return count + 1;
+    }
+
+    return count + 2 + compileSdfRecordCount(node.children);
+  }, 0);
+}
+
+function appendSdfRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
+  if (node.type === "primitive") {
+    records.push(createPrimitiveRecord(node.node, getSdfKindId(node.node)));
+    return;
+  }
+
+  const beginIndex = records.length;
+  const beginRecord = createGroupRecord(SDF_OPERATION_KIND_IDS.groupBegin, node.op, node.bounds, node.smoothness, 0, node.children.length);
+  records.push(beginRecord);
+
+  for (const child of node.children) {
+    appendSdfRecord(child, records, getSdfKindId);
+  }
+
+  const endIndex = records.length;
+  // GROUP_BEGINはbounds skip時のジャンプ先として対応するGROUP_ENDのindexを持つ。
+  beginRecord[12] = endIndex;
+  records.push(createGroupRecord(SDF_OPERATION_KIND_IDS.groupEnd, node.op, node.bounds, node.smoothness, beginIndex, node.children.length));
+}
+
+function createPrimitiveRecord(node: SdfNode, kindId: number): SdfRecord {
+  return [
+    node.position[0],
+    node.position[1],
+    node.position[2],
+    kindId,
+    ...node.data[0],
+    ...node.data[1],
+    ...node.data[2],
+    node.color[0],
+    node.color[1],
+    node.color[2],
+    node.smoothness,
+    node.rotation[0],
+    node.rotation[1],
+    node.rotation[2],
+    node.rotation[3],
+  ];
+}
+
+function createGroupRecord(
+  kindId: number,
+  op: SdfBooleanOperation,
+  bounds: SdfBoundingSphere,
+  smoothness: number,
+  pairedIndex: number,
+  childCount: number,
+): SdfRecord {
+  return [
+    0,
+    0,
+    0,
+    kindId,
+    0,
+    0,
+    0,
+    0,
+    bounds.center[0],
+    bounds.center[1],
+    bounds.center[2],
+    bounds.radius,
+    pairedIndex,
+    SDF_BOOLEAN_OPERATION_IDS[op],
+    childCount,
+    0,
+    0,
+    0,
+    0,
+    smoothness,
+    0,
+    0,
+    0,
+    1,
+  ];
 }
 
 function unique(values: readonly string[]) {

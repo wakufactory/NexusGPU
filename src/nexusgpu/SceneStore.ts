@@ -1,4 +1,12 @@
-import type { NexusCamera, NexusFrameCallback, NexusFrameState, NexusLighting, SceneSnapshot, SdfNode } from "./types";
+import type {
+  NexusCamera,
+  NexusFrameCallback,
+  NexusFrameState,
+  NexusLighting,
+  SceneSnapshot,
+  SdfNode,
+  SdfSceneNode,
+} from "./types";
 import { DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
 
 type SceneListener = (snapshot: SceneSnapshot) => void;
@@ -8,7 +16,7 @@ type SceneListener = (snapshot: SceneSnapshot) => void;
  * ここではGPUを直接触らず、レンダラが読みやすいスナップショットへまとめる責務だけを持つ。
  */
 export class SceneStore {
-  private nodes = new Map<symbol, SdfNode>();
+  private sceneNodes = new Map<symbol, SdfSceneNode>();
   private listeners = new Set<SceneListener>();
   private frameListeners = new Set<NexusFrameCallback>();
   private camera = DEFAULT_CAMERA;
@@ -35,13 +43,22 @@ export class SceneStore {
 
   /** SDFプリミティブを追加または更新する。React側のprops変更はこの経路でGPU同期候補になる。 */
   upsertNode(node: SdfNode) {
-    this.nodes.set(node.id, node);
+    this.upsertSceneNode(node.id, { type: "primitive", node, bounds: node.bounds });
+  }
+
+  /** primitive/groupを問わず、レンダラが評価するシーン木のroot要素を更新する。 */
+  upsertSceneNode(id: symbol, node: SdfSceneNode) {
+    this.sceneNodes.set(id, node);
     this.emit();
   }
 
   /** アンマウントされたSDFプリミティブをシーンから取り除く。 */
   removeNode(id: symbol) {
-    this.nodes.delete(id);
+    this.removeSceneNode(id);
+  }
+
+  removeSceneNode(id: symbol) {
+    this.sceneNodes.delete(id);
     this.emit();
   }
 
@@ -73,8 +90,11 @@ export class SceneStore {
 
   /** 現在のシーン状態を、レンダラへ渡せる不変データとして作る。 */
   snapshot(): SceneSnapshot {
+    const sceneNodes = [...this.sceneNodes.values()];
+
     return {
-      nodes: [...this.nodes.values()],
+      nodes: sceneNodes.flatMap(flattenSdfNodes),
+      sceneNodes,
       camera: this.camera,
       lighting: this.lighting,
       version: this.version,
@@ -89,4 +109,12 @@ export class SceneStore {
       listener(snapshot);
     }
   }
+}
+
+function flattenSdfNodes(node: SdfSceneNode): SdfNode[] {
+  if (node.type === "primitive") {
+    return [node.node];
+  }
+
+  return node.children.flatMap(flattenSdfNodes);
 }

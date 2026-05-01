@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SdfBox, SdfSphere, useFrame,SdfFunction } from "../nexusgpu";
+import { SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
 import type { NexusCamera, NexusLighting, SdfSphereProps, Vec3 } from "../nexusgpu";
 
 export const SCENE_CAMERA: Required<NexusCamera> = {
@@ -127,22 +127,27 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
         color={[0.2, 0.23, 0.28]}
         smoothness={0.2}
       />
-      {spherePropsList.map((sphereProps, index) => (
-        <SdfSphere
-          key={index}
-          position={sphereProps.position}
-          radius={sphereProps.radius}
-          color={sphereProps.color}
-          smoothness={sphereProps.smoothness}
+      <SdfGroup op="and" smoothness={parameters.sphereSmoothness}>
+      <SdfGroup op="or" smoothness={parameters.sphereSmoothness}>
+        {spherePropsList.map((sphereProps, index) => (
+          <SdfSphere
+            key={index}
+            position={sphereProps.position}
+            radius={sphereProps.radius}
+            color={sphereProps.color}
+            smoothness={sphereProps.smoothness}
+          />
+        ))}
+      </SdfGroup>
+        <SdfFunction
+          sdfFunction="let k0 = length(point / data0.xyz); let k1 = length(point / (data0.xyz * data0.xyz)); return k0 * (k0 - 1.0) / k1;"
+          data0={[0.7, 0.5, 0.2, 0.3]}
+          position={[0, 1, 0]}
+          color={[0.8, 0.8, 0.8]}
+          smoothness={0.3}
+          bounds={{ radius: 0.8 }}
         />
-      ))}
-      <SdfFunction
-        sdfFunction="  let k0 = length(point / data0.xyz);let k1 = length(point / (data0.xyz * data0.xyz));return k0 * (k0 - 1.0) / k1;"
-        data0={[0.7, 0.5, 0.2, 0.3]}
-        position={[0,1,0]}
-        color={[0.8, 0.8, 0.8]}
-        smoothness={0.3}
-/>
+      </SdfGroup>
     </>
   );
 }

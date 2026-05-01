@@ -10,6 +10,15 @@ export type Vec4 = readonly [number, number, number, number];
 /** SDFプリミティブごとの拡張パラメータ。WGSL側のdata0/data1/data2に対応する。 */
 export type SdfData = readonly [Vec4, Vec4, Vec4];
 
+/** グループ枝刈りに使う、保守的なbounding sphere。 */
+export type SdfBoundingSphere = {
+  center: Vec3;
+  radius: number;
+};
+
+/** SDFノード同士のCSG/boolean合成演算。 */
+export type SdfBooleanOperation = "or" | "and" | "subtract" | "not";
+
 /** Quaternion。回転を[x, y, z, w]の順で表す。 */
 export type Quaternion = readonly [number, number, number, number];
 
@@ -87,6 +96,14 @@ export type SdfFunctionProps = SdfPrimitiveProps & {
   data0?: Vec4;
   data1?: Vec4;
   data2?: Vec4;
+  bounds?: Partial<SdfBoundingSphere>;
+};
+
+/** グループコンポーネントのprops。transformはMVPでは子primitive側に持たせる。 */
+export type SdfGroupProps = {
+  op?: SdfBooleanOperation;
+  smoothness?: number;
+  children?: ReactNode;
 };
 
 /** NexusCanvasが受け取るReact側の公開props。 */
@@ -108,12 +125,30 @@ export type SdfNode = {
   color: Vec3;
   data: SdfData;
   smoothness: number;
+  bounds: SdfBoundingSphere;
   sdfFunction?: string;
 };
+
+export type SdfPrimitiveSceneNode = {
+  type: "primitive";
+  node: SdfNode;
+  bounds: SdfBoundingSphere;
+};
+
+export type SdfGroupSceneNode = {
+  type: "group";
+  op: SdfBooleanOperation;
+  smoothness: number;
+  children: readonly SdfSceneNode[];
+  bounds: SdfBoundingSphere;
+};
+
+export type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode;
 
 /** SceneStoreからレンダラへ渡す一貫したシーン状態。 */
 export type SceneSnapshot = {
   nodes: readonly SdfNode[];
+  sceneNodes: readonly SdfSceneNode[];
   camera: Required<NexusCamera>;
   lighting: Required<NexusLighting>;
   version: number;
