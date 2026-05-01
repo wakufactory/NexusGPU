@@ -34,6 +34,7 @@ src/
     sdfKinds.ts              SDFプリミティブ名とGPU側kind IDの対応表
     defaults.ts              NexusCanvas / SceneStoreが使うライブラリ側fallback値
     NexusCanvas.tsx          ReactツリーとWebGPUレンダラの接続点
+    useOrbitCameraControls.ts Canvas上のドラッグ、ホイール、ピンチをカメラ更新へ変換するhook
     SceneContext.ts          プリミティブとuseFrameがSceneStoreへアクセスするContext
     SceneStore.ts            React側シーン状態とフレーム購読の保持、変更通知
     primitives.tsx           SdfSphere / SdfBox コンポーネント
@@ -122,13 +123,29 @@ React世界とWebGPU世界の接続点です。
 - `WebGpuSdfRenderer.create(canvas)`でWebGPUレンダラを初期化する
 - `SceneStore.subscribe()`でシーン変更を購読する
 - 変更された`SceneSnapshot`を`renderer.setScene()`へ渡す
-- `camera` / `lighting` propsを`SceneStore`へ反映する
+- `useOrbitCameraControls()`へ`canvasRef`、`camera`、`orbitControls`、`SceneStore`を渡す
+- `lighting` propsを`SceneStore`へ反映する
 - デバッグ設定を`renderer.setRenderSettings()`へ渡す
 - `renderer`から通知された`NexusRenderStats`を`onRenderStatsChange`で呼び出し側へ返す
 - `requestAnimationFrame`でReact側の`useFrame`購読者へ時刻を渡す
 - アンマウント時にレンダラと購読を破棄する
 
 `camera`や`lighting`の一部または全体が省略された場合は、`src/nexusgpu/defaults.ts`のライブラリ側fallback値で補完します。scene固有の初期値は`scenes/*`側から渡す設計です。
+
+### useOrbitCameraControls.ts
+
+Canvas上のユーザー入力をorbit cameraの更新へ変換するhookです。`NexusCanvas`本体からカメラ操作のDOMイベント処理を分離し、`NexusCanvas`は描画基盤の配線に集中します。
+
+主な役割:
+
+- `camera` propsをライブラリ側fallback値で補完し、`SceneStore.setCamera()`へ反映する
+- `orbitControls`が有効な場合だけCanvasへ入力イベントを登録する
+- 1本指またはマウスドラッグをyaw / pitchの回転へ変換する
+- wheel操作をカメラ半径のズームへ変換する
+- 2本指のPointerEventを追跡し、指同士の距離変化をピンチズームへ変換する
+- `pointerup` / `pointercancel`とアンマウント時にcapture、CSS class、event listenerを片付ける
+
+hook内部では`OrbitCameraState`として`target`、`fov`、`radius`、`yaw`、`pitch`を保持します。入力ごとにこの状態から`NexusCamera`の`position`を再計算し、`SceneStore`へ渡します。2本指操作中は回転を止め、ポインター間距離の比率で`radius`だけを更新します。
 
 ### nexusgpu/defaults.ts
 
