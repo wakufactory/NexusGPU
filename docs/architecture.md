@@ -65,6 +65,7 @@ src/
 - `useFullscreenViewport()`で`main`要素のref、フルスクリーン状態、表示高さ用style、切り替え関数を受け取る
 - `INITIAL_RENDER_SETTINGS`を初期値として`renderSettings`を保持する
 - `renderSettings`を`NexusCanvas`と`RenderSettingsPanel`へ渡す
+- `NexusCanvas`から受け取る`NexusRenderStats`を保持し、`RenderSettingsPanel`へ渡す
 - `SCENE_CAMERA`と`SCENE_LIGHTING`を選択中のsceneから受け取り、`NexusCanvas`へ渡す
 - `sceneParameters`を`AnimatedSdfScene`と`SceneParametersPanel`へ渡す
 
@@ -108,6 +109,8 @@ sceneごとの見え方もこのファイルに寄せています。
 
 `RenderSettingsPanel`はWebGPUレンダリング品質に関わる共通デバッグ設定を扱います。`resolutionScale`、`maxSteps`、`maxDistance`、`normalEpsilon`、`surfaceEpsilon`、`shadows`に加え、ステレオSBS表示のON/OFF、`stereoBase`、左右eye反転を更新します。
 
+また、`NexusCanvas`から返される`NexusRenderStats`を表示します。現在は`fps`と、CSSサイズではなくWebGPUへ渡す実描画ピクセル数`canvasPixelSize`を扱います。これらはユーザー入力ではなくレンダラ側の観測値です。
+
 ### NexusCanvas.tsx
 
 React世界とWebGPU世界の接続点です。
@@ -121,6 +124,7 @@ React世界とWebGPU世界の接続点です。
 - 変更された`SceneSnapshot`を`renderer.setScene()`へ渡す
 - `camera` / `lighting` propsを`SceneStore`へ反映する
 - デバッグ設定を`renderer.setRenderSettings()`へ渡す
+- `renderer`から通知された`NexusRenderStats`を`onRenderStatsChange`で呼び出し側へ返す
 - `requestAnimationFrame`でReact側の`useFrame`購読者へ時刻を渡す
 - アンマウント時にレンダラと購読を破棄する
 
@@ -224,7 +228,8 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `CameraUniform`用のUniform Bufferと、`SdfObject`配列用のStorage Bufferを作成する
 - `assembleSdfShader()`で生成したWGSL文字列からShader Moduleを作成し、`vertexMain` / `fragmentMain`を使うRender Pipelineを作る
 - bind group 0 に camera buffer と object buffer を束ねる
-- `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決める
+- `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決め、変化した場合は`NexusRenderStats.canvasPixelSize`として通知する
+- requestAnimationFrameの進みからFPSを500msごとに集計し、`NexusRenderStats.fps`として通知する
 - `setScene(snapshot)`で`SceneSnapshot.nodes`を最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
 - `SdfFunction`の関数文字列セットが変わった場合は、custom SDF関数を差し込んだShader ModuleとRender Pipelineを作り直す
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
@@ -539,6 +544,20 @@ RenderSettingsPanel
   -> CameraUniform.stereoInfo
   -> WGSL raymarch()
 ```
+
+一方、実行時の観測値は逆方向に流れます。`NexusRenderStats`は入力設定ではなく、レンダラが実際に使っている状態をUIへ返すためのtelemetryです。
+
+```text
+WebGpuSdfRenderer.resize()
+  -> NexusRenderStats.canvasPixelSize
+WebGpuSdfRenderer.updateFps()
+  -> NexusRenderStats.fps
+  -> NexusCanvas onRenderStatsChange
+  -> App renderStats state
+  -> RenderSettingsPanel
+```
+
+`canvasPixelSize`は`canvas.width` / `canvas.height`と同じ実描画ピクセル数です。CSS上の表示サイズではなく、`clientWidth` / `clientHeight`、`devicePixelRatio`、`resolutionScale`を掛け合わせて決まるWebGPU backing storeサイズを表します。FPSは毎フレームのrequestAnimationFrame間隔から算出しますが、React state更新を抑えるため500msごとに集計して通知します。
 
 各設定の役割:
 

@@ -39,9 +39,15 @@ export type NexusRenderSettings = {
 };
 
 /** Canvasの実描画ピクセル数。CSSサイズではなくWebGPUへ渡すbacking storeサイズを表す。 */
-export type CanvasPixelSize = {
+export type NexusCanvasPixelSize = {
   width: number;
   height: number;
+};
+
+/** NexusCanvasからUIへ渡す、描画結果に関する観測値。 */
+export type NexusRenderStats = {
+  canvasPixelSize: NexusCanvasPixelSize;
+  fps: number;
 };
 
 /** NexusCanvasのフレームループからReact側へ渡す時刻情報。 */
@@ -89,7 +95,7 @@ export type NexusCanvasProps = {
   lighting?: NexusLighting;
   orbitControls?: boolean;
   renderSettings?: NexusRenderSettings;
-  onCanvasPixelSizeChange?: (size: CanvasPixelSize) => void;
+  onRenderStatsChange?: (stats: NexusRenderStats) => void;
   children?: ReactNode;
 };
 

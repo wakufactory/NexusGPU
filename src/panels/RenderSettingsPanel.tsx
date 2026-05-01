@@ -1,15 +1,15 @@
 import { Gauge } from "lucide-react";
-import type { CanvasPixelSize, NexusRenderSettings } from "../nexusgpu";
+import type { NexusRenderSettings, NexusRenderStats } from "../nexusgpu";
 
 type RenderSettings = Required<NexusRenderSettings>;
 
 type RenderSettingsPanelProps = {
   settings: RenderSettings;
-  canvasPixelSize?: CanvasPixelSize | null;
+  renderStats?: NexusRenderStats | null;
   onChange: (settings: RenderSettings) => void;
 };
 
-export function RenderSettingsPanel({ settings, canvasPixelSize, onChange }: RenderSettingsPanelProps) {
+export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderSettingsPanelProps) {
   const updateSetting = <Key extends keyof RenderSettings>(
     key: Key,
     value: RenderSettings[Key],
@@ -61,11 +61,18 @@ export function RenderSettingsPanel({ settings, canvasPixelSize, onChange }: Ren
         <h2>Debug</h2>
       </div>
 
+      <div className="control-row stat-row">
+        <span>FPS</span>
+        <output>{renderStats ? Math.round(renderStats.fps) : "--"}</output>
+      </div>
+
       <label className="control-row resolution-row">
         <span>Resolution</span>
         <output>
           {Math.round(settings.resolutionScale * 100)}%
-          {canvasPixelSize ? ` / ${canvasPixelSize.width} x ${canvasPixelSize.height} px` : ""}
+          {renderStats
+            ? ` / ${renderStats.canvasPixelSize.width} x ${renderStats.canvasPixelSize.height} px`
+            : ""}
         </output>
         <input
           type="range"

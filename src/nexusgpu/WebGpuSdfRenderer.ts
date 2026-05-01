@@ -1,7 +1,7 @@
 import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
 import { CUSTOM_SDF_PRIMITIVE_KIND_START, SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-import type { CanvasPixelSize, NexusRenderSettings, SceneSnapshot, SdfNode, Vec3 } from "./types";
+import type { NexusCanvasPixelSize, NexusRenderSettings, NexusRenderStats, SceneSnapshot, SdfNode, Vec3 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -37,14 +37,19 @@ export class WebGpuSdfRenderer {
   private customSdfKindIds = new Map<string, number>();
   private snapshot: SceneSnapshot | null = null;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
-  private canvasPixelSize: CanvasPixelSize = { width: 0, height: 0 };
+  private renderStats: NexusRenderStats = {
+    canvasPixelSize: { width: 0, height: 0 },
+    fps: 0,
+  };
   private frameId = 0;
   private startTime = performance.now();
+  private lastFpsSampleTime = this.startTime;
+  private framesSinceFpsSample = 0;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly device: GPUDevice,
-    private readonly onCanvasPixelSizeChange?: (size: CanvasPixelSize) => void,
+    private readonly onRenderStatsChange?: (stats: NexusRenderStats) => void,
   ) {
     const context = canvas.getContext("webgpu");
     if (!context) {
@@ -84,7 +89,7 @@ export class WebGpuSdfRenderer {
   /** WebGPUアダプタとデバイスを確保し、レンダラを初期化するファクトリ。 */
   static async create(
     canvas: HTMLCanvasElement,
-    options: { onCanvasPixelSizeChange?: (size: CanvasPixelSize) => void } = {},
+    options: { onRenderStatsChange?: (stats: NexusRenderStats) => void } = {},
   ) {
     if (!navigator.gpu) {
       throw new Error("WebGPU is not enabled. Use a current Chromium, Edge, or Safari Technology Preview build.");
@@ -99,7 +104,7 @@ export class WebGpuSdfRenderer {
     }
 
     const device = await adapter.requestDevice();
-    return new WebGpuSdfRenderer(canvas, device, options.onCanvasPixelSizeChange);
+    return new WebGpuSdfRenderer(canvas, device, options.onRenderStatsChange);
   }
 
   /** 新しいシーンスナップショットを受け取り、SDFオブジェクト用Storage Bufferを更新する。 */
@@ -134,10 +139,30 @@ export class WebGpuSdfRenderer {
       this.canvas.height = height;
     }
 
-    if (this.canvasPixelSize.width !== width || this.canvasPixelSize.height !== height) {
-      this.canvasPixelSize = { width, height };
-      this.onCanvasPixelSizeChange?.(this.canvasPixelSize);
+    if (
+      this.renderStats.canvasPixelSize.width !== width ||
+      this.renderStats.canvasPixelSize.height !== height
+    ) {
+      this.setRenderStats({ canvasPixelSize: { width, height } });
     }
+  }
+
+  private setRenderStats(stats: Partial<NexusRenderStats>) {
+    this.renderStats = { ...this.renderStats, ...stats };
+    this.onRenderStatsChange?.(this.renderStats);
+  }
+
+  private updateFps(now: number) {
+    this.framesSinceFpsSample += 1;
+
+    const elapsed = now - this.lastFpsSampleTime;
+    if (elapsed < 500) {
+      return;
+    }
+
+    this.setRenderStats({ fps: (this.framesSinceFpsSample * 1000) / elapsed });
+    this.framesSinceFpsSample = 0;
+    this.lastFpsSampleTime = now;
   }
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
@@ -292,6 +317,8 @@ export class WebGpuSdfRenderer {
   /** 毎フレームの描画ループ。フルスクリーン三角形を1枚描き、Fragment ShaderでSDFを評価する。 */
   private frame = () => {
     this.frameId = requestAnimationFrame(this.frame);
+    const now = performance.now();
+    this.updateFps(now);
     this.resize();
 
     if (!this.snapshot) {

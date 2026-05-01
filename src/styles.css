@@ -135,6 +135,10 @@ input {
   grid-template-columns: minmax(0, 1fr) minmax(132px, max-content);
 }
 
+.control-row.stat-row {
+  grid-template-columns: minmax(0, 1fr) 64px;
+}
+
 .control-row output {
   justify-self: end;
   color: #f8fafc;

@@ -28,7 +28,7 @@ export function NexusCanvas({
   lighting,
   orbitControls = false,
   renderSettings,
-  onCanvasPixelSizeChange,
+  onRenderStatsChange,
   children,
 }: NexusCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -178,7 +178,7 @@ export function NexusCanvas({
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
-    WebGpuSdfRenderer.create(canvas, { onCanvasPixelSizeChange })
+    WebGpuSdfRenderer.create(canvas, { onRenderStatsChange })
       .then((renderer) => {
         if (cancelled) {
           renderer.destroy();
@@ -202,7 +202,7 @@ export function NexusCanvas({
       rendererRef.current?.destroy();
       rendererRef.current = null;
     };
-  }, [onCanvasPixelSizeChange, store]);
+  }, [onRenderStatsChange, store]);
 
   if (error) {
     return (

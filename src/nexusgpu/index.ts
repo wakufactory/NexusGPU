@@ -3,9 +3,10 @@ export { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 export { useFrame } from "./SceneContext";
 export { SdfBox, SdfFunction, SdfSphere } from "./primitives";
 export type {
-  CanvasPixelSize,
+  NexusCanvasPixelSize,
   NexusFrameCallback,
   NexusFrameState,
+  NexusRenderStats,
   NexusCamera,
   NexusLighting,
   NexusRenderSettings,
