@@ -26,8 +26,23 @@ fn intersectHit(a: SceneHit, b: SceneHit) -> SceneHit {
   return b;
 }
 
-fn subtractHit(a: SceneHit, b: SceneHit) -> SceneHit {
-  return SceneHit(max(a.distance, -b.distance), a.color, a.smoothness);
+fn subtractHit(a: SceneHit, b: SceneHit, smoothness: f32) -> SceneHit {
+  let effectiveSmoothness = min(smoothness, min(a.smoothness, b.smoothness));
+  let invertedBDistance = -b.distance;
+
+  if (effectiveSmoothness <= 0.0001) {
+    if (invertedBDistance > a.distance) {
+      return SceneHit(invertedBDistance, b.color, b.smoothness);
+    }
+
+    return a;
+  }
+
+  let h = clamp(0.5 + 0.5 * (a.distance - invertedBDistance) / effectiveSmoothness, 0.0, 1.0);
+  let distance = mix(invertedBDistance, a.distance, h) + effectiveSmoothness * h * (1.0 - h);
+  let color = mix(b.color, a.color, h);
+
+  return SceneHit(distance, color, effectiveSmoothness);
 }
 
 fn notHit(value: SceneHit) -> SceneHit {

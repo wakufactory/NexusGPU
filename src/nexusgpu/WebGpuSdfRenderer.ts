@@ -540,7 +540,7 @@ function compileExpandedSceneNode(
     if (node.op === "and") {
       lines.push(`  ${hitName} = intersectHit(${hitName}, ${child.hitName});`);
     } else if (node.op === "subtract") {
-      lines.push(`  ${hitName} = subtractHit(${hitName}, ${child.hitName});`);
+      lines.push(`  ${hitName} = subtractHit(${hitName}, ${child.hitName}, ${smoothness});`);
     } else {
       lines.push(`  ${hitName} = unionHit(${hitName}, ${child.hitName}, ${smoothness});`);
     }
