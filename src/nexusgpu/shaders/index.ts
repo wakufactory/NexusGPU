@@ -7,9 +7,10 @@ import { sdfPrimitivesShader } from "./sdfPrimitivesShader";
 import { shaderLayout } from "./shaderLayout";
 import { resolveShaderIncludes, shaderChunkLibrary } from "./shaderLibrary";
 import { vertexShader } from "./vertexShader";
-import type { CustomSdfFunctionShaderEntry } from "./sceneMappingShader";
 
-export type CustomSdfFunctionShader = CustomSdfFunctionShaderEntry & {
+export type CustomSdfFunctionShader = {
+  kindId: number;
+  functionName: string;
   source: string;
 };
 
@@ -31,7 +32,7 @@ export function assembleSdfShader(
   mapSceneBody?: string,
 ) {
   const customFunctionSources = customSdfFunctions.map(({ source }) => source).join("\n\n");
-  const sceneMappingShader = createSceneMappingShader(customSdfFunctions, mapSceneBody);
+  const sceneMappingShader = createSceneMappingShader(mapSceneBody);
 
   return resolveShaderIncludes(
     [

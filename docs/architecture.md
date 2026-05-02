@@ -324,12 +324,18 @@ Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32
 ```wgsl
 fn mapScene(point: vec3<f32>) -> SceneHit {
   var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));
-  let hit0 = evalObject(0u, point);
-  let hit1 = evalObject(1u, point);
-  var groupHit2 = unionHit(hit0, hit1, 0.7);
-  let hit3 = evalObject(2u, point);
-  var groupHit4 = intersectHit(groupHit2, hit3);
-  best = unionHit(best, groupHit4, 0.7);
+  let object0 = objects[0u];
+  let localPoint1 = rotateByQuaternion(point - object0.positionKind.xyz, vec4<f32>(-object0.rotation.xyz, object0.rotation.w));
+  let hit2 = SceneHit(sdSphere(localPoint1, object0.data0.x), object0.colorSmooth.rgb);
+  let object3 = objects[1u];
+  let localPoint4 = rotateByQuaternion(point - object3.positionKind.xyz, vec4<f32>(-object3.rotation.xyz, object3.rotation.w));
+  let hit5 = SceneHit(sdSphere(localPoint4, object3.data0.x), object3.colorSmooth.rgb);
+  var groupHit6 = unionHit(hit2, hit5, 0.7);
+  let object7 = objects[2u];
+  let localPoint8 = rotateByQuaternion(point - object7.positionKind.xyz, vec4<f32>(-object7.rotation.xyz, object7.rotation.w));
+  let hit9 = SceneHit(customSdfFunction0(localPoint8, object7.data0, object7.data1, object7.data2), object7.colorSmooth.rgb);
+  var groupHit10 = intersectHit(groupHit6, hit9);
+  best = unionHit(best, groupHit10, 0.7);
   return best;
 }
 ```
@@ -340,9 +346,9 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
 
 WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects, customSdfFunctions, mapSceneBody)`が各セクションを結合し、最終的な`shaderModule`用文字列を作ります。
 
-組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名と動的kind IDを割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じkind IDと同じWGSL関数を共有します。
+組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名を割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じWGSL関数を共有します。
 
-`mapSceneBody`は`SceneSnapshot.sceneNodes`から生成される展開済みWGSLです。`sceneMappingShader.ts`は`unionHit`、`intersectHit`、`subtractHit`、`notHit`、`evalObject`などの共通関数を定義し、その後ろに展開済み`mapScene()`を差し込みます。グループ構造をGPUでループ解釈するのではなく、CPU側でWGSLへコンパイルする形です。
+`mapSceneBody`は`SceneSnapshot.sceneNodes`から生成される展開済みWGSLです。`sceneMappingShader.ts`は`unionHit`、`intersectHit`、`subtractHit`、`notHit`などの共通関数を定義し、その後ろに展開済み`mapScene()`を差し込みます。グループ構造やprimitive種別をGPUでループ/分岐解釈するのではなく、CPU側でWGSLへコンパイルする形です。
 
 各WGSLセクション内では、組み込みチャンクライブラリから`#include <sdf/sphere>`の形式で関数群を取り込めます。includeは`assembleSdfShader()`の最後に再帰的に解決され、未登録チャンクや循環参照は例外として検出されます。組み込みチャンクは`src/nexusgpu/shaders/shaderLibrary.ts`に定義します。
 
@@ -366,7 +372,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `shaderLayout.ts`: `CameraUniform`、`SdfObject`、`SceneHit`、`@group(0)`のbuffer bindingを定義する
 - `vertexShader.ts`: 画面全体を覆う三角形を1枚描く`vertexMain`を定義する
 - `sdfPrimitivesShader.ts`: `sdSphere`、`sdBox`、`smoothMin`、`rotateByQuaternion`を定義する
-- `sceneMappingShader.ts`: boolean合成用の補助関数、`evalObject()`、展開済み`mapScene()`を含むシーン評価コードを生成する。custom SDF関数がある場合はkind IDごとの分岐も追加する
+- `sceneMappingShader.ts`: boolean合成用の補助関数と、展開済み`mapScene()`を含むシーン評価コードを生成する
 - `raymarchShader.ts`: `mapScene`を使ってレイを進める`raymarch`を定義する
 - `lightingShader.ts`: `estimateNormal`と未ヒット時の`background`を定義する
 - `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す
@@ -717,7 +723,7 @@ WebGpuSdfRenderer.updateFps()
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
 - `SdfGroup`の構造、boolean演算、グループsmoothnessが変わると、展開済み`mapScene()`が変わるためShader Module / Render Pipelineを再生成する
 - primitiveのposition、rotation、color、size、radius、dataなどの値だけが変わる場合は、原則としてStorage Buffer更新だけで済む
-- ユニークな`SdfFunction`が増えるほど`mapScene()`のkind分岐が長くなる
+- ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と`mapScene()`内の直接呼び出しが増える
 - `SdfGroup`は現在、常にWGSLへ展開される。数十オブジェクト規模を想定しており、大量オブジェクトではshaderコードサイズやpipeline再生成コストが課題になる
 - オブジェクト数上限は`MAX_SDF_OBJECTS = 128`
 - Storage Bufferは変更時に全体再アップロード

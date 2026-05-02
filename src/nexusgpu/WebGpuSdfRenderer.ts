@@ -236,7 +236,10 @@ export class WebGpuSdfRenderer {
     this.customSdfKindIds = new Map(
       sdfFunctions.map((sdfFunction, index) => [sdfFunction, CUSTOM_SDF_PRIMITIVE_KIND_START + index]),
     );
-    const mapSceneBody = createExpandedMapSceneBody(snapshot.sceneNodes);
+    const customSdfFunctionNames = new Map(
+      sdfFunctions.map((sdfFunction, index) => [sdfFunction, `customSdfFunction${index}`]),
+    );
+    const mapSceneBody = createExpandedMapSceneBody(snapshot.sceneNodes, customSdfFunctionNames);
     const signature = [
       sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
       createSceneTopologySignature(snapshot.sceneNodes),
@@ -253,9 +256,12 @@ export class WebGpuSdfRenderer {
   }
 
   private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
+    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody);
+    console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
+
     const shaderModule = this.device.createShaderModule({
       label: "NexusGPU SDF Raymarcher",
-      code: assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody),
+      code: shaderCode,
     });
 
     const pipeline = this.device.createRenderPipeline({
@@ -445,7 +451,12 @@ type ExpandedSceneCompileResult = {
   smoothnessExpression: string;
 };
 
-function createExpandedMapSceneBody(sceneNodes: readonly SdfSceneNode[]) {
+type CustomSdfFunctionNameMap = ReadonlyMap<string, string>;
+
+function createExpandedMapSceneBody(
+  sceneNodes: readonly SdfSceneNode[],
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
+) {
   const state: ExpandedSceneCompileState = { primitiveIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
@@ -453,7 +464,7 @@ function createExpandedMapSceneBody(sceneNodes: readonly SdfSceneNode[]) {
   ];
 
   for (const node of sceneNodes) {
-    const result = compileExpandedSceneNode(node, state);
+    const result = compileExpandedSceneNode(node, state, customSdfFunctionNames);
     chunks.push(result.code);
     chunks.push(`  best = unionHit(best, ${result.hitName}, ${result.smoothnessExpression});`);
   }
@@ -475,21 +486,34 @@ function createEmptyMapSceneBody() {
 function compileExpandedSceneNode(
   node: SdfSceneNode,
   state: ExpandedSceneCompileState,
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
 ): ExpandedSceneCompileResult {
   if (node.type === "primitive") {
     const primitiveIndex = state.primitiveIndex;
     const hitName = nextTempName("hit", state);
+    const objectName = nextTempName("object", state);
+    const localPointName = nextTempName("localPoint", state);
+    const distanceExpression = createPrimitiveDistanceExpression(
+      node.node,
+      localPointName,
+      objectName,
+      customSdfFunctionNames,
+    );
 
     state.primitiveIndex += 1;
 
     return {
-      code: `  let ${hitName} = evalObject(${primitiveIndex}u, point);`,
+      code: [
+        `  let ${objectName} = objects[${primitiveIndex}u];`,
+        `  let ${localPointName} = rotateByQuaternion(point - ${objectName}.positionKind.xyz, vec4<f32>(-${objectName}.rotation.xyz, ${objectName}.rotation.w));`,
+        `  let ${hitName} = SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb);`,
+      ].join("\n"),
       hitName,
-      smoothnessExpression: `objects[${primitiveIndex}u].colorSmooth.w`,
+      smoothnessExpression: `${objectName}.colorSmooth.w`,
     };
   }
 
-  const children = node.children.map((child) => compileExpandedSceneNode(child, state));
+  const children = node.children.map((child) => compileExpandedSceneNode(child, state, customSdfFunctionNames));
   const hitName = nextTempName("groupHit", state);
   const smoothness = formatWgslFloat(node.smoothness);
 
@@ -527,6 +551,32 @@ function compileExpandedSceneNode(
     hitName,
     smoothnessExpression: smoothness,
   };
+}
+
+function createPrimitiveDistanceExpression(
+  node: SdfNode,
+  localPointName: string,
+  objectName: string,
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
+) {
+  if (node.kind === "sphere") {
+    return `sdSphere(${localPointName}, ${objectName}.data0.x)`;
+  }
+
+  if (node.kind === "box") {
+    return `sdBox(${localPointName}, ${objectName}.data0.xyz)`;
+  }
+
+  if (!node.sdfFunction) {
+    throw new Error("SdfFunction requires a non-empty WGSL function string.");
+  }
+
+  const functionName = customSdfFunctionNames.get(node.sdfFunction);
+  if (!functionName) {
+    throw new Error("SdfFunction was not registered before scene shader expansion.");
+  }
+
+  return `${functionName}(${localPointName}, ${objectName}.data0, ${objectName}.data1, ${objectName}.data2)`;
 }
 
 function createSceneTopologySignature(sceneNodes: readonly SdfSceneNode[]): string {

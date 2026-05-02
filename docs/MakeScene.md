@@ -112,7 +112,7 @@ export function RoundedBoxScene() {
 }
 ```
 
-同じ`sdfFunction`文字列を複数objectで使う場合は、同じGPU側関数とkind IDが共有されます。異なる`sdfFunction`文字列が増えると、シェーダの再生成と`mapScene()`内のkind分岐が増えるため、頻繁に変わる値は関数文字列に埋め込まず`data0-2`で渡してください。
+同じ`sdfFunction`文字列を複数objectで使う場合は、同じGPU側関数が共有されます。異なる`sdfFunction`文字列が増えると、シェーダの再生成と`mapScene()`内の直接呼び出し先が増えるため、頻繁に変わる値は関数文字列に埋め込まず`data0-2`で渡してください。
 
 ## SdfGroupでSDFを組み合わせる
 
@@ -462,21 +462,25 @@ fn sdTorus(point: vec3<f32>, radii: vec2<f32>) -> f32 {
 #include <sdf/torus>
 ```
 
-### 5. mapSceneに分岐を追加する
+### 5. mapScene生成に距離式を追加する
 
-`src/nexusgpu/shaders/sceneMappingShader.ts`で、kind IDに応じて新しいSDF関数を呼びます。
+`src/nexusgpu/WebGpuSdfRenderer.ts`の`createPrimitiveDistanceExpression()`で、新しいprimitive種別に対応するSDF関数呼び出しを追加します。`mapScene()`はシーン木からリニアに展開されるため、WGSL側でkind ID分岐を追加する必要はありません。
 
 ```ts
-if (kind == ${SDF_PRIMITIVE_KIND_IDS.sphere}u) {
-  distance = sdSphere(localPoint, object.data0.x);
-} else if (kind == ${SDF_PRIMITIVE_KIND_IDS.box}u) {
-  distance = sdBox(localPoint, object.data0.xyz);
-} else if (kind == ${SDF_PRIMITIVE_KIND_IDS.torus}u) {
-  distance = sdTorus(localPoint, object.data0.xy);
+if (node.kind === "sphere") {
+  return `sdSphere(${localPointName}, ${objectName}.data0.x)`;
+}
+
+if (node.kind === "box") {
+  return `sdBox(${localPointName}, ${objectName}.data0.xyz)`;
+}
+
+if (node.kind === "torus") {
+  return `sdTorus(${localPointName}, ${objectName}.data0.xy)`;
 }
 ```
 
-`distance`は`evalObject()`内で先に`camera.renderInfo.y`へ初期化されています。`SdfFunction`用の動的kind分岐は、同じ`if`チェーンの後ろへ既存の`customBranches`として差し込まれます。
+`SdfFunction`の場合は、レンダラが関数文字列ごとに`customSdfFunction0`のような関数名を割り当て、展開済み`mapScene()`内から直接呼び出します。
 
 ### 6. exportを追加する
 
@@ -508,7 +512,7 @@ export function TorusScene() {
 - `primitives.tsx`で`upsertSceneNode(id, { type: "primitive", node, bounds })`と`removeSceneNode(id)`を使って登録・解除した
 - `shaderLibrary.ts`にWGSL関数を追加した
 - `sdfPrimitivesShader.ts`でWGSLチャンクをincludeした
-- `sceneMappingShader.ts`でkind分岐と距離計算を追加した
+- `WebGpuSdfRenderer.ts`の`createPrimitiveDistanceExpression()`で距離計算を追加した
 - `index.ts`からcomponentと型をexportした
 - scene内で新しいcomponentをimportして描画確認した
 
@@ -519,6 +523,6 @@ export function TorusScene() {
 - `SdfGroup`を使うsceneは、レンダラがシーン木をWGSLの`mapScene()`へ展開して`or`、`and`、`subtract`、`not`を評価する
 - primitiveごとの追加データは`data0`, `data1`, `data2`の`vec4` 3本まで
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
-- ユニークな`SdfFunction`が増えるほど`mapScene()`のkind分岐が長くなる
+- ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と`mapScene()`内の直接呼び出しが増える
 - `rotation`はquaternionで指定する
 - SDF primitiveはDOMを描画しないため、CSSでは見た目を変更できない
