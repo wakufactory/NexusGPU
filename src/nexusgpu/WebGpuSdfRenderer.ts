@@ -538,7 +538,7 @@ function compileExpandedSceneNode(
 
   for (const child of children.slice(1)) {
     if (node.op === "and") {
-      lines.push(`  ${hitName} = intersectHit(${hitName}, ${child.hitName});`);
+      lines.push(`  ${hitName} = intersectHit(${hitName}, ${child.hitName}, ${smoothness});`);
     } else if (node.op === "subtract") {
       lines.push(`  ${hitName} = subtractHit(${hitName}, ${child.hitName}, ${smoothness});`);
     } else {

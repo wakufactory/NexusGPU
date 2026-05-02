@@ -18,12 +18,22 @@ fn unionHit(a: SceneHit, b: SceneHit, smoothness: f32) -> SceneHit {
   return SceneHit(distance, color, effectiveSmoothness);
 }
 
-fn intersectHit(a: SceneHit, b: SceneHit) -> SceneHit {
-  if (a.distance > b.distance) {
-    return a;
+fn intersectHit(a: SceneHit, b: SceneHit, smoothness: f32) -> SceneHit {
+  let effectiveSmoothness = min(smoothness, min(a.smoothness, b.smoothness));
+
+  if (effectiveSmoothness <= 0.0001) {
+    if (a.distance > b.distance) {
+      return a;
+    }
+
+    return b;
   }
 
-  return b;
+  let h = clamp(0.5 + 0.5 * (a.distance - b.distance) / effectiveSmoothness, 0.0, 1.0);
+  let distance = mix(b.distance, a.distance, h) + effectiveSmoothness * h * (1.0 - h);
+  let color = mix(b.color, a.color, h);
+
+  return SceneHit(distance, color, effectiveSmoothness);
 }
 
 fn subtractHit(a: SceneHit, b: SceneHit, smoothness: f32) -> SceneHit {
