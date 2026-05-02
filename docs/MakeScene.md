@@ -414,10 +414,11 @@ export function SdfTorus({
   color,
   smoothness = 0,
 }: SdfTorusProps) {
-  const store = useSceneStore();
+  const target = useSdfSceneNodeTarget();
   const id = useStableId();
 
   useEffect(() => {
+    const radius = Math.max(0.001, majorRadius) + Math.max(0.001, minorRadius);
     const node: SdfNode = {
       id,
       kind: "torus",
@@ -426,20 +427,21 @@ export function SdfTorus({
       color: normalizeVec3(color, DEFAULT_COLOR),
       data: createSdfData([Math.max(0.001, majorRadius), Math.max(0.001, minorRadius), 0, 0]),
       smoothness: clamp(smoothness, 0, 2),
+      bounds: createSphereBounds(position, radius),
     };
 
-    store.upsertNode(node);
-  }, [color, id, majorRadius, minorRadius, position, rotation, smoothness, store]);
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [color, id, majorRadius, minorRadius, position, rotation, smoothness, target]);
 
   useEffect(() => {
-    return () => store.removeNode(id);
-  }, [id, store]);
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
 
   return null;
 }
 ```
 
-この例では`data0.x`にmajor radius、`data0.y`にminor radiusを入れています。GPU側のWGSLでも同じ意味で読みます。
+この例では`data0.x`にmajor radius、`data0.y`にminor radiusを入れています。`bounds`はグループのbounding sphere計算に使うCPU側メタデータです。GPU側のWGSLでも同じ半径値を読みます。
 
 ### 4. WGSLのSDF関数を追加する
 
@@ -471,17 +473,17 @@ if (kind == ${SDF_PRIMITIVE_KIND_IDS.sphere}u) {
   distance = sdBox(localPoint, object.data0.xyz);
 } else if (kind == ${SDF_PRIMITIVE_KIND_IDS.torus}u) {
   distance = sdTorus(localPoint, object.data0.xy);
-} else {
-  distance = camera.renderInfo.y;
 }
 ```
+
+`distance`は`evalObject()`内で先に`camera.renderInfo.y`へ初期化されています。`SdfFunction`用の動的kind分岐は、同じ`if`チェーンの後ろへ既存の`customBranches`として差し込まれます。
 
 ### 6. exportを追加する
 
 `src/nexusgpu/index.ts`から新しいcomponentとprops型をexportします。
 
 ```ts
-export { SdfBox, SdfSphere, SdfTorus } from "./primitives";
+export { SdfBox, SdfFunction, SdfGroup, SdfNot, SdfSphere, SdfSubtract, SdfTorus } from "./primitives";
 
 export type {
   SdfTorusProps,
@@ -502,7 +504,8 @@ export function TorusScene() {
 
 - `sdfKinds.ts`に一意なkind IDを追加し、`CUSTOM_SDF_PRIMITIVE_KIND_START`を組み込みkind IDの最大値 + 1 に更新した
 - `types.ts`にprops型を追加した
-- `primitives.tsx`でpropsを正規化し、`SdfNode.data`へ必要な値を入れた
+- `primitives.tsx`でpropsを正規化し、`SdfNode.data`と`bounds`へ必要な値を入れた
+- `primitives.tsx`で`upsertSceneNode(id, { type: "primitive", node, bounds })`と`removeSceneNode(id)`を使って登録・解除した
 - `shaderLibrary.ts`にWGSL関数を追加した
 - `sdfPrimitivesShader.ts`でWGSLチャンクをincludeした
 - `sceneMappingShader.ts`でkind分岐と距離計算を追加した
@@ -512,7 +515,8 @@ export function TorusScene() {
 ## 制限
 
 - 現在のSDF object数上限は`MAX_SDF_OBJECTS = 128`
-- 合成は全objectに対するsmooth minベース
+- `SdfGroup`を使わないフラットなsceneは全objectをunion評価する
+- `SdfGroup`を使うsceneは、レンダラがシーン木をWGSLの`mapScene()`へ展開して`or`、`and`、`subtract`、`not`を評価する
 - primitiveごとの追加データは`data0`, `data1`, `data2`の`vec4` 3本まで
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
 - ユニークな`SdfFunction`が増えるほど`mapScene()`のkind分岐が長くなる
