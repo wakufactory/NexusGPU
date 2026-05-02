@@ -10,6 +10,8 @@ import type { AnyNexusSceneDefinition, SceneParametersPanelProps } from "./scene
 import type { SceneId } from "./scenes/registry";
 import type { ComponentType } from "react";
 
+const ACTIVE_SCENE_STORAGE_KEY = "nexusgpu.activeSceneId";
+
 type SceneCanvasProps = {
   scene: AnyNexusSceneDefinition;
   parameters: object;
@@ -56,12 +58,33 @@ function ActiveSceneParametersPanel<Parameters extends object>({
   return ParametersPanel ? <ParametersPanel parameters={parameters} onChange={onChange} /> : null;
 }
 
+function isSceneId(value: string | null): value is SceneId {
+  return SCENES.some((scene) => scene.id === value);
+}
+
+function getInitialActiveSceneId(): SceneId {
+  try {
+    const storedSceneId = localStorage.getItem(ACTIVE_SCENE_STORAGE_KEY);
+    return isSceneId(storedSceneId) ? storedSceneId : DEFAULT_SCENE_ID;
+  } catch {
+    return DEFAULT_SCENE_ID;
+  }
+}
+
+function saveActiveSceneId(sceneId: SceneId) {
+  try {
+    localStorage.setItem(ACTIVE_SCENE_STORAGE_KEY, sceneId);
+  } catch {
+    // Ignore unavailable storage and keep the in-memory scene selection working.
+  }
+}
+
 /** NexusGPUの現在のAPIを触るためのデモアプリ。 */
 export function App() {
   const { shellRef, isFullscreen, fullscreenStyle, toggleFullscreen } = useFullscreenViewport();
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
   const [renderSettings, setRenderSettings] = useState(INITIAL_RENDER_SETTINGS);
-  const [activeSceneId, setActiveSceneId] = useState<SceneId>(DEFAULT_SCENE_ID);
+  const [activeSceneId, setActiveSceneId] = useState<SceneId>(getInitialActiveSceneId);
   const [renderStats, setRenderStats] = useState<NexusRenderStats | null>(null);
   const activeScene = getSceneDefinition(activeSceneId);
   const [sceneParameters, setSceneParameters] = useState<object>(activeScene.initialParameters);
@@ -74,6 +97,7 @@ export function App() {
     const nextScene = getSceneDefinition(sceneId);
     setActiveSceneId(sceneId);
     setSceneParameters(nextScene.initialParameters);
+    saveActiveSceneId(sceneId);
   };
 
   return (
