@@ -16,16 +16,6 @@ import type { AnyNexusSceneDefinition } from "./types";
 
 export const SCENES = [
   {
-    id: "wave-sdf",
-    title: "Wave SDF",
-    description: "Animated height-field plane built with SdfFunction.",
-    camera: WAVE_SDF_CAMERA,
-    lighting: WAVE_SDF_LIGHTING,
-    initialParameters: WAVE_SDF_INITIAL_PARAMETERS,
-    Component: WaveSdfScene,
-    ParametersPanel: WaveSdfSceneParametersPanel,
-  },
-  {
     id: "animated-sdf",
     title: "AnimatedSdfScene2",
     description: "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
@@ -35,11 +25,21 @@ export const SCENES = [
     Component: AnimatedSdfScene,
     ParametersPanel: SceneParametersPanel,
   },
+  {
+    id: "wave-sdf",
+    title: "Wave SDF",
+    description: "Animated height-field plane built with SdfFunction.",
+    camera: WAVE_SDF_CAMERA,
+    lighting: WAVE_SDF_LIGHTING,
+    initialParameters: WAVE_SDF_INITIAL_PARAMETERS,
+    Component: WaveSdfScene,
+    ParametersPanel: WaveSdfSceneParametersPanel,
+  },
 ] satisfies readonly AnyNexusSceneDefinition[];
 
 export type SceneId = (typeof SCENES)[number]["id"];
 
-export const DEFAULT_SCENE_ID: SceneId = "wave-sdf";
+export const DEFAULT_SCENE_ID: SceneId = "animated-sdf";
 
 export function getSceneDefinition(sceneId: SceneId): AnyNexusSceneDefinition {
   return SCENES.find((scene) => scene.id === sceneId) ?? SCENES[0];

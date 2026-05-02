@@ -139,6 +139,7 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
           />
         ))}
       </SdfGroup>
+      <SdfGroup op="not" smoothness={0.3}>
         <SdfFunction
           sdfFunction="let k0 = length(point / data0.xyz); let k1 = length(point / (data0.xyz * data0.xyz)); return k0 * (k0 - 1.0) / k1;"
           data0={[0.7, 0.5, 0.2, 0.3]}
@@ -147,6 +148,7 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
           smoothness={0.3}
           bounds={{ radius: 0.8 }}
         />
+        </SdfGroup>
       </SdfGroup>
     </>
   );
