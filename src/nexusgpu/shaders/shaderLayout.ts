@@ -25,10 +25,11 @@ struct SdfObject {
   rotation: vec4<f32>,
 };
 
-// 距離場を評価した結果。distanceは最短距離、colorは最も近い形状の色。
+// 距離場を評価した結果。smoothnessはこのhitがsmooth unionに参加できる幅。
 struct SceneHit {
   distance: f32,
   color: vec3<f32>,
+  smoothness: f32,
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;

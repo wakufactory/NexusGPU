@@ -1,19 +1,21 @@
 export function createSceneMappingShader(mapSceneBody: string = createEmptyMapSceneBody()) {
   return /* wgsl */ `
 fn unionHit(a: SceneHit, b: SceneHit, smoothness: f32) -> SceneHit {
-  let distance = smoothMin(a.distance, b.distance, smoothness);
-  var color = a.color;
+  let effectiveSmoothness = min(smoothness, min(a.smoothness, b.smoothness));
 
-  if (b.distance < a.distance) {
-    color = b.color;
+  if (effectiveSmoothness <= 0.0001) {
+    if (b.distance < a.distance) {
+      return b;
+    }
+
+    return a;
   }
 
-  if (smoothness > 0.0001) {
-    let colorBlend = 1.0 - smoothstep(0.0, smoothness, abs(a.distance - b.distance));
-    color = mix(color, a.color, colorBlend * 0.3);
-  }
+  let h = clamp(0.5 + 0.5 * (b.distance - a.distance) / effectiveSmoothness, 0.0, 1.0);
+  let distance = mix(b.distance, a.distance, h) - effectiveSmoothness * h * (1.0 - h);
+  let color = mix(b.color, a.color, h);
 
-  return SceneHit(distance, color);
+  return SceneHit(distance, color, effectiveSmoothness);
 }
 
 fn intersectHit(a: SceneHit, b: SceneHit) -> SceneHit {
@@ -25,11 +27,11 @@ fn intersectHit(a: SceneHit, b: SceneHit) -> SceneHit {
 }
 
 fn subtractHit(a: SceneHit, b: SceneHit) -> SceneHit {
-  return SceneHit(max(a.distance, -b.distance), a.color);
+  return SceneHit(max(a.distance, -b.distance), a.color, a.smoothness);
 }
 
 fn notHit(value: SceneHit) -> SceneHit {
-  return SceneHit(-value.distance, value.color);
+  return SceneHit(-value.distance, value.color, value.smoothness);
 }
 
 ${mapSceneBody}
@@ -39,7 +41,7 @@ ${mapSceneBody}
 function createEmptyMapSceneBody() {
   return /* wgsl */ `
 fn mapScene(point: vec3<f32>) -> SceneHit {
-  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));
+  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);
 }
 `;
 }

@@ -19,7 +19,7 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
 
     if (abs(hit.distance) < surfaceEpsilon) {
       color = hit.color;
-      return SceneHit(depth, color);
+      return SceneHit(depth, color, hit.smoothness);
     }
 
     // CSGのnot/subtractでは距離符号が反転しやすい。負距離へ踏み込んだら直前区間を戻ってゼロ交差を探す。
@@ -41,7 +41,7 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
       }
 
       color = refinedHit.color;
-      return SceneHit(high, color);
+      return SceneHit(high, color, refinedHit.smoothness);
     }
 
     previousDepth = depth;
@@ -52,6 +52,6 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     }
   }
 
-  return SceneHit(-1.0, color);
+  return SceneHit(-1.0, color, 0.0);
 }
 `;

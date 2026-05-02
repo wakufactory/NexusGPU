@@ -460,7 +460,7 @@ function createExpandedMapSceneBody(
   const state: ExpandedSceneCompileState = { primitiveIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
-    "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));",
+    "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
   ];
 
   for (const node of sceneNodes) {
@@ -478,7 +478,7 @@ function createExpandedMapSceneBody(
 function createEmptyMapSceneBody() {
   return [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
-    "  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));",
+    "  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
     "}",
   ].join("\n");
 }
@@ -506,7 +506,7 @@ function compileExpandedSceneNode(
       code: [
         `  let ${objectName} = objects[${primitiveIndex}u];`,
         `  let ${localPointName} = rotateByQuaternion(point - ${objectName}.positionKind.xyz, vec4<f32>(-${objectName}.rotation.xyz, ${objectName}.rotation.w));`,
-        `  let ${hitName} = SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb);`,
+        `  let ${hitName} = SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w);`,
       ].join("\n"),
       hitName,
       smoothnessExpression: `${objectName}.colorSmooth.w`,
@@ -519,7 +519,7 @@ function compileExpandedSceneNode(
 
   if (children.length === 0) {
     return {
-      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));`,
+      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
       hitName,
       smoothnessExpression: smoothness,
     };
