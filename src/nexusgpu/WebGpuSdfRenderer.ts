@@ -36,6 +36,8 @@ export class WebGpuSdfRenderer {
   private readonly format: GPUTextureFormat;
   private readonly cameraBuffer: GPUBuffer;
   private readonly objectBuffer: GPUBuffer;
+  private readonly sceneBindGroupLayout: GPUBindGroupLayout;
+  private readonly pipelineLayout: GPUPipelineLayout;
   private readonly resizeObserver: ResizeObserver;
   private readonly objectData = new Float32Array(MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS);
   private readonly cameraData = new Float32Array(CAMERA_FLOATS);
@@ -82,6 +84,32 @@ export class WebGpuSdfRenderer {
       label: "NexusGPU SDF Object Storage",
       size: OBJECT_BUFFER_SIZE,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.sceneBindGroupLayout = device.createBindGroupLayout({
+      label: "NexusGPU Scene Bind Group Layout",
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: {
+            type: "uniform",
+            minBindingSize: CAMERA_BUFFER_SIZE,
+          },
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: {
+            type: "read-only-storage",
+            minBindingSize: OBJECT_BUFFER_SIZE,
+          },
+        },
+      ],
+    });
+    this.pipelineLayout = device.createPipelineLayout({
+      label: "NexusGPU SDF Pipeline Layout",
+      bindGroupLayouts: [this.sceneBindGroupLayout],
     });
 
     const pipelineState = this.createPipeline([], createEmptyMapSceneBody());
@@ -232,7 +260,7 @@ export class WebGpuSdfRenderer {
 
     const pipeline = this.device.createRenderPipeline({
       label: "NexusGPU SDF Pipeline",
-      layout: "auto",
+      layout: this.pipelineLayout,
       vertex: {
         module: shaderModule,
         entryPoint: "vertexMain",
@@ -249,7 +277,7 @@ export class WebGpuSdfRenderer {
 
     const bindGroup = this.device.createBindGroup({
       label: "NexusGPU Scene Bind Group",
-      layout: pipeline.getBindGroupLayout(0),
+      layout: this.sceneBindGroupLayout,
       entries: [
         { binding: 0, resource: { buffer: this.cameraBuffer } },
         { binding: 1, resource: { buffer: this.objectBuffer } },
