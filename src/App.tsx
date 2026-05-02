@@ -97,13 +97,6 @@ export function App() {
         />
       </section>
       <aside className="sidebar">
-        <div className="brand">
-          <Sparkles size={24} />
-          <div>
-            <h1>NexusGPU</h1>
-            <p>React driven SDF renderer for WebGPU.</p>
-          </div>
-        </div>
 
         <section className="panel debug-panel">
           <div className="panel-title">
@@ -136,6 +129,13 @@ export function App() {
           renderStats={renderStats}
           onChange={setRenderSettings}
         />
+        <div className="brand">
+          <Sparkles size={24} />
+          <div>
+            <h1>NexusGPU</h1>
+            <p>React driven SDF renderer for WebGPU.</p>
+          </div>
+        </div>
       </aside>
     </main>
   );
