@@ -1,18 +1,11 @@
 import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
-import {
-  CUSTOM_SDF_PRIMITIVE_KIND_START,
-  SDF_BOOLEAN_OPERATION_IDS,
-  SDF_OPERATION_KIND_IDS,
-  SDF_PRIMITIVE_KIND_IDS,
-} from "./sdfKinds";
+import { CUSTOM_SDF_PRIMITIVE_KIND_START, SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 import type {
   NexusCanvasPixelSize,
   NexusRenderSettings,
   NexusRenderStats,
   SceneSnapshot,
-  SdfBooleanOperation,
-  SdfBoundingSphere,
   SdfNode,
   SdfSceneNode,
   Vec3,
@@ -48,7 +41,7 @@ export class WebGpuSdfRenderer {
   private readonly cameraData = new Float32Array(CAMERA_FLOATS);
   private pipeline: GPURenderPipeline;
   private bindGroup: GPUBindGroup;
-  private customSdfSignature = "";
+  private shaderSignature = "";
   private customSdfKindIds = new Map<string, number>();
   private snapshot: SceneSnapshot | null = null;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
@@ -91,7 +84,7 @@ export class WebGpuSdfRenderer {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    const pipelineState = this.createPipeline([]);
+    const pipelineState = this.createPipeline([], createEmptyMapSceneBody());
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
 
@@ -125,7 +118,7 @@ export class WebGpuSdfRenderer {
   /** 新しいシーンスナップショットを受け取り、SDFオブジェクト用Storage Bufferを更新する。 */
   setScene(snapshot: SceneSnapshot) {
     this.snapshot = snapshot;
-    this.configureCustomSdfFunctions(snapshot);
+    this.configureScenePipeline(snapshot);
     this.uploadObjects(snapshot);
   }
 
@@ -182,7 +175,7 @@ export class WebGpuSdfRenderer {
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
   private uploadObjects(snapshot: SceneSnapshot) {
-    const records = compileSdfRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
+    const records = compilePrimitiveRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
     this.objectData.fill(0);
 
     records.forEach((record, index) => {
@@ -196,17 +189,11 @@ export class WebGpuSdfRenderer {
     }
   }
 
-  /** SdfFunctionごとのWGSL関数をshader moduleへ差し込み、必要なときだけpipelineを作り直す。 */
-  private configureCustomSdfFunctions(snapshot: SceneSnapshot) {
+  /** SdfFunctionとscene tree構造をshaderへ展開し、必要なときだけpipelineを作り直す。 */
+  private configureScenePipeline(snapshot: SceneSnapshot) {
     const sdfFunctions = unique(
       snapshot.nodes.flatMap((node) => (node.kind === "function" && node.sdfFunction ? [node.sdfFunction] : [])),
     );
-    const signature = sdfFunctions.join("\n/* nexusgpu-sdf-function */\n");
-
-    if (signature === this.customSdfSignature) {
-      return;
-    }
-
     const customShaders = sdfFunctions.map<CustomSdfFunctionShader>((sdfFunction, index) => {
       const functionName = `customSdfFunction${index}`;
       const kindId = CUSTOM_SDF_PRIMITIVE_KIND_START + index;
@@ -218,20 +205,29 @@ export class WebGpuSdfRenderer {
       };
     });
 
-    this.customSdfSignature = signature;
     this.customSdfKindIds = new Map(
       sdfFunctions.map((sdfFunction, index) => [sdfFunction, CUSTOM_SDF_PRIMITIVE_KIND_START + index]),
     );
+    const mapSceneBody = createExpandedMapSceneBody(snapshot.sceneNodes);
+    const signature = [
+      sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
+      createSceneTopologySignature(snapshot.sceneNodes),
+    ].join("\n/* nexusgpu-scene-topology */\n");
 
-    const pipelineState = this.createPipeline(customShaders);
+    if (signature === this.shaderSignature) {
+      return;
+    }
+
+    this.shaderSignature = signature;
+    const pipelineState = this.createPipeline(customShaders, mapSceneBody);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
   }
 
-  private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[]) {
+  private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
     const shaderModule = this.device.createShaderModule({
       label: "NexusGPU SDF Raymarcher",
-      code: assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions),
+      code: assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody),
     });
 
     const pipeline = this.device.createRenderPipeline({
@@ -291,7 +287,7 @@ export class WebGpuSdfRenderer {
     this.cameraData.set([...up, 0], 16);
     this.cameraData.set(
       [
-        Math.min(compileSdfRecordCount(snapshot.sceneNodes), MAX_SDF_OBJECTS),
+        Math.min(countPrimitiveRecords(snapshot.sceneNodes), MAX_SDF_OBJECTS),
         this.renderSettings.surfaceEpsilon,
         0,
         0,
@@ -359,44 +355,35 @@ export class WebGpuSdfRenderer {
 type SdfRecord = number[];
 type GetSdfKindId = (node: SdfNode) => number;
 
-function compileSdfRecords(sceneNodes: readonly SdfSceneNode[], getSdfKindId: GetSdfKindId) {
+function compilePrimitiveRecords(sceneNodes: readonly SdfSceneNode[], getSdfKindId: GetSdfKindId) {
   const records: SdfRecord[] = [];
 
   for (const node of sceneNodes) {
-    appendSdfRecord(node, records, getSdfKindId);
+    appendPrimitiveRecord(node, records, getSdfKindId);
   }
 
   return records;
 }
 
-function compileSdfRecordCount(sceneNodes: readonly SdfSceneNode[]): number {
+function countPrimitiveRecords(sceneNodes: readonly SdfSceneNode[]): number {
   return sceneNodes.reduce((count, node) => {
     if (node.type === "primitive") {
       return count + 1;
     }
 
-    return count + 2 + compileSdfRecordCount(node.children);
+    return count + countPrimitiveRecords(node.children);
   }, 0);
 }
 
-function appendSdfRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
+function appendPrimitiveRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
   if (node.type === "primitive") {
     records.push(createPrimitiveRecord(node.node, getSdfKindId(node.node)));
     return;
   }
 
-  const beginIndex = records.length;
-  const beginRecord = createGroupRecord(SDF_OPERATION_KIND_IDS.groupBegin, node.op, node.bounds, node.smoothness, 0, node.children.length);
-  records.push(beginRecord);
-
   for (const child of node.children) {
-    appendSdfRecord(child, records, getSdfKindId);
+    appendPrimitiveRecord(child, records, getSdfKindId);
   }
-
-  const endIndex = records.length;
-  // GROUP_BEGINはbounds skip時のジャンプ先として対応するGROUP_ENDのindexを持つ。
-  beginRecord[12] = endIndex;
-  records.push(createGroupRecord(SDF_OPERATION_KIND_IDS.groupEnd, node.op, node.bounds, node.smoothness, beginIndex, node.children.length));
 }
 
 function createPrimitiveRecord(node: SdfNode, kindId: number): SdfRecord {
@@ -419,40 +406,128 @@ function createPrimitiveRecord(node: SdfNode, kindId: number): SdfRecord {
   ];
 }
 
-function createGroupRecord(
-  kindId: number,
-  op: SdfBooleanOperation,
-  bounds: SdfBoundingSphere,
-  smoothness: number,
-  pairedIndex: number,
-  childCount: number,
-): SdfRecord {
-  return [
-    0,
-    0,
-    0,
-    kindId,
-    0,
-    0,
-    0,
-    0,
-    bounds.center[0],
-    bounds.center[1],
-    bounds.center[2],
-    bounds.radius,
-    pairedIndex,
-    SDF_BOOLEAN_OPERATION_IDS[op],
-    childCount,
-    0,
-    0,
-    0,
-    0,
-    smoothness,
-    0,
-    0,
-    0,
-    1,
+type ExpandedSceneCompileState = {
+  primitiveIndex: number;
+  tempIndex: number;
+};
+
+type ExpandedSceneCompileResult = {
+  code: string;
+  hitName: string;
+  smoothnessExpression: string;
+};
+
+function createExpandedMapSceneBody(sceneNodes: readonly SdfSceneNode[]) {
+  const state: ExpandedSceneCompileState = { primitiveIndex: 0, tempIndex: 0 };
+  const chunks: string[] = [
+    "fn mapScene(point: vec3<f32>) -> SceneHit {",
+    "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));",
   ];
+
+  for (const node of sceneNodes) {
+    const result = compileExpandedSceneNode(node, state);
+    chunks.push(result.code);
+    chunks.push(`  best = unionHit(best, ${result.hitName}, ${result.smoothnessExpression});`);
+  }
+
+  chunks.push("  return best;");
+  chunks.push("}");
+
+  return chunks.join("\n");
+}
+
+function createEmptyMapSceneBody() {
+  return [
+    "fn mapScene(point: vec3<f32>) -> SceneHit {",
+    "  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));",
+    "}",
+  ].join("\n");
+}
+
+function compileExpandedSceneNode(
+  node: SdfSceneNode,
+  state: ExpandedSceneCompileState,
+): ExpandedSceneCompileResult {
+  if (node.type === "primitive") {
+    const primitiveIndex = state.primitiveIndex;
+    const hitName = nextTempName("hit", state);
+
+    state.primitiveIndex += 1;
+
+    return {
+      code: `  let ${hitName} = evalObject(${primitiveIndex}u, point);`,
+      hitName,
+      smoothnessExpression: `objects[${primitiveIndex}u].colorSmooth.w`,
+    };
+  }
+
+  const children = node.children.map((child) => compileExpandedSceneNode(child, state));
+  const hitName = nextTempName("groupHit", state);
+  const smoothness = formatWgslFloat(node.smoothness);
+
+  if (children.length === 0) {
+    return {
+      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));`,
+      hitName,
+      smoothnessExpression: smoothness,
+    };
+  }
+
+  if (node.op === "not") {
+    return {
+      code: [children[0].code, `  let ${hitName} = notHit(${children[0].hitName});`].join("\n"),
+      hitName,
+      smoothnessExpression: smoothness,
+    };
+  }
+
+  const lines = children.map((child) => child.code);
+  lines.push(`  var ${hitName} = ${children[0].hitName};`);
+
+  for (const child of children.slice(1)) {
+    if (node.op === "and") {
+      lines.push(`  ${hitName} = intersectHit(${hitName}, ${child.hitName});`);
+    } else if (node.op === "subtract") {
+      lines.push(`  ${hitName} = subtractHit(${hitName}, ${child.hitName});`);
+    } else {
+      lines.push(`  ${hitName} = unionHit(${hitName}, ${child.hitName}, ${smoothness});`);
+    }
+  }
+
+  return {
+    code: lines.join("\n"),
+    hitName,
+    smoothnessExpression: smoothness,
+  };
+}
+
+function createSceneTopologySignature(sceneNodes: readonly SdfSceneNode[]): string {
+  return sceneNodes.map(createSceneNodeTopologySignature).join("|");
+}
+
+function createSceneNodeTopologySignature(node: SdfSceneNode): string {
+  if (node.type === "primitive") {
+    return node.node.kind === "function" ? `function:${node.node.sdfFunction ?? ""}` : node.node.kind;
+  }
+
+  return `group:${node.op}:${formatWgslFloat(node.smoothness)}(${node.children
+    .map(createSceneNodeTopologySignature)
+    .join(",")})`;
+}
+
+function nextTempName(prefix: string, state: ExpandedSceneCompileState) {
+  const name = `${prefix}${state.tempIndex}`;
+  state.tempIndex += 1;
+  return name;
+}
+
+function formatWgslFloat(value: number) {
+  if (!Number.isFinite(value)) {
+    return "0.0";
+  }
+
+  const rounded = Math.round(value * 1000000) / 1000000;
+  return Number.isInteger(rounded) ? `${rounded}.0` : `${rounded}`;
 }
 
 function unique(values: readonly string[]) {

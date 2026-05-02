@@ -41,7 +41,7 @@ src/
     useOrbitCameraControls.ts Canvas上のドラッグ、ホイール、ピンチをカメラ更新へ変換するhook
     SceneContext.ts          プリミティブとuseFrameがSceneStoreへアクセスするContext
     SceneStore.ts            React側シーン状態とフレーム購読の保持、変更通知
-    primitives.tsx           SdfSphere / SdfBox コンポーネント
+    primitives.tsx           SdfSphere / SdfBox / SdfFunction / SdfGroup コンポーネント
     WebGpuSdfRenderer.ts     WebGPU初期化、バッファ更新、描画ループ
     sdfShader.ts             WGSL文字列のエントリポイント
     math.ts                  Vec3正規化などの小さな補助関数
@@ -51,7 +51,7 @@ src/
       shaderLayout.ts        Uniform / Storage Buffer / SceneHit のWGSL定義
       vertexShader.ts        フルスクリーン三角形のvertex shader
       sdfPrimitivesShader.ts SDFプリミティブと補助関数
-      sceneMappingShader.ts  Storage Buffer上のSDFオブジェクト走査
+      sceneMappingShader.ts  SDF評価関数と展開済みmapSceneの生成
       raymarchShader.ts      レイマーチング本体
       lightingShader.ts      法線推定と背景色
       fragmentShader.ts      カメラレイ生成、ライティング、最終色
@@ -217,8 +217,11 @@ Reactで使うSDFプリミティブを定義します。
 - `<SdfSphere />`
 - `<SdfBox />`
 - `<SdfFunction />`
+- `<SdfGroup />`
+- `<SdfNot />`
+- `<SdfSubtract />`
 
-各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、`SceneStore.upsertNode()`で登録します。アンマウント時は`SceneStore.removeNode()`で削除します。
+各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめた`SdfGroupSceneNode`が親の登録先へ渡されます。
 
 `<SdfFunction />`は、WGSLのSDF関数を文字列として渡す汎用プリミティブです。`data0`、`data1`、`data2`は`Vec4`として受け取り、GPU側の`object.data0`、`object.data1`、`object.data2`へそのまま渡されます。渡した関数には、オブジェクトの`position`と`rotation`を適用済みのローカル座標`point`と、`data0-2`が渡されます。
 
@@ -228,6 +231,21 @@ Reactで使うSDFプリミティブを定義します。
   data0={[0.8, 0, 0, 0]}
 />
 ```
+
+`<SdfFunction />`は任意WGSLなので、boundsを自動推定できません。`bounds={{ radius, center }}`を渡すと、グループのbounding sphere計算に使われます。未指定時は`data0.xyz`を半径ヒントとして保守的に扱います。
+
+`<SdfGroup />`は子SDFをCSG/boolean演算の単位としてまとめます。`op`には`"or"`、`"and"`、`"subtract"`、`"not"`を指定できます。`<SdfNot />`と`<SdfSubtract />`は、それぞれ`op="not"`、`op="subtract"`の薄いラッパーです。
+
+```tsx
+<SdfGroup op="and">
+  <SdfBox position={[0, 1, 0]} size={[2, 2, 2]} />
+  <SdfNot>
+    <SdfSphere position={[0.4, 1, 0]} radius={0.7} />
+  </SdfNot>
+</SdfGroup>
+```
+
+現在のグループ実装はGPU上でグループ命令列を解釈しません。React側で作られたシーン木を`WebGpuSdfRenderer`がWGSLの`mapScene()`へ展開し、primitiveデータだけをStorage Bufferへ詰めます。これにより、数十オブジェクト規模ではグループ用のループ、stack、動的op分岐を避けられます。
 
 ### sdfKinds.ts
 
@@ -250,7 +268,8 @@ React propsから生成されたシーン状態を保持するストアです。
 
 保持する情報:
 
-- SDFノード一覧
+- rootの`SdfSceneNode`一覧
+- 互換・補助用途のフラットなSDFノード一覧
 - カメラ設定
 - ライティング設定
 - シーンバージョン
@@ -258,6 +277,8 @@ React propsから生成されたシーン状態を保持するストアです。
 - フレーム購読リスナー
 
 `SceneStore`はGPU APIを直接触りません。責務は、React側の変化を`SceneSnapshot`としてレンダラへ通知することです。
+
+`upsertNode()`は単体primitive用の互換経路として残っていますが、内部では`SdfNode`を`{ type: "primitive" }`の`SdfSceneNode`へ包んで`upsertSceneNode()`へ渡します。`<SdfGroup />`は子registryで集めた`SdfSceneNode[]`からgroup nodeを作り、同じ`upsertSceneNode()`経路で登録します。
 
 `useFrame`用には`subscribeFrame()`と`advanceFrame()`を持ちます。`advanceFrame()`は`NexusCanvas`のフレームループから呼ばれ、登録済みcallbackへ同じ`NexusFrameState`を配信します。
 
@@ -274,8 +295,9 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - bind group 0 に camera buffer と object buffer を束ねる
 - `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決め、変化した場合は`NexusRenderStats.canvasPixelSize`として通知する
 - requestAnimationFrameの進みからFPSを500msごとに集計し、`NexusRenderStats.fps`として通知する
-- `setScene(snapshot)`で`SceneSnapshot.nodes`を最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
-- `SdfFunction`の関数文字列セットが変わった場合は、custom SDF関数を差し込んだShader ModuleとRender Pipelineを作り直す
+- `setScene(snapshot)`で`SceneSnapshot.sceneNodes`からprimitiveだけを取り出し、最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
+- `SceneSnapshot.sceneNodes`をWGSLの`mapScene()`へ展開し、グループ構造やboolean演算をshaderコードとして焼き込む
+- `SdfFunction`の関数文字列セット、またはシーン木のtopologyが変わった場合は、custom SDF関数と展開済み`mapScene()`を差し込んだShader Module / Render Pipelineを作り直す
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
 - 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定をUniform Bufferへアップロードする
 - フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
@@ -283,13 +305,44 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。グループ自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapScene()`を生成します。
+
+例として、次のシーン木がある場合:
+
+```tsx
+<SdfGroup op="and">
+  <SdfGroup op="or">
+    <SdfSphere />
+    <SdfSphere />
+  </SdfGroup>
+  <SdfFunction sdfFunction="..." />
+</SdfGroup>
+```
+
+概念的には次のようなWGSLへ展開されます。
+
+```wgsl
+fn mapScene(point: vec3<f32>) -> SceneHit {
+  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9));
+  let hit0 = evalObject(0u, point);
+  let hit1 = evalObject(1u, point);
+  var groupHit2 = unionHit(hit0, hit1, 0.7);
+  let hit3 = evalObject(2u, point);
+  var groupHit4 = intersectHit(groupHit2, hit3);
+  best = unionHit(best, groupHit4, 0.7);
+  return best;
+}
+```
+
+この方式は、オブジェクト数が数十程度のシーンでGPU上の汎用インタプリタ方式より軽くなることを優先した設計です。scene topologyや`SdfFunction`の種類が変わるとpipeline再生成が必要ですが、位置、回転、色、サイズなどprimitiveレコードの値だけが変わる場合はStorage Buffer更新だけで済みます。
 
 ### sdfShader.ts / shaders
 
-WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects, customSdfFunctions)`が各セクションを結合し、最終的な`shaderModule`用文字列を作ります。
+WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects, customSdfFunctions, mapSceneBody)`が各セクションを結合し、最終的な`shaderModule`用文字列を作ります。
 
 組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名と動的kind IDを割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じkind IDと同じWGSL関数を共有します。
+
+`mapSceneBody`は`SceneSnapshot.sceneNodes`から生成される展開済みWGSLです。`sceneMappingShader.ts`は`unionHit`、`intersectHit`、`subtractHit`、`notHit`、`evalObject`などの共通関数を定義し、その後ろに展開済み`mapScene()`を差し込みます。グループ構造をGPUでループ解釈するのではなく、CPU側でWGSLへコンパイルする形です。
 
 各WGSLセクション内では、組み込みチャンクライブラリから`#include <sdf/sphere>`の形式で関数群を取り込めます。includeは`assembleSdfShader()`の最後に再帰的に解決され、未登録チャンクや循環参照は例外として検出されます。組み込みチャンクは`src/nexusgpu/shaders/shaderLibrary.ts`に定義します。
 
@@ -313,7 +366,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `shaderLayout.ts`: `CameraUniform`、`SdfObject`、`SceneHit`、`@group(0)`のbuffer bindingを定義する
 - `vertexShader.ts`: 画面全体を覆う三角形を1枚描く`vertexMain`を定義する
 - `sdfPrimitivesShader.ts`: `sdSphere`、`sdBox`、`smoothMin`、`rotateByQuaternion`を定義する
-- `sceneMappingShader.ts`: `objects` Storage Bufferを走査し、点から最も近いSDF距離と色を返す`mapScene`を生成する。custom SDF関数がある場合はkind IDごとの分岐も追加する
+- `sceneMappingShader.ts`: boolean合成用の補助関数、`evalObject()`、展開済み`mapScene()`を含むシーン評価コードを生成する。custom SDF関数がある場合はkind IDごとの分岐も追加する
 - `raymarchShader.ts`: `mapScene`を使ってレイを進める`raymarch`を定義する
 - `lightingShader.ts`: `estimateNormal`と未ヒット時の`background`を定義する
 - `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す
@@ -326,7 +379,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `customSdfFunctionN`: `SdfFunction`から生成されたユーザー定義SDF
 - `smoothMin`: SDF同士の滑らかな結合
 - `rotateByQuaternion`: SDFオブジェクトのローカル座標変換
-- `mapScene`: 全SDFオブジェクトを評価し、最短距離を返す
+- `mapScene`: 展開済みのシーン木を評価し、最短距離を返す
 - `raymarch`: レイを進めてSDF表面を探す
 - `estimateNormal`: 距離場の勾配から法線を近似
 - `background`: 未ヒット時の背景色を返す
@@ -362,6 +415,7 @@ type SdfNode = {
   color: Vec3;
   data: SdfData;
   smoothness: number;
+  bounds: SdfBoundingSphere;
   sdfFunction?: string;
 };
 ```
@@ -376,6 +430,42 @@ type SdfNode = {
 
 ```wgsl
 fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> f32
+```
+
+`bounds`はグループのbounding sphere計算に使うCPU側メタデータです。現在の展開型`mapScene()`ではboundsによるGPU枝刈りはまだ行っていませんが、グループ木には保持しておき、将来の展開コード内bounds skipや空間分割へ使えるようにしています。
+
+### SdfSceneNode
+
+`SceneStore`は、root要素として`SdfSceneNode`の配列を保持します。単体primitiveは`SdfPrimitiveSceneNode`、`<SdfGroup />`は`SdfGroupSceneNode`として表現されます。
+
+```ts
+type SdfPrimitiveSceneNode = {
+  type: "primitive";
+  node: SdfNode;
+  bounds: SdfBoundingSphere;
+};
+
+type SdfGroupSceneNode = {
+  type: "group";
+  op: "or" | "and" | "subtract" | "not";
+  smoothness: number;
+  children: readonly SdfSceneNode[];
+  bounds: SdfBoundingSphere;
+};
+
+type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode;
+```
+
+`SceneSnapshot`には互換・custom SDF収集用のフラットな`nodes`と、レンダラが`mapScene()`展開に使う`sceneNodes`の両方が含まれます。
+
+```ts
+type SceneSnapshot = {
+  nodes: readonly SdfNode[];
+  sceneNodes: readonly SdfSceneNode[];
+  camera: Required<NexusCamera>;
+  lighting: Required<NexusLighting>;
+  version: number;
+};
 ```
 
 ### GPU側のSdfObject
@@ -497,14 +587,14 @@ sequenceDiagram
   participant GPU
 
   Sphere->>Context: useSceneStore()
-  Sphere->>Store: upsertNode(SdfNode)
+  Sphere->>Store: upsertSceneNode(SdfSceneNode)
   Store->>Store: snapshot()を作成
   Store->>Renderer: setScene(snapshot)
   Renderer->>Renderer: uploadObjects(snapshot)
   Renderer->>GPU: queue.writeBuffer(objectBuffer)
 ```
 
-React propsが変わるたびに、対応する`SdfNode`が更新されます。現在は簡潔さを優先し、ノード変更時にオブジェクトバッファ全体を書き直しています。
+React propsが変わるたびに、対応する`SdfSceneNode`が更新されます。`<SdfGroup />`配下では、子primitiveの更新がグループregistryへ入り、group nodeが再作成されて親へ通知されます。現在は簡潔さを優先し、ノード変更時にオブジェクトバッファ全体を書き直しています。
 
 今後の最適化では、変更されたノードだけをdirty rangeとして部分書き込みする予定です。
 
@@ -525,7 +615,7 @@ sequenceDiagram
   Store->>Component: callback(frameState)
   Component->>Component: setPosition(nextPosition)
   Component->>Primitive: position propsを更新
-  Primitive->>Store: upsertNode(SdfNode)
+  Primitive->>Store: upsertSceneNode(SdfSceneNode)
   Store->>Renderer: setScene(snapshot)
 ```
 
@@ -560,7 +650,7 @@ sequenceDiagram
 
 1. `fragmentMain()`がピクセル座標からカメラレイを作る
 2. `raymarch()`がレイ上の現在位置を計算する
-3. `mapScene()`が全SDFオブジェクトへの距離を評価する
+3. `mapScene()`が展開済みのシーン木に従ってSDF距離を評価する
 4. 最短距離ぶんレイを前進させる
 5. 距離が`surfaceEpsilon`未満ならヒット扱いにする
 6. ヒットしたら`estimateNormal()`で法線を近似する
@@ -625,10 +715,13 @@ WebGpuSdfRenderer.updateFps()
 
 - 組み込みSDFプリミティブはsphereとboxのみ
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
+- `SdfGroup`の構造、boolean演算、グループsmoothnessが変わると、展開済み`mapScene()`が変わるためShader Module / Render Pipelineを再生成する
+- primitiveのposition、rotation、color、size、radius、dataなどの値だけが変わる場合は、原則としてStorage Buffer更新だけで済む
 - ユニークな`SdfFunction`が増えるほど`mapScene()`のkind分岐が長くなる
+- `SdfGroup`は現在、常にWGSLへ展開される。数十オブジェクト規模を想定しており、大量オブジェクトではshaderコードサイズやpipeline再生成コストが課題になる
 - オブジェクト数上限は`MAX_SDF_OBJECTS = 128`
 - Storage Bufferは変更時に全体再アップロード
-- BVHや空間分割は未実装
+- BVH、空間分割、boundsによるGPU枝刈りは未実装
 - Compute Shaderはまだ未使用
 - 専用`react-reconciler`は未実装
 - 3DGS統合は未実装
@@ -640,7 +733,8 @@ WebGpuSdfRenderer.updateFps()
 2. `SceneStore`にdirty管理を追加し、Storage Bufferの部分更新を行う
 3. Compute ShaderでBVHまたはグリッド加速構造を構築する
 4. SDFプリミティブを増やす
-5. マテリアル、ブレンド演算、CSG演算を型として表現する
-6. デバッグビューで距離場、法線、ステップ数、ヒット距離を可視化する
-7. 3DGS用のソートと合成パスを追加する
-8. `RenderEyeView[]`相当の抽象を追加し、SBS、mono、WebXRを同じeye単位の描画フローへ統合する
+5. 展開済み`mapScene()`にbounding sphere skipを生成し、グループ単位の枝刈りを追加する
+6. マテリアル、ブレンド演算、CSG演算を型として表現する
+7. デバッグビューで距離場、法線、ステップ数、ヒット距離を可視化する
+8. 3DGS用のソートと合成パスを追加する
+9. `RenderEyeView[]`相当の抽象を追加し、SBS、mono、WebXRを同じeye単位の描画フローへ統合する

@@ -25,9 +25,13 @@ const shaderSectionsAfterMapping = [
   fragmentShader,
 ];
 
-export function assembleSdfShader(maxObjects: number, customSdfFunctions: readonly CustomSdfFunctionShader[] = []) {
+export function assembleSdfShader(
+  maxObjects: number,
+  customSdfFunctions: readonly CustomSdfFunctionShader[] = [],
+  mapSceneBody?: string,
+) {
   const customFunctionSources = customSdfFunctions.map(({ source }) => source).join("\n\n");
-  const sceneMappingShader = createSceneMappingShader(customSdfFunctions);
+  const sceneMappingShader = createSceneMappingShader(customSdfFunctions, mapSceneBody);
 
   return resolveShaderIncludes(
     [
