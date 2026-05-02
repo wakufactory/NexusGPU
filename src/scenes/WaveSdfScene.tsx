@@ -76,7 +76,7 @@ export function WaveSdfScene({ parameters }: WaveSdfSceneProps) {
     <SdfFunction
       sdfFunction={WAVE_PLANE_SDF}
       // data0 controls the sheet bounds and thickness: [halfWidth, halfDepth, amplitude, halfThickness].
-      data0={[30.7, 20.25, parameters.waveAmplitude, 0.005]}
+      data0={[200., 200, parameters.waveAmplitude, 0.005]}
       // data1 controls the main diagonal wave and animation phase: [xFrequency, zFrequency, phase, unused].
       data1={[parameters.waveFrequency, parameters.waveFrequency * 0.65, phase, 0]}
       // data2 controls the weaker crossing wave: [frequency, amplitudeRatio, unused, unused].
@@ -84,6 +84,7 @@ export function WaveSdfScene({ parameters }: WaveSdfSceneProps) {
       position={[0, 0, 0]}
       color={[0.78, 0.26, 0.26]}
       smoothness={0}
+      bounds={{ radius: 200 }}
     />
   );
 }
