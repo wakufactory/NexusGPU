@@ -3,7 +3,7 @@
     "id": "animated-sdf",
     "title": "AnimatedSdfScene",
     "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
-    "module": "./AnimatedSdfScene2.tsx",
+    "module": "./AnimatedSdfScene.tsx",
     "camera": {
       "position": [0, 3.7, 5.2],
       "target": [0, 0, 0],
