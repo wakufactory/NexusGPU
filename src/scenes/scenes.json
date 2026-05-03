@@ -10,5 +10,11 @@
     "title": "SDF Experiment Template",
     "description": "Template scene for editing and testing custom SdfFunction WGSL.",
     "module": "./SdfExperimentScene.tsx"
+  },
+  {
+    "id": "sdf-test",
+    "title": "SDF test",
+    "description": "Scene copied from SDF Experiment Template.",
+    "module": "./SdfTestScene.tsx"
   }
 ]
