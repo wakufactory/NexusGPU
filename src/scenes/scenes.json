@@ -1,7 +1,7 @@
 [
   {
     "id": "animated-sdf",
-    "title": "AnimatedSdfScene2",
+    "title": "AnimatedSdfScene",
     "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
     "module": "./AnimatedSdfScene2.tsx",
     "camera": {
@@ -26,44 +26,53 @@
     ]
   },
   {
-    "id": "wave-sdf",
-    "title": "Wave SDF",
-    "description": "Animated height-field plane built with SdfFunction.",
-    "module": "./WaveSdfScene.tsx",
+    "id": "sdf-experiment",
+    "title": "SDF Experiment Template",
+    "description": "Template scene for editing and testing custom SdfFunction WGSL.",
+    "module": "./SdfExperimentScene.tsx",
     "camera": {
-      "position": [0, 2.45, 5.6],
+      "position": [0, 3.2, 7.4],
       "target": [0, 0, 0],
       "fov": 46
     },
     "lighting": {
-      "direction": [0.1, 0.9, 0.35]
+      "direction": [0.18, 0.9, 0.32]
     },
     "initialParameters": {
-      "waveAmplitude": 0.36,
-      "waveFrequency": 5.2,
-      "waveSpeed": 1.6
+      "experimentAmplitude": 0.42,
+      "experimentFrequency": 3.6,
+      "experimentSpeed": 1.2,
+      "experimentThickness": 0.025
     },
     "parameterControls": [
       {
-        "key": "waveAmplitude",
-        "name": "Wave amplitude",
+        "key": "experimentAmplitude",
+        "name": "Amplitude",
         "min": 0,
-        "max": 0.8,
+        "max": 1.2,
         "step": 0.02
       },
       {
-        "key": "waveFrequency",
-        "name": "Wave frequency",
-        "min": 0.5,
-        "max": 7,
+        "key": "experimentFrequency",
+        "name": "Frequency",
+        "min": 0.2,
+        "max": 9,
         "step": 0.1
       },
       {
-        "key": "waveSpeed",
-        "name": "Wave speed",
+        "key": "experimentSpeed",
+        "name": "Speed",
         "min": 0,
         "max": 5,
         "step": 0.1
+      },
+      {
+        "key": "experimentThickness",
+        "name": "Thickness",
+        "min": 0.005,
+        "max": 0.12,
+        "step": 0.005,
+        "precision": 3
       }
     ]
   }
