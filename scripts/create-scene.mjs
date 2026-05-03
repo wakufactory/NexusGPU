@@ -1,5 +1,4 @@
-import { constants as fsConstants } from "node:fs";
-import { copyFile, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -55,6 +54,14 @@ function stringifyScenes(scenes) {
   })}\n`;
 }
 
+function sceneNameFromModule(modulePath) {
+  return path.basename(modulePath, path.extname(modulePath));
+}
+
+function renameSceneSource(source, fromSceneName, toSceneName) {
+  return source.split(fromSceneName).join(toSceneName);
+}
+
 const [rawName, ...titleParts] = process.argv.slice(2);
 
 if (!rawName || rawName === "--help" || rawName === "-h") {
@@ -95,8 +102,11 @@ if (!templateScene) {
   throw new Error(`Template scene was not found in scenes.json: ${template.id}`);
 }
 
+const templateSource = await readFile(template.path, "utf8");
+const sceneSource = renameSceneSource(templateSource, sceneNameFromModule(template.module), sceneFileBaseName);
+
 try {
-  await copyFile(template.path, targetPath, fsConstants.COPYFILE_EXCL);
+  await writeFile(targetPath, sceneSource, { flag: "wx" });
 } catch (error) {
   if (error?.code === "EEXIST") {
     throw new Error(`Scene file already exists: ${targetPath}`);
