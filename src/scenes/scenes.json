@@ -6,6 +6,12 @@
     "module": "./AnimatedSdfScene.tsx"
   },
   {
+    "id": "simple-scene",
+    "title": "Simple Scene",
+    "description": "A simple scene with basic SDF primitives.",
+    "module": "./SimpleScene.tsx"
+  },
+  {
     "id": "sdf-experiment",
     "title": "SDF Experiment Template",
     "description": "Template scene for editing and testing custom SdfFunction WGSL.",
