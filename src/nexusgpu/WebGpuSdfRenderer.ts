@@ -16,6 +16,7 @@ const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const OBJECT_STRIDE_FLOATS = 24;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
+  maxFps: 60,
   resolutionScale: 0.75,
   maxSteps: 72,
   maxDistance: 45,
@@ -55,6 +56,7 @@ export class WebGpuSdfRenderer {
   private startTime = performance.now();
   private lastFpsSampleTime = this.startTime;
   private framesSinceFpsSample = 0;
+  private lastRenderTime = 0;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -199,6 +201,23 @@ export class WebGpuSdfRenderer {
     this.setRenderStats({ fps: (this.framesSinceFpsSample * 1000) / elapsed });
     this.framesSinceFpsSample = 0;
     this.lastFpsSampleTime = now;
+  }
+
+  private shouldSkipRender(now: number) {
+    const frameInterval = 1000 / this.renderSettings.maxFps;
+
+    if (this.lastRenderTime === 0) {
+      this.lastRenderTime = now;
+      return false;
+    }
+
+    const elapsed = now - this.lastRenderTime;
+    if (elapsed < frameInterval) {
+      return true;
+    }
+
+    this.lastRenderTime = now - (elapsed % frameInterval);
+    return false;
   }
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
@@ -355,6 +374,11 @@ export class WebGpuSdfRenderer {
   private frame = () => {
     this.frameId = requestAnimationFrame(this.frame);
     const now = performance.now();
+
+    if (this.shouldSkipRender(now)) {
+      return;
+    }
+
     this.updateFps(now);
     this.resize();
 
@@ -638,6 +662,7 @@ fn ${functionName}(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: 
 /** UI由来の設定値を、シェーダが想定する安全な範囲に丸める。 */
 function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Required<NexusRenderSettings> {
   return {
+    maxFps: Math.round(clamp(settings?.maxFps ?? DEFAULT_RENDER_SETTINGS.maxFps, 1, 240)),
     resolutionScale: clamp(settings?.resolutionScale ?? DEFAULT_RENDER_SETTINGS.resolutionScale, 0.25, 1),
     maxSteps: Math.round(clamp(settings?.maxSteps ?? DEFAULT_RENDER_SETTINGS.maxSteps, 16, 160)),
     maxDistance: clamp(settings?.maxDistance ?? DEFAULT_RENDER_SETTINGS.maxDistance, 8, 120),

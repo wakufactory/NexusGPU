@@ -36,6 +36,7 @@ export type NexusLighting = {
 
 /** デバッグ用の描画品質設定。GPU負荷と見た目のバランスを実行時に調整する。 */
 export type NexusRenderSettings = {
+  maxFps?: number;
   resolutionScale?: number;
   maxSteps?: number;
   maxDistance?: number;

@@ -3,6 +3,7 @@ import type { NexusRenderSettings } from "../nexusgpu";
 export type RenderSettings = Required<NexusRenderSettings>;
 
 export const INITIAL_RENDER_SETTINGS: RenderSettings = {
+  maxFps: 60,
   resolutionScale: 0.4,
   maxSteps: 100,
   maxDistance: 42,

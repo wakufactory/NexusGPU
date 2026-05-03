@@ -66,6 +66,19 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <output>{renderStats ? Math.round(renderStats.fps) : "--"}</output>
       </div>
 
+      <label className="control-row">
+        <span>Max FPS</span>
+        <output>{settings.maxFps}</output>
+        <input
+          type="range"
+          min="1"
+          max="240"
+          step="1"
+          value={settings.maxFps}
+          onChange={(event) => updateSetting("maxFps", Number(event.target.value))}
+        />
+      </label>
+
       <label className="control-row resolution-row">
         <span>Resolution</span>
         <output>
