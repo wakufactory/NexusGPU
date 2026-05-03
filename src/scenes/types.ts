@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { NexusCamera, NexusLighting } from "../nexusgpu";
+import type { NexusCanvasProps } from "../nexusgpu";
 
 type WidenLiteral<Value> = Value extends string
   ? string
@@ -31,14 +31,17 @@ export type NexusSceneDefinition<Parameters extends object> = {
   id: string;
   title: string;
   description: string;
-  camera: Required<NexusCamera>;
-  lighting: Required<NexusLighting>;
   initialParameters: Parameters;
   parameterControls?: readonly SceneSliderParameter<Parameters>[];
-  Component: ComponentType<{ parameters: Parameters }>;
+  Component: ComponentType<{
+    parameters: Parameters;
+    canvasProps: NexusSceneCanvasProps;
+  }>;
 };
 
 export type AnyNexusSceneDefinition = NexusSceneDefinition<any>;
+
+export type NexusSceneCanvasProps = Omit<NexusCanvasProps, "camera" | "lighting" | "children">;
 
 export function defineScene<Parameters extends object>(
   definition: NexusSceneDefinition<Parameters>,

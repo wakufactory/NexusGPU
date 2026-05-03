@@ -27,6 +27,11 @@ type OrbitCameraControlsOptions = {
 
 export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: OrbitCameraControlsOptions) {
   const orbitStateRef = useRef<OrbitCameraState | null>(null);
+  const cameraRef = useRef<NexusCamera | undefined>(camera);
+
+  useEffect(() => {
+    cameraRef.current = camera;
+  }, [camera]);
 
   // カメラpropsが変わったらSceneStoreへ反映し、レンダラのUniform更新につなげる。
   useEffect(() => {
@@ -78,7 +83,7 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
         return;
       }
 
-      const state = orbitStateRef.current ?? createOrbitCameraState(resolveCamera(camera));
+      const state = orbitStateRef.current ?? createOrbitCameraState(resolveCamera(cameraRef.current));
       activePointers.set(event.pointerId, event);
 
       if (activePointers.size >= 2) {
@@ -124,7 +129,7 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
     };
 
     const handleWheel = (event: WheelEvent) => {
-      const state = orbitStateRef.current ?? createOrbitCameraState(resolveCamera(camera));
+      const state = orbitStateRef.current ?? createOrbitCameraState(resolveCamera(cameraRef.current));
       const radius = clamp(state.radius * Math.exp(event.deltaY * ORBIT_ZOOM_SPEED), 1.2, 80);
       applyOrbitState({ ...state, radius });
       event.preventDefault();
@@ -153,7 +158,6 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
       canvas.removeEventListener("wheel", handleWheel);
     };
   }, [
-    camera,
     canvasRef,
     enabled,
     store,

@@ -1,12 +1,9 @@
 import type { ComponentType } from "react";
 import sceneConfigs from "./scenes.json";
-import type { NexusCamera, NexusLighting } from "../nexusgpu";
-import type { AnyNexusSceneDefinition, SceneSliderParameter } from "./types";
+import type { AnyNexusSceneDefinition, NexusSceneCanvasProps, SceneSliderParameter } from "./types";
 
 type SceneModule = {
-  Scene?: ComponentType<{ parameters: any }>;
-  camera?: Required<NexusCamera>;
-  lighting?: Required<NexusLighting>;
+  Scene?: ComponentType<{ parameters: any; canvasProps: NexusSceneCanvasProps }>;
   initialParameters?: Record<string, unknown>;
   parameterControls?: readonly SceneSliderParameter<Record<string, unknown>>[];
 };
@@ -22,43 +19,6 @@ type SceneJsonConfig = {
 const sceneModules = import.meta.glob<SceneModule>("./*.tsx", {
   eager: true,
 });
-
-function assertVec3(value: readonly number[], label: string): asserts value is [number, number, number] {
-  if (value.length !== 3 || value.some((item) => typeof item !== "number")) {
-    throw new Error(`${label} must be a three-number array.`);
-  }
-}
-
-function resolveCamera(config: SceneJsonConfig, sceneModule: SceneModule): Required<NexusCamera> {
-  if (!sceneModule.camera) {
-    throw new Error(`${config.id}.module must export camera.`);
-  }
-
-  assertVec3(sceneModule.camera.position, `${config.id}.camera.position`);
-  assertVec3(sceneModule.camera.target, `${config.id}.camera.target`);
-
-  if (typeof sceneModule.camera.fov !== "number") {
-    throw new Error(`${config.id}.camera.fov must be a number.`);
-  }
-
-  return {
-    position: sceneModule.camera.position,
-    target: sceneModule.camera.target,
-    fov: sceneModule.camera.fov,
-  };
-}
-
-function resolveLighting(config: SceneJsonConfig, sceneModule: SceneModule): Required<NexusLighting> {
-  if (!sceneModule.lighting) {
-    throw new Error(`${config.id}.module must export lighting.`);
-  }
-
-  assertVec3(sceneModule.lighting.direction, `${config.id}.lighting.direction`);
-
-  return {
-    direction: sceneModule.lighting.direction,
-  };
-}
 
 function resolveParameterControls(
   config: SceneJsonConfig,
@@ -104,8 +64,6 @@ function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition | null {
     id: config.id,
     title: config.title,
     description: config.description,
-    camera: resolveCamera(config, sceneModule),
-    lighting: resolveLighting(config, sceneModule),
     initialParameters: sceneModule.initialParameters,
     parameterControls: resolveParameterControls(config, sceneModule),
     Component: sceneModule.Scene,

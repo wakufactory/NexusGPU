@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { SceneStore } from "./SceneStore";
-import type { NexusFrameCallback } from "./types";
+import type { NexusCamera, NexusFrameCallback, NexusLighting } from "./types";
 
 // NexusCanvas配下のプリミティブが、現在のSceneStoreへアクセスするためのContext。
 export const SceneContext = createContext<SceneStore | null>(null);
@@ -27,4 +27,28 @@ export function useFrame(callback: NexusFrameCallback) {
   useEffect(() => {
     return store.subscribeFrame((state) => callbackRef.current(state));
   }, [store]);
+}
+
+/** NexusCanvas配下のscene componentからカメラを更新する。 */
+export function useCamera() {
+  const store = useSceneStore();
+
+  return useMemo(
+    () => ({
+      set: (camera: NexusCamera) => store.setCamera(camera),
+    }),
+    [store],
+  );
+}
+
+/** NexusCanvas配下のscene componentからライティングを更新する。 */
+export function useLighting() {
+  const store = useSceneStore();
+
+  return useMemo(
+    () => ({
+      set: (lighting: NexusLighting) => store.setLighting(lighting),
+    }),
+    [store],
+  );
 }

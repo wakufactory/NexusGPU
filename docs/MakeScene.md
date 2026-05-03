@@ -218,21 +218,12 @@ export function BoxAndNotSphereScene() {
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact componentと、推奨カメラ、推奨ライト、初期パラメータ、slider定義をexportします。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して`NexusCanvas`へ渡します。
+sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
 
 ```tsx
-import { SdfBox, SdfSphere } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfSphere } from "../nexusgpu";
 import { defineSceneParameters, defineSceneSliderParameters } from "./types";
-
-export const camera = {
-  position: [0, 2.8, 5.2],
-  target: [0, 0, 0],
-  fov: 48,
-};
-
-export const lighting = {
-  direction: [0.25, 0.85, 0.35],
-});
+import type { NexusSceneCanvasProps } from "./types";
 
 export const initialParameters = defineSceneParameters({
   sphereSmoothness: 0.4,
@@ -250,7 +241,12 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
   },
 ]);
 
-export function Scene({ parameters }: { parameters: MySceneParameters }) {
+type MySceneProps = {
+  parameters: MySceneParameters;
+  canvasProps: NexusSceneCanvasProps;
+};
+
+function SceneContent({ parameters }: { parameters: MySceneParameters }) {
   return (
     <>
       <SdfBox position={[0, -0.55, 0]} size={[4, 0.1, 3]} color={[0.2, 0.23, 0.28]} />
@@ -261,6 +257,19 @@ export function Scene({ parameters }: { parameters: MySceneParameters }) {
         smoothness={parameters.sphereSmoothness}
       />
     </>
+  );
+}
+
+export function Scene({ parameters, canvasProps }: MySceneProps) {
+  return (
+    <NexusCanvas
+      {...canvasProps}
+      camera={{ position: [0, 2.8, 5.2], target: [0, 0, 0], fov: 48 }}
+      lighting={{ direction: [0.25, 0.85, 0.35] }}
+      orbitControls
+    >
+      <SceneContent parameters={parameters} />
+    </NexusCanvas>
   );
 }
 ```
@@ -278,7 +287,7 @@ export function Scene({ parameters }: { parameters: MySceneParameters }) {
 ]
 ```
 
-`App.tsx`は`SCENES`の選択中定義から`camera`、`lighting`、`Component`、`parameterControls`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
+`App.tsx`は`SCENES`の選択中定義から`Component`、`initialParameters`、`parameterControls`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
 
 ## アニメーション
 
@@ -300,7 +309,33 @@ export function FloatingSphere() {
 }
 ```
 
-複数objectを動かす場合は、設定配列からprops配列を作ると見通しがよくなります。現在の`src/scenes/AnimatedSdfScene2.tsx`がこの形です。
+複数objectを動かす場合は、設定配列からprops配列を作ると見通しがよくなります。現在の`src/scenes/AnimatedSdfScene.tsx`がこの形です。
+
+カメラやライトをscene内で動かしたい場合は、`NexusCanvas`の内側のcomponentで`useCamera()`や`useLighting()`を使います。
+
+```tsx
+import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
+
+function SceneContent() {
+  const camera = useCamera();
+  const lighting = useLighting();
+
+  useFrame(({ elapsed }) => {
+    camera.set({
+      position: [Math.sin(elapsed * 0.3) * 4, 1.4, Math.cos(elapsed * 0.3) * 4],
+      target: [0, 0, 0],
+    });
+
+    lighting.set({
+      direction: [Math.sin(elapsed * 0.6), 0.8, Math.cos(elapsed * 0.6)],
+    });
+  });
+
+  return <SdfSphere radius={1} />;
+}
+```
+
+`useCamera()`で継続的にカメラを動かすsceneでは、`orbitControls`を同時に有効化すると操作方針が衝突しやすくなります。スクリプト制御のカメラsceneでは、基本的に`orbitControls`を付けません。
 
 ## Scene固有パラメータ
 
@@ -346,7 +381,7 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
 
 ## Scene Registry
 
-`src/scenes/scenes.json`は、アプリで選べるsceneの薄い一覧です。各JSON定義は次の項目だけを持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルの個別exportと結合します。
+`src/scenes/scenes.json`は、アプリで選べるsceneの薄い一覧です。各JSON定義は次の項目だけを持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルの`Scene`、`initialParameters`、`parameterControls`と結合します。
 
 - `id`: scene selector用の一意なID
 - `title`: sidebarに表示する名前
@@ -355,9 +390,7 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
 
 各sceneファイルは次をexportします。
 
-- `Scene`: `parameters`を受け取るReact component
-- `camera`: 推奨カメラ
-- `lighting`: 推奨ライト
+- `Scene`: `parameters`と`canvasProps`を受け取り、`NexusCanvas`を返すReact component
 - `initialParameters`: scene固有パラメータの初期値
 - `parameterControls`: 任意のscene固有パラメータslider定義
 

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Layers3, Maximize2, Minimize2, Pause, Play, Sparkles } from "lucide-react";
 import { INITIAL_RENDER_SETTINGS } from "./app/renderSettings";
 import { useFullscreenViewport } from "./app/useFullscreenViewport";
-import { NexusCanvas } from "./nexusgpu";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
 import { SceneParametersPanel } from "./panels/SceneParametersPanel";
 import { DEFAULT_SCENE_ID, getSceneDefinition, SCENES } from "./scenes/registry";
@@ -34,16 +33,14 @@ function SceneCanvas({
   const SceneComponent = scene.Component;
 
   return (
-    <NexusCanvas
-      camera={scene.camera}
-      lighting={scene.lighting}
-      orbitControls
-      renderingEnabled={renderingEnabled}
-      renderSettings={renderSettings}
-      onRenderStatsChange={onRenderStatsChange}
-    >
-      <SceneComponent parameters={parameters} />
-    </NexusCanvas>
+    <SceneComponent
+      parameters={parameters}
+      canvasProps={{
+        renderingEnabled,
+        renderSettings,
+        onRenderStatsChange,
+      }}
+    />
   );
 }
 

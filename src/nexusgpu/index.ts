@@ -1,6 +1,6 @@
 export { NexusCanvas } from "./NexusCanvas";
 export { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-export { useFrame } from "./SceneContext";
+export { useCamera, useFrame, useLighting } from "./SceneContext";
 export {
   SdfBox,
   SdfCylinder,
@@ -18,6 +18,7 @@ export type {
   NexusFrameState,
   NexusRenderStats,
   NexusCamera,
+  NexusCanvasProps,
   NexusLighting,
   NexusRenderSettings,
   Quaternion,

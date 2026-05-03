@@ -1,16 +1,7 @@
 import { useState } from "react";
-import { SdfFunction, useFrame } from "../nexusgpu";
+import { NexusCanvas, SdfFunction, useFrame } from "../nexusgpu";
 import { defineSceneParameters, defineSceneSliderParameters } from "./types";
-
-export const camera = {
-  position: [0, 3.2, 7.4],
-  target: [0, 0, 0],
-  fov: 46,
-};
-
-export const lighting = {
-  direction: [0.18, 0.9, 0.32],
-};
+import type { NexusSceneCanvasProps } from "./types";
 
 export const initialParameters = defineSceneParameters({
   experimentAmplitude: 0.42,
@@ -85,10 +76,14 @@ return outsideDistance + insideDistance;
 
 type SdfExperimentSceneProps = {
   parameters: SdfExperimentSceneParameters;
+  canvasProps: NexusSceneCanvasProps;
 };
 
-/** SdfFunctionのWGSLを書き換えて試すための実験用テンプレートscene。 */
-export function SdfExperimentScene({ parameters }: SdfExperimentSceneProps) {
+type SdfExperimentSceneContentProps = {
+  parameters: SdfExperimentSceneParameters;
+};
+
+function SdfExperimentSceneContent({ parameters }: SdfExperimentSceneContentProps) {
   const [phase, setPhase] = useState(0);
 
   useFrame(({ elapsed }) => {
@@ -112,5 +107,16 @@ export function SdfExperimentScene({ parameters }: SdfExperimentSceneProps) {
   );
 }
 
-// scenes.jsonのmodule解決では、各sceneファイルのScene exportを共通エントリとして使う。
-export const Scene = SdfExperimentScene;
+/** SdfFunctionのWGSLを書き換えて試すための実験用テンプレートscene。 */
+export function Scene({ parameters, canvasProps }: SdfExperimentSceneProps) {
+  return (
+    <NexusCanvas
+      {...canvasProps}
+      camera={{ position: [0, 3.2, 7.4], target: [0, 0, 0], fov: 46 }}
+      lighting={{ direction: [0.18, 0.9, 0.32] }}
+      orbitControls
+    >
+      <SdfExperimentSceneContent parameters={parameters} />
+    </NexusCanvas>
+  );
+}

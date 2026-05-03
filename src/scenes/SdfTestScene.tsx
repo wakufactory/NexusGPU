@@ -1,16 +1,7 @@
 import { useState } from "react";
-import { SdfFunction, useFrame } from "../nexusgpu";
+import { NexusCanvas, SdfFunction, useFrame } from "../nexusgpu";
 import { defineSceneParameters, defineSceneSliderParameters } from "./types";
-
-export const camera = {
-  position: [0, 3.2, 7.4],
-  target: [0, 0, 0],
-  fov: 46,
-};
-
-export const lighting = {
-  direction: [0.18, 0.9, 0.32],
-};
+import type { NexusSceneCanvasProps } from "./types";
 
 export const initialParameters = defineSceneParameters({
   experimentAmplitude: 0.42,
@@ -19,7 +10,7 @@ export const initialParameters = defineSceneParameters({
   experimentThickness: 0.025,
 });
 
-export type SdfExperimentSceneParameters = typeof initialParameters;
+export type SdfTestSceneParameters = typeof initialParameters;
 
 export const parameterControls = defineSceneSliderParameters(initialParameters, [
   {
@@ -86,12 +77,16 @@ return outsideDistance + insideDistance;
 return slabDistance; 
 `;
 
-type SdfExperimentSceneProps = {
-  parameters: SdfExperimentSceneParameters;
+type SdfTestSceneProps = {
+  parameters: SdfTestSceneParameters;
+  canvasProps: NexusSceneCanvasProps;
 };
 
-/** SdfFunctionのWGSLを書き換えて試すための実験用テンプレートscene。 */
-export function SdfExperimentScene({ parameters }: SdfExperimentSceneProps) {
+type SdfTestSceneContentProps = {
+  parameters: SdfTestSceneParameters;
+};
+
+function SdfTestSceneContent({ parameters }: SdfTestSceneContentProps) {
   const [phase, setPhase] = useState(0);
 
   useFrame(({ elapsed }) => {
@@ -115,5 +110,16 @@ export function SdfExperimentScene({ parameters }: SdfExperimentSceneProps) {
   );
 }
 
-// scenes.jsonのmodule解決では、各sceneファイルのScene exportを共通エントリとして使う。
-export const Scene = SdfExperimentScene;
+/** SdfFunctionのWGSLを書き換えて試すための実験用テンプレートscene。 */
+export function Scene({ parameters, canvasProps }: SdfTestSceneProps) {
+  return (
+    <NexusCanvas
+      {...canvasProps}
+      camera={{ position: [0, 3.2, 7.4], target: [0, 0, 0], fov: 60 }}
+      lighting={{ direction: [0.18, 0.9, 0.32] }}
+      orbitControls
+    >
+      <SdfTestSceneContent parameters={parameters} />
+    </NexusCanvas>
+  );
+}

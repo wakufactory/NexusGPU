@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
 import type { SdfSphereProps, Vec3 } from "../nexusgpu";
 import { defineSceneParameters, defineSceneSliderParameters } from "./types";
+import type { NexusSceneCanvasProps } from "./types";
 
 type OrbitingSphereConfig = {
   center: Vec3;
@@ -71,16 +72,6 @@ function getOrbitPosition({ center, basisA, basisB, distance, period, phase }: O
 
 type SphereRenderProps = Pick<Required<SdfSphereProps>, "position" | "radius" | "color" | "smoothness">;
 
-export const camera = {
-  position: [0, 3.7, 5.2],
-  target: [0, 0, 0],
-  fov: 48,
-};
-
-export const lighting = {
-  direction: [0.25, 0.85, 0.35],
-};
-
 export const initialParameters = defineSceneParameters({
   sphereSmoothness: 0.7,
 });
@@ -116,10 +107,14 @@ function getSpherePropsList(elapsed: number, parameters: AnimatedSdfSceneParamet
 
 type AnimatedSdfSceneProps = {
   parameters: AnimatedSdfSceneParameters;
+  canvasProps: NexusSceneCanvasProps;
 };
 
-/** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
-export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
+type AnimatedSdfSceneContentProps = {
+  parameters: AnimatedSdfSceneParameters;
+};
+
+function AnimatedSdfSceneContent({ parameters }: AnimatedSdfSceneContentProps) {
   const [spherePropsList, setSpherePropsList] = useState<readonly SphereRenderProps[]>(() =>
     getSpherePropsList(0, parameters),
   );
@@ -163,5 +158,16 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
   );
 }
 
-// scenes.jsonのmodule解決では、各sceneファイルのScene exportを共通エントリとして使う。
-export const Scene = AnimatedSdfScene;
+/** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
+export function Scene({ parameters, canvasProps }: AnimatedSdfSceneProps) {
+  return (
+    <NexusCanvas
+      {...canvasProps}
+      camera={{ position: [0, 3.7, 5.2], target: [0, 0, 0], fov: 48 }}
+      lighting={{ direction: [0.25, 0.85, 0.35] }}
+      orbitControls
+    >
+      <AnimatedSdfSceneContent parameters={parameters} />
+    </NexusCanvas>
+  );
+}
