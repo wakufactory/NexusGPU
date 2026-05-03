@@ -127,7 +127,7 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
         color={[0.2, 0.23, 0.28]}
         smoothness={0.}
       />
-      <SdfGroup op="subtract" smoothness={parameters.sphereSmoothness}>
+      <SdfGroup op="and" smoothness={parameters.sphereSmoothness}>
       <SdfGroup op="or" smoothness={parameters.sphereSmoothness}>
         {spherePropsList.map((sphereProps, index) => (
           <SdfSphere
@@ -139,7 +139,7 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
           />
         ))}
       </SdfGroup>
-      <SdfGroup >
+      <SdfGroup op="not" >
         <SdfFunction
           sdfFunction="let k0 = length(point / data0.xyz); let k1 = length(point / (data0.xyz * data0.xyz)); return k0 * (k0 - 1.0) / k1;"
           data0={[1.7, 0.9, 0.4, 0.3]}
