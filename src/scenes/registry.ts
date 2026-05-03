@@ -23,13 +23,8 @@ const sceneModules = import.meta.glob<SceneModule>("./*.tsx", {
 function resolveParameterControls(
   config: SceneJsonConfig,
   sceneModule: SceneModule,
+  initialParameters: Record<string, unknown>,
 ): readonly SceneSliderParameter<Record<string, unknown>>[] {
-  if (!sceneModule.initialParameters) {
-    throw new Error(`${config.id}.module must export initialParameters.`);
-  }
-
-  const initialParameters = sceneModule.initialParameters;
-
   return (sceneModule.parameterControls ?? []).map((control) => {
     if (!(control.key in initialParameters)) {
       throw new Error(`${config.id}.parameterControls.${control.key} is missing from initialParameters.`);
@@ -56,16 +51,14 @@ function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition | null {
     throw new Error(`${config.id}.module must export a Scene component.`);
   }
 
-  if (!sceneModule.initialParameters) {
-    throw new Error(`${config.id}.module must export initialParameters.`);
-  }
+  const initialParameters = sceneModule.initialParameters ?? {};
 
   return {
     id: config.id,
     title: config.title,
     description: config.description,
-    initialParameters: sceneModule.initialParameters,
-    parameterControls: resolveParameterControls(config, sceneModule),
+    initialParameters,
+    parameterControls: resolveParameterControls(config, sceneModule, initialParameters),
     Component: sceneModule.Scene,
   };
 }

@@ -19,10 +19,19 @@ import {
   SdfSphere,
   SdfTorus,
 } from "../nexusgpu";
+import type { NexusSceneCanvasProps } from "./types";
 
-export function SimpleScene() {
+type SimpleSceneProps = {
+  canvasProps: NexusSceneCanvasProps;
+};
+
+export function Scene({ canvasProps }: SimpleSceneProps) {
   return (
-    <NexusCanvas camera={{ position: [0, 1.4, 5], target: [0, 0, 0], fov: 48 }}>
+    <NexusCanvas
+      {...canvasProps}
+      camera={{ position: [0, 1.4, 5], target: [0, 0, 0], fov: 48 }}
+      orbitControls
+    >
       <SdfGroup op="or" smoothness={0.2}>
         <SdfSphere position={[-0.9, 0, 0]} radius={0.7} color={[0.05, 0.74, 0.7]} />
         <SdfBox position={[0.9, 0, 0]} size={[1.1, 1.1, 1.1]} color={[0.95, 0.55, 0.18]} />
@@ -41,7 +50,7 @@ export function SimpleScene() {
 }
 ```
 
-sceneファイルは通常`src/scenes/`に置きます。現在のデモでは、scene本体、推奨カメラ、推奨ライト、scene固有パラメータを1つのファイルにまとめています。
+sceneファイルは通常`src/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラやライト、必要ならscene固有パラメータを1つのファイルにまとめています。
 
 ## 既存のSDF Primitive
 
@@ -381,7 +390,7 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
 
 ## Scene Registry
 
-`src/scenes/scenes.json`は、アプリで選べるsceneの薄い一覧です。各JSON定義は次の項目だけを持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルの`Scene`、`initialParameters`、`parameterControls`と結合します。
+`src/scenes/scenes.json`は、アプリで選べるsceneの薄い一覧です。各JSON定義は次の項目だけを持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルの`Scene`、任意の`initialParameters`、`parameterControls`と結合します。`initialParameters`がないsceneは空 object として扱われます。
 
 - `id`: scene selector用の一意なID
 - `title`: sidebarに表示する名前
@@ -391,7 +400,7 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
 各sceneファイルは次をexportします。
 
 - `Scene`: `parameters`と`canvasProps`を受け取り、`NexusCanvas`を返すReact component
-- `initialParameters`: scene固有パラメータの初期値
+- `initialParameters`: 任意。scene固有パラメータの初期値
 - `parameterControls`: 任意のscene固有パラメータslider定義
 
 新しいsceneを追加するときの最小手順は次の通りです。
