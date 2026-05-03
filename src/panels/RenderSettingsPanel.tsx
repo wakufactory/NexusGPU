@@ -36,8 +36,8 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <input
           type="range"
           min="0"
-          max="0.5"
-          step="0.005"
+          max="1"
+          step="0.01"
           value={settings.stereoBase}
           disabled={!settings.stereoSbs}
           onChange={(event) => updateSetting("stereoBase", Number(event.target.value))}
@@ -103,7 +103,7 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <input
           type="range"
           min="16"
-          max="160"
+          max="200"
           step="4"
           value={settings.maxSteps}
           onChange={(event) => updateSetting("maxSteps", Number(event.target.value))}
@@ -116,7 +116,7 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <input
           type="range"
           min="12"
-          max="90"
+          max="150"
           step="2"
           value={settings.maxDistance}
           onChange={(event) => updateSetting("maxDistance", Number(event.target.value))}
