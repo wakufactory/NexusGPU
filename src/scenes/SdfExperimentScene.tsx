@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { SdfFunction, useFrame } from "../nexusgpu";
+import { defineSceneSettings } from "./types";
 
 export type SdfExperimentSceneParameters = {
   experimentAmplitude: number;
@@ -7,6 +8,54 @@ export type SdfExperimentSceneParameters = {
   experimentSpeed: number;
   experimentThickness: number;
 };
+
+export const sceneSettings = defineSceneSettings<SdfExperimentSceneParameters>({
+  camera: {
+    position: [0, 3.2, 7.4],
+    target: [0, 0, 0],
+    fov: 46,
+  },
+  lighting: {
+    direction: [0.18, 0.9, 0.32],
+  },
+  initialParameters: {
+    experimentAmplitude: 0.42,
+    experimentFrequency: 3.6,
+    experimentSpeed: 1.2,
+    experimentThickness: 0.025,
+  },
+  parameterControls: [
+    {
+      key: "experimentAmplitude",
+      name: "Amplitude",
+      min: 0,
+      max: 1.2,
+      step: 0.02,
+    },
+    {
+      key: "experimentFrequency",
+      name: "Frequency",
+      min: 0.2,
+      max: 9,
+      step: 0.1,
+    },
+    {
+      key: "experimentSpeed",
+      name: "Speed",
+      min: 0,
+      max: 5,
+      step: 0.1,
+    },
+    {
+      key: "experimentThickness",
+      name: "Thickness",
+      min: 0.005,
+      max: 0.12,
+      step: 0.005,
+      precision: 3,
+    },
+  ],
+});
 
 const EXPERIMENT_SDF = /* wgsl */ `
 // SDF実験用テンプレート。

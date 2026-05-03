@@ -28,8 +28,19 @@ export type NexusSceneDefinition<Parameters extends object> = {
 
 export type AnyNexusSceneDefinition = NexusSceneDefinition<any>;
 
+export type NexusSceneSettings<Parameters extends object> = Pick<
+  NexusSceneDefinition<Parameters>,
+  "camera" | "lighting" | "initialParameters" | "parameterControls"
+>;
+
 export function defineScene<Parameters extends object>(
   definition: NexusSceneDefinition<Parameters>,
 ) {
   return definition;
+}
+
+export function defineSceneSettings<Parameters extends object>(
+  settings: NexusSceneSettings<Parameters>,
+) {
+  return settings;
 }

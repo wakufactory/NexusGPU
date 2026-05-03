@@ -106,7 +106,6 @@ try {
 }
 
 const nextScene = {
-  ...templateScene,
   id: sceneId,
   title,
   description: `Scene copied from ${templateScene.title}.`,

@@ -218,14 +218,38 @@ export function BoxAndNotSphereScene() {
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact componentをexportします。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して`NexusCanvas`へ渡します。
+sceneファイルは`Scene`という名前のReact componentと、推奨カメラ、推奨ライト、初期パラメータ、slider定義をまとめた`sceneSettings`をexportします。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して`NexusCanvas`へ渡します。
 
 ```tsx
 import { SdfBox, SdfSphere } from "../nexusgpu";
+import { defineSceneSettings } from "./types";
 
 export type MySceneParameters = {
   sphereSmoothness: number;
 };
+
+export const sceneSettings = defineSceneSettings<MySceneParameters>({
+  camera: {
+    position: [0, 2.8, 5.2],
+    target: [0, 0, 0],
+    fov: 48,
+  },
+  lighting: {
+    direction: [0.25, 0.85, 0.35],
+  },
+  initialParameters: {
+    sphereSmoothness: 0.4,
+  },
+  parameterControls: [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+});
 
 export function Scene({ parameters }: { parameters: MySceneParameters }) {
   return (
@@ -250,27 +274,7 @@ export function Scene({ parameters }: { parameters: MySceneParameters }) {
     "id": "my-scene",
     "title": "My Scene",
     "description": "Short description shown in the sidebar.",
-    "module": "./MyScene.tsx",
-    "camera": {
-      "position": [0, 2.8, 5.2],
-      "target": [0, 0, 0],
-      "fov": 48
-    },
-    "lighting": {
-      "direction": [0.25, 0.85, 0.35]
-    },
-    "initialParameters": {
-      "sphereSmoothness": 0.4
-    },
-    "parameterControls": [
-      {
-        "key": "sphereSmoothness",
-        "name": "Sphere smoothness",
-        "min": 0,
-        "max": 1.5,
-        "step": 0.05
-      }
-    ]
+    "module": "./MyScene.tsx"
   }
 ]
 ```
@@ -301,7 +305,7 @@ export function FloatingSphere() {
 
 ## Scene固有パラメータ
 
-UIからsceneの値を変える場合は、scene側でパラメータ型を定義し、初期値は`scenes.json`の`initialParameters`へ書きます。
+UIからsceneの値を変える場合は、scene側でパラメータ型を定義し、初期値は同じsceneファイルの`sceneSettings.initialParameters`へ書きます。
 
 ```tsx
 export type MySceneParameters = {
@@ -317,39 +321,48 @@ export function Scene({ parameters }: MySceneProps) {
 }
 ```
 
-パラメータをsidebarから変更したい場合は、`scenes.json`の`parameterControls`にslider定義を追加します。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
+パラメータをsidebarから変更したい場合は、`sceneSettings.parameterControls`にslider定義を追加します。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
 
-```json
-{
-  "initialParameters": {
-    "sphereSmoothness": 0.4
+```ts
+export const sceneSettings = defineSceneSettings<MySceneParameters>({
+  camera: {
+    position: [0, 2.8, 5.2],
+    target: [0, 0, 0],
+    fov: 48,
   },
-  "parameterControls": [
+  lighting: {
+    direction: [0.25, 0.85, 0.35],
+  },
+  initialParameters: {
+    sphereSmoothness: 0.4,
+  },
+  parameterControls: [
     {
-      "key": "sphereSmoothness",
-      "name": "Sphere smoothness",
-      "min": 0,
-      "max": 1.5,
-      "step": 0.05
-    }
-  ]
-}
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+});
 ```
 
-この形にすると、パラメータが増えてもscene componentの型と`scenes.json`を更新するだけで済みます。sceneごとのpanel componentは不要です。
+この形にすると、パラメータが増えてもscene componentの型と`sceneSettings`を更新するだけで済みます。sceneごとのpanel componentは不要です。
 
 ## Scene Registry
 
-`src/scenes/scenes.json`は、アプリで選べるsceneの一覧です。各scene定義は次の項目を持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決します。
+`src/scenes/scenes.json`は、アプリで選べるsceneの薄い一覧です。各JSON定義は次の項目だけを持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルの`sceneSettings`と結合します。
 
 - `id`: scene selector用の一意なID
 - `title`: sidebarに表示する名前
 - `description`: sidebarに表示する説明
 - `module`: `Scene` componentをexportするsceneファイルへの相対パス
-- `camera`: 推奨カメラ
-- `lighting`: 推奨ライト
-- `initialParameters`: scene固有パラメータの初期値
-- `parameterControls`: 任意のscene固有パラメータslider定義
+
+各sceneファイルは次をexportします。
+
+- `Scene`: `parameters`を受け取るReact component
+- `sceneSettings`: `camera`、`lighting`、`initialParameters`、任意の`parameterControls`
 
 新しいsceneを追加するときの最小手順は次の通りです。
 

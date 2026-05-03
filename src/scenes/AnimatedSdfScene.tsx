@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
 import type { SdfSphereProps, Vec3 } from "../nexusgpu";
+import { defineSceneSettings } from "./types";
 
 type OrbitingSphereConfig = {
   center: Vec3;
@@ -73,6 +74,29 @@ type SphereRenderProps = Pick<Required<SdfSphereProps>, "position" | "radius" | 
 export type AnimatedSdfSceneParameters = {
   sphereSmoothness: number;
 };
+
+export const sceneSettings = defineSceneSettings<AnimatedSdfSceneParameters>({
+  camera: {
+    position: [0, 3.7, 5.2],
+    target: [0, 0, 0],
+    fov: 48,
+  },
+  lighting: {
+    direction: [0.25, 0.85, 0.35],
+  },
+  initialParameters: {
+    sphereSmoothness: 0.7,
+  },
+  parameterControls: [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+});
 
 function getSphereProps(
   sphere: OrbitingSphereConfig,

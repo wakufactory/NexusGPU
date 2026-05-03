@@ -1,10 +1,11 @@
 import type { ComponentType } from "react";
 import sceneConfigs from "./scenes.json";
 import type { NexusCamera, NexusLighting } from "../nexusgpu";
-import type { AnyNexusSceneDefinition, SceneSliderParameter } from "./types";
+import type { AnyNexusSceneDefinition, NexusSceneSettings, SceneSliderParameter } from "./types";
 
 type SceneModule = {
   Scene?: ComponentType<{ parameters: any }>;
+  sceneSettings?: NexusSceneSettings<any>;
 };
 
 type SceneJsonConfig = {
@@ -12,25 +13,6 @@ type SceneJsonConfig = {
   title: string;
   description: string;
   module: string;
-  camera: {
-    position: number[];
-    target: number[];
-    fov: number;
-  };
-  lighting: {
-    direction: number[];
-  };
-  initialParameters: Record<string, unknown>;
-  parameterControls?: SceneJsonSliderParameter[];
-};
-
-type SceneJsonSliderParameter = {
-  key: string;
-  name: string;
-  min: number;
-  max: number;
-  step: number;
-  precision?: number;
 };
 
 // ビルド時点で存在するsceneファイルを自動収集し、JSONのmodule文字列から参照できるようにする。
@@ -38,46 +20,45 @@ const sceneModules = import.meta.glob<SceneModule>("./*.tsx", {
   eager: true,
 });
 
-// JSONから読む配列はtuple型にならないため、NexusGPUが期待するVec3形状を実行時に確認する。
-function assertVec3(value: number[], label: string): asserts value is [number, number, number] {
+function assertVec3(value: readonly number[], label: string): asserts value is [number, number, number] {
   if (value.length !== 3 || value.some((item) => typeof item !== "number")) {
     throw new Error(`${label} must be a three-number array.`);
   }
 }
 
-function resolveCamera(config: SceneJsonConfig): Required<NexusCamera> {
-  assertVec3(config.camera.position, `${config.id}.camera.position`);
-  assertVec3(config.camera.target, `${config.id}.camera.target`);
+function resolveCamera(config: SceneJsonConfig, settings: NexusSceneSettings<object>): Required<NexusCamera> {
+  assertVec3(settings.camera.position, `${config.id}.camera.position`);
+  assertVec3(settings.camera.target, `${config.id}.camera.target`);
 
-  if (typeof config.camera.fov !== "number") {
+  if (typeof settings.camera.fov !== "number") {
     throw new Error(`${config.id}.camera.fov must be a number.`);
   }
 
   return {
-    position: config.camera.position,
-    target: config.camera.target,
-    fov: config.camera.fov,
+    position: settings.camera.position,
+    target: settings.camera.target,
+    fov: settings.camera.fov,
   };
 }
 
-function resolveLighting(config: SceneJsonConfig): Required<NexusLighting> {
-  assertVec3(config.lighting.direction, `${config.id}.lighting.direction`);
+function resolveLighting(config: SceneJsonConfig, settings: NexusSceneSettings<object>): Required<NexusLighting> {
+  assertVec3(settings.lighting.direction, `${config.id}.lighting.direction`);
 
   return {
-    direction: config.lighting.direction,
+    direction: settings.lighting.direction,
   };
 }
 
 function resolveParameterControls(
   config: SceneJsonConfig,
+  settings: NexusSceneSettings<Record<string, unknown>>,
 ): readonly SceneSliderParameter<Record<string, unknown>>[] {
-  return (config.parameterControls ?? []).map((control) => {
-    // Sliderはnumber parameter専用なので、JSONのkeyと初期値の対応をここで検証する。
-    if (!(control.key in config.initialParameters)) {
+  return (settings.parameterControls ?? []).map((control) => {
+    if (!(control.key in settings.initialParameters)) {
       throw new Error(`${config.id}.parameterControls.${control.key} is missing from initialParameters.`);
     }
 
-    if (typeof config.initialParameters[control.key] !== "number") {
+    if (typeof settings.initialParameters[control.key] !== "number") {
       throw new Error(`${config.id}.parameterControls.${control.key} must point to a number parameter.`);
     }
 
@@ -97,14 +78,18 @@ function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition {
     throw new Error(`${config.id}.module must export a Scene component.`);
   }
 
+  if (!sceneModule.sceneSettings) {
+    throw new Error(`${config.id}.module must export sceneSettings.`);
+  }
+
   return {
     id: config.id,
     title: config.title,
     description: config.description,
-    camera: resolveCamera(config),
-    lighting: resolveLighting(config),
-    initialParameters: config.initialParameters,
-    parameterControls: resolveParameterControls(config),
+    camera: resolveCamera(config, sceneModule.sceneSettings),
+    lighting: resolveLighting(config, sceneModule.sceneSettings),
+    initialParameters: sceneModule.sceneSettings.initialParameters,
+    parameterControls: resolveParameterControls(config, sceneModule.sceneSettings),
     Component: sceneModule.Scene,
   };
 }
