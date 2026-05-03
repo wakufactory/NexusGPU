@@ -151,12 +151,20 @@ export class WebGpuSdfRenderer {
     this.snapshot = snapshot;
     this.configureScenePipeline(snapshot);
     this.uploadObjects(snapshot);
+
+    if (!this.renderingEnabled) {
+      this.renderOnce();
+    }
   }
 
   /** デバッグUIから渡された描画品質設定を正規化し、必要なら内部解像度を更新する。 */
   setRenderSettings(settings: NexusRenderSettings | undefined) {
     this.renderSettings = normalizeRenderSettings(settings);
     this.resize();
+
+    if (!this.renderingEnabled) {
+      this.renderOnce();
+    }
   }
 
   /** 描画ループを停止/再開する。停止中はcanvasへ何も描かず、最後のフレームを保持する。 */
@@ -406,7 +414,24 @@ export class WebGpuSdfRenderer {
       return;
     }
 
-    this.updateFps(now);
+    this.renderFrame(now, true);
+  };
+
+  /** 停止中のカメラ操作や設定変更に反応して、連続ループなしで1フレームだけ描画する。 */
+  private renderOnce() {
+    this.resize();
+    if (!this.snapshot) {
+      return;
+    }
+
+    this.renderFrame(performance.now(), false);
+  }
+
+  private renderFrame(now: number, updateStats: boolean) {
+    if (updateStats) {
+      this.updateFps(now);
+    }
+
     this.resize();
 
     if (!this.snapshot) {
@@ -434,7 +459,7 @@ export class WebGpuSdfRenderer {
     pass.end();
 
     this.device.queue.submit([encoder.finish()]);
-  };
+  }
 }
 
 type SdfRecord = number[];

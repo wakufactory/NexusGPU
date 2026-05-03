@@ -30,7 +30,7 @@ export function NexusCanvas({
   useOrbitCameraControls({
     canvasRef,
     camera,
-    enabled: orbitControls && renderingEnabled,
+    enabled: orbitControls,
     store,
   });
 
