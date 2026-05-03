@@ -1,4 +1,5 @@
 import { createShaderConstants } from "./shaderConstants";
+import { defaultMaterialShader } from "./defaultMaterialShader";
 import { fragmentShader } from "./fragmentShader";
 import { lightingShader } from "./lightingShader";
 import { raymarchShader } from "./raymarchShader";
@@ -23,6 +24,7 @@ const shaderSectionsBeforeMapping = [
 const shaderSectionsAfterMapping = [
   raymarchShader,
   lightingShader,
+  defaultMaterialShader,
   fragmentShader,
 ];
 
