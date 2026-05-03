@@ -46,9 +46,3 @@ function AnimatedSphere() {
 }
 ```
 
-## Next Framework Steps
-
-1. Replace component registration with a dedicated `react-reconciler` host once the primitive contract is stable.
-2. Add dirty-range buffer writes so prop updates upload only changed object records.
-3. Move spatial indexing and culling into compute passes.
-4. Add an intermediate schema/DSL layer for AI-generated scenes.
