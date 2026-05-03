@@ -591,6 +591,18 @@ function createPrimitiveDistanceExpression(
     return `sdBox(${localPointName}, ${objectName}.data0.xyz)`;
   }
 
+  if (node.kind === "cylinder") {
+    return `sdCylinder(${localPointName}, ${objectName}.data0.xy)`;
+  }
+
+  if (node.kind === "torus") {
+    return `sdTorus(${localPointName}, ${objectName}.data0.xy)`;
+  }
+
+  if (node.kind === "ellipsoid") {
+    return `sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`;
+  }
+
   if (!node.sdfFunction) {
     throw new Error("SdfFunction requires a non-empty WGSL function string.");
   }

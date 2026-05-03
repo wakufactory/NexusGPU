@@ -1,7 +1,17 @@
 export { NexusCanvas } from "./NexusCanvas";
 export { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 export { useFrame } from "./SceneContext";
-export { SdfBox, SdfFunction, SdfGroup, SdfNot, SdfSphere, SdfSubtract } from "./primitives";
+export {
+  SdfBox,
+  SdfCylinder,
+  SdfEllipsoid,
+  SdfFunction,
+  SdfGroup,
+  SdfNot,
+  SdfSphere,
+  SdfSubtract,
+  SdfTorus,
+} from "./primitives";
 export type {
   NexusCanvasPixelSize,
   NexusFrameCallback,
@@ -14,11 +24,14 @@ export type {
   SdfBooleanOperation,
   SdfBoundingSphere,
   SdfBoxProps,
+  SdfCylinderProps,
   SdfData,
+  SdfEllipsoidProps,
   SdfFunctionProps,
   SdfGroupProps,
   SdfPrimitiveProps,
   SdfSphereProps,
+  SdfTorusProps,
   Vec4,
   Vec3,
 } from "./types";

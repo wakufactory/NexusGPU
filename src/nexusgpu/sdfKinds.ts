@@ -2,9 +2,12 @@
 export const SDF_PRIMITIVE_KIND_IDS = {
   sphere: 0,
   box: 1,
+  cylinder: 2,
+  torus: 3,
+  ellipsoid: 4,
 } as const;
 
-export const CUSTOM_SDF_PRIMITIVE_KIND_START = 2;
+export const CUSTOM_SDF_PRIMITIVE_KIND_START = 5;
 
 /** primitive IDと衝突しない、GPU命令列用の演算ノードID。 */
 export const SDF_OPERATION_KIND_IDS = {

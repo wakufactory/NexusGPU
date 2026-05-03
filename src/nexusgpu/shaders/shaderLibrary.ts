@@ -16,6 +16,32 @@ fn sdBox(point: vec3<f32>, bounds: vec3<f32>) -> f32 {
   return length(max(q, vec3<f32>(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 `,
+  "sdf/cylinder": /* wgsl */ `
+// Y軸方向の円柱のSigned Distance Function。dimensionsは(radius, halfHeight)。
+fn sdCylinder(point: vec3<f32>, dimensions: vec2<f32>) -> f32 {
+  let d = abs(vec2<f32>(length(point.xz), point.y)) - dimensions;
+  return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0)));
+}
+`,
+  "sdf/torus": /* wgsl */ `
+// XZ平面上のトーラスのSigned Distance Function。radiiは(majorRadius, minorRadius)。
+fn sdTorus(point: vec3<f32>, radii: vec2<f32>) -> f32 {
+  let q = vec2<f32>(length(point.xz) - radii.x, point.y);
+  return length(q) - radii.y;
+}
+`,
+  "sdf/ellipsoid": /* wgsl */ `
+// 楕円球のSigned Distance Function。radiiはX/Y/Z各軸の半径。
+fn sdEllipsoid(point: vec3<f32>, radii: vec3<f32>) -> f32 {
+  let safeRadii = max(radii, vec3<f32>(0.001));
+  let k0 = length(point / safeRadii);
+  let k1 = length(point / (safeRadii * safeRadii));
+  if (k1 <= 0.000001) {
+    return -min(safeRadii.x, min(safeRadii.y, safeRadii.z));
+  }
+  return k0 * (k0 - 1.0) / k1;
+}
+`,
   "sdf/smooth-min": /* wgsl */ `
 // 複数のSDFを滑らかに結合するためのsmooth min。
 fn smoothMin(a: f32, b: f32, k: f32) -> f32 {

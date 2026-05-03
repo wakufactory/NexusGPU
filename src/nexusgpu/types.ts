@@ -91,6 +91,23 @@ export type SdfBoxProps = SdfPrimitiveProps & {
   size?: Vec3;
 };
 
+/** 円柱プリミティブのprops。heightはY軸方向のフル高さで指定する。 */
+export type SdfCylinderProps = SdfPrimitiveProps & {
+  radius?: number;
+  height?: number;
+};
+
+/** トーラスプリミティブのprops。majorRadiusは中心からチューブ中心まで、minorRadiusはチューブ半径。 */
+export type SdfTorusProps = SdfPrimitiveProps & {
+  majorRadius?: number;
+  minorRadius?: number;
+};
+
+/** 楕円球プリミティブのprops。radiiはX/Y/Z各軸の半径。 */
+export type SdfEllipsoidProps = SdfPrimitiveProps & {
+  radii?: Vec3;
+};
+
 /** WGSLのSDF関数を直接渡す汎用プリミティブのprops。 */
 export type SdfFunctionProps = SdfPrimitiveProps & {
   sdfFunction: string;

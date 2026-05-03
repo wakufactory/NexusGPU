@@ -5,12 +5,15 @@ import type {
   SdfBooleanOperation,
   SdfBoundingSphere,
   SdfBoxProps,
+  SdfCylinderProps,
   SdfData,
+  SdfEllipsoidProps,
   SdfFunctionProps,
   SdfGroupProps,
   SdfNode,
   SdfSceneNode,
   SdfSphereProps,
+  SdfTorusProps,
   Vec3,
   Vec4,
 } from "./types";
@@ -84,6 +87,112 @@ export function SdfBox({ position, rotation, size = [1, 1, 1], color, smoothness
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
   }, [color, id, position, rotation, size, smoothness, target]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return null;
+}
+
+/** React propsからSDF円柱を作り、SceneStoreへ登録する宣言的プリミティブ。 */
+export function SdfCylinder({
+  position,
+  rotation,
+  radius = 0.5,
+  height = 1,
+  color,
+  smoothness = 0,
+}: SdfCylinderProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+
+  useEffect(() => {
+    const normalizedRadius = Math.max(0.001, radius);
+    const halfHeight = Math.max(0.001, height * 0.5);
+    const node: SdfNode = {
+      id,
+      kind: "cylinder",
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData([normalizedRadius, halfHeight, 0, 0]),
+      smoothness: clamp(smoothness, 0, 2),
+      bounds: createCylinderBounds(position, normalizedRadius, halfHeight),
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [color, height, id, position, radius, rotation, smoothness, target]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return null;
+}
+
+/** React propsからSDFトーラスを作り、SceneStoreへ登録する宣言的プリミティブ。 */
+export function SdfTorus({
+  position,
+  rotation,
+  majorRadius = 0.7,
+  minorRadius = 0.2,
+  color,
+  smoothness = 0,
+}: SdfTorusProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+
+  useEffect(() => {
+    const normalizedMajorRadius = Math.max(0.001, majorRadius);
+    const normalizedMinorRadius = Math.max(0.001, minorRadius);
+    const node: SdfNode = {
+      id,
+      kind: "torus",
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData([normalizedMajorRadius, normalizedMinorRadius, 0, 0]),
+      smoothness: clamp(smoothness, 0, 2),
+      bounds: createTorusBounds(position, normalizedMajorRadius, normalizedMinorRadius),
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [color, id, majorRadius, minorRadius, position, rotation, smoothness, target]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return null;
+}
+
+/** React propsからSDF楕円球を作り、SceneStoreへ登録する宣言的プリミティブ。 */
+export function SdfEllipsoid({
+  position,
+  rotation,
+  radii = [1, 0.6, 0.4],
+  color,
+  smoothness = 0,
+}: SdfEllipsoidProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+
+  useEffect(() => {
+    const normalizedRadii = normalizeRadii(radii);
+    const node: SdfNode = {
+      id,
+      kind: "ellipsoid",
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData([...normalizedRadii, 0]),
+      smoothness: clamp(smoothness, 0, 2),
+      bounds: createEllipsoidBounds(position, normalizedRadii),
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [color, id, position, radii, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -244,6 +353,35 @@ function createBoxBounds(position: Vec3 | undefined, size: Vec3 | undefined): Sd
   };
 }
 
+function createCylinderBounds(
+  position: Vec3 | undefined,
+  radius: number,
+  halfHeight: number,
+): SdfBoundingSphere {
+  return {
+    center: normalizeVec3(position, DEFAULT_POSITION),
+    radius: Math.hypot(radius, halfHeight),
+  };
+}
+
+function createTorusBounds(
+  position: Vec3 | undefined,
+  majorRadius: number,
+  minorRadius: number,
+): SdfBoundingSphere {
+  return {
+    center: normalizeVec3(position, DEFAULT_POSITION),
+    radius: majorRadius + minorRadius,
+  };
+}
+
+function createEllipsoidBounds(position: Vec3 | undefined, radii: Vec3): SdfBoundingSphere {
+  return {
+    center: normalizeVec3(position, DEFAULT_POSITION),
+    radius: Math.max(radii[0], radii[1], radii[2]),
+  };
+}
+
 function createFunctionBounds(
   position: Vec3 | undefined,
   data0: Vec4,
@@ -317,4 +455,8 @@ function subtractVec3(a: Vec3, b: Vec3): Vec3 {
 
 function lengthVec3(value: Vec3) {
   return Math.hypot(value[0], value[1], value[2]);
+}
+
+function normalizeRadii(radii: Vec3 | undefined): Vec3 {
+  return normalizeVec3(radii, [1, 0.6, 0.4]).map((value) => Math.max(0.001, value)) as [number, number, number];
 }
