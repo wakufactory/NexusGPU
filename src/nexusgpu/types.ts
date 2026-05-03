@@ -129,6 +129,7 @@ export type NexusCanvasProps = {
   camera?: NexusCamera;
   lighting?: NexusLighting;
   orbitControls?: boolean;
+  renderingEnabled?: boolean;
   renderSettings?: NexusRenderSettings;
   onRenderStatsChange?: (stats: NexusRenderStats) => void;
   children?: ReactNode;

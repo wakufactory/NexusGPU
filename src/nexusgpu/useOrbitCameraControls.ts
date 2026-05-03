@@ -137,6 +137,14 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
     canvas.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
+      for (const pointerId of activePointers.keys()) {
+        if (canvas.hasPointerCapture(pointerId)) {
+          canvas.releasePointerCapture(pointerId);
+        }
+      }
+      activePointers.clear();
+      activeDragPointerId = null;
+      previousPinchDistance = null;
       canvas.classList.remove("is-orbiting");
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointermove", handlePointerMove);

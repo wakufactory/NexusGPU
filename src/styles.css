@@ -248,14 +248,14 @@ select {
   padding: 18px;
 }
 
-.fullscreen-toggle {
+.fullscreen-toggle,
+.render-toggle {
   position: absolute;
   z-index: 2;
   top: 30px;
-  right: 30px;
-  display: inline-grid;
-  place-items: center;
-  width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
@@ -265,7 +265,24 @@ select {
   backdrop-filter: blur(12px);
 }
 
-.fullscreen-toggle:hover {
+.fullscreen-toggle {
+  right: 30px;
+  width: 40px;
+}
+
+.render-toggle {
+  right: 78px;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.render-toggle span {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.fullscreen-toggle:hover,
+.render-toggle:hover {
   background: rgba(23, 27, 29, 0.86);
 }
 
@@ -323,6 +340,11 @@ select {
 .app-shell.is-fullscreen .fullscreen-toggle {
   top: 12px;
   right: 12px;
+}
+
+.app-shell.is-fullscreen .render-toggle {
+  top: 12px;
+  right: 60px;
 }
 
 .app-shell.is-fullscreen .nexus-canvas,
@@ -443,6 +465,13 @@ select {
     right: 21px;
   }
 
+  .render-toggle {
+    top: 21px;
+    right: 65px;
+    height: 32px;
+    padding: 0 10px;
+  }
+
   .nexus-canvas,
   .nexus-fallback {
     height: calc(100vh - 18px);
@@ -478,6 +507,11 @@ select {
   .fullscreen-toggle {
     top: 30px;
     right: 30px;
+  }
+
+  .render-toggle {
+    top: 30px;
+    right: 78px;
   }
 
   .app-shell.is-fullscreen .nexus-canvas,

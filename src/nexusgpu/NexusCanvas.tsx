@@ -14,16 +14,25 @@ export function NexusCanvas({
   camera,
   lighting,
   orbitControls = false,
+  renderingEnabled = true,
   renderSettings,
   onRenderStatsChange,
   children,
 }: NexusCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
+  const elapsedRef = useRef(0);
+  const renderSettingsRef = useRef(renderSettings);
+  const renderingEnabledRef = useRef(renderingEnabled);
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
 
-  useOrbitCameraControls({ canvasRef, camera, enabled: orbitControls, store });
+  useOrbitCameraControls({
+    canvasRef,
+    camera,
+    enabled: orbitControls && renderingEnabled,
+    store,
+  });
 
   // ライティングpropsが変わったらSceneStoreへ反映し、レンダラのUniform更新につなげる。
   useEffect(() => {
@@ -37,30 +46,38 @@ export function NexusCanvas({
 
   // デバッグ設定はシーン構造ではないため、レンダラへ直接渡す。
   useEffect(() => {
+    renderSettingsRef.current = renderSettings;
     rendererRef.current?.setRenderSettings(renderSettings);
   }, [renderSettings]);
 
+  useEffect(() => {
+    renderingEnabledRef.current = renderingEnabled;
+    rendererRef.current?.setRenderingEnabled(renderingEnabled);
+  }, [renderingEnabled]);
+
   // 子コンポーネント向けのフレームループ。useFrameでSDF propsを動かせるようにする。
   useEffect(() => {
+    if (!renderingEnabled) {
+      return;
+    }
+
     let frameId = 0;
-    let startTime: number | null = null;
     let lastTime: number | null = null;
 
     const tick = (time: number) => {
-      startTime ??= time;
       lastTime ??= time;
 
-      const elapsed = (time - startTime) / 1000;
       const delta = Math.min((time - lastTime) / 1000, 0.1);
       lastTime = time;
+      elapsedRef.current += delta;
 
-      store.advanceFrame({ time, elapsed, delta });
+      store.advanceFrame({ time, elapsed: elapsedRef.current, delta });
       frameId = requestAnimationFrame(tick);
     };
 
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [store]);
+  }, [renderingEnabled, store]);
 
   // CanvasのWebGPU初期化、SceneStore購読、アンマウント時の破棄をまとめて管理する。
   useEffect(() => {
@@ -80,7 +97,8 @@ export function NexusCanvas({
         }
 
         rendererRef.current = renderer;
-        renderer.setRenderSettings(renderSettings);
+        renderer.setRenderSettings(renderSettingsRef.current);
+        renderer.setRenderingEnabled(renderingEnabledRef.current);
         unsubscribe = store.subscribe((snapshot: SceneSnapshot) => {
           renderer.setScene(snapshot);
         });

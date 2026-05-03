@@ -57,6 +57,7 @@ export class WebGpuSdfRenderer {
   private lastFpsSampleTime = this.startTime;
   private framesSinceFpsSample = 0;
   private lastRenderTime = 0;
+  private renderingEnabled = true;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -156,6 +157,28 @@ export class WebGpuSdfRenderer {
   setRenderSettings(settings: NexusRenderSettings | undefined) {
     this.renderSettings = normalizeRenderSettings(settings);
     this.resize();
+  }
+
+  /** 描画ループを停止/再開する。停止中はcanvasへ何も描かず、最後のフレームを保持する。 */
+  setRenderingEnabled(enabled: boolean) {
+    if (this.renderingEnabled === enabled) {
+      return;
+    }
+
+    this.renderingEnabled = enabled;
+
+    if (!enabled) {
+      cancelAnimationFrame(this.frameId);
+      this.frameId = 0;
+      this.framesSinceFpsSample = 0;
+      this.lastFpsSampleTime = performance.now();
+      this.setRenderStats({ fps: 0 });
+      return;
+    }
+
+    this.lastRenderTime = 0;
+    this.lastFpsSampleTime = performance.now();
+    this.frame();
   }
 
   /** requestAnimationFrame、ResizeObserver、GPUBufferを解放する。 */
@@ -372,6 +395,10 @@ export class WebGpuSdfRenderer {
 
   /** 毎フレームの描画ループ。フルスクリーン三角形を1枚描き、Fragment ShaderでSDFを評価する。 */
   private frame = () => {
+    if (!this.renderingEnabled) {
+      return;
+    }
+
     this.frameId = requestAnimationFrame(this.frame);
     const now = performance.now();
 

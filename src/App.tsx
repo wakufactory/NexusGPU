@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers3, Maximize2, Minimize2, Sparkles } from "lucide-react";
+import { Layers3, Maximize2, Minimize2, Pause, Play, Sparkles } from "lucide-react";
 import { INITIAL_RENDER_SETTINGS } from "./app/renderSettings";
 import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { NexusCanvas } from "./nexusgpu";
@@ -15,6 +15,7 @@ const ACTIVE_SCENE_STORAGE_KEY = "nexusgpu.activeSceneId";
 type SceneCanvasProps = {
   scene: AnyNexusSceneDefinition;
   parameters: object;
+  renderingEnabled: boolean;
   renderSettings: NexusRenderSettings;
   onRenderStatsChange: (stats: NexusRenderStats) => void;
 };
@@ -22,6 +23,7 @@ type SceneCanvasProps = {
 function SceneCanvas({
   scene,
   parameters,
+  renderingEnabled,
   renderSettings,
   onRenderStatsChange,
 }: SceneCanvasProps) {
@@ -32,6 +34,7 @@ function SceneCanvas({
       camera={scene.camera}
       lighting={scene.lighting}
       orbitControls
+      renderingEnabled={renderingEnabled}
       renderSettings={renderSettings}
       onRenderStatsChange={onRenderStatsChange}
     >
@@ -88,6 +91,7 @@ export function App() {
   const { shellRef, isFullscreen, fullscreenStyle, toggleFullscreen } = useFullscreenViewport();
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
   const [renderSettings, setRenderSettings] = useState(INITIAL_RENDER_SETTINGS);
+  const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [activeSceneId, setActiveSceneId] = useState<SceneId>(getInitialActiveSceneId);
   const [renderStats, setRenderStats] = useState<NexusRenderStats | null>(null);
   const activeScene = getSceneDefinition(activeSceneId);
@@ -108,6 +112,16 @@ export function App() {
     <main ref={shellRef} className={isFullscreen ? "app-shell is-fullscreen" : "app-shell"}>
       <section className="viewport" style={fullscreenStyle}>
         <button
+          className="render-toggle"
+          type="button"
+          aria-label={renderingEnabled ? "Pause rendering" : "Resume rendering"}
+          aria-pressed={!renderingEnabled}
+          onClick={() => setRenderingEnabled((current) => !current)}
+        >
+          {renderingEnabled ? <Pause size={18} /> : <Play size={18} />}
+          <span>{renderingEnabled ? "Stop" : "Resume"}</span>
+        </button>
+        <button
           className="fullscreen-toggle"
           type="button"
           aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
@@ -120,6 +134,7 @@ export function App() {
           key={activeScene.id}
           scene={activeScene}
           parameters={sceneParameters}
+          renderingEnabled={renderingEnabled}
           renderSettings={renderSettings}
           onRenderStatsChange={setRenderStats}
         />
