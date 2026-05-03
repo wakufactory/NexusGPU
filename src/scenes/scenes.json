@@ -1,0 +1,70 @@
+[
+  {
+    "id": "animated-sdf",
+    "title": "AnimatedSdfScene2",
+    "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
+    "module": "./AnimatedSdfScene2.tsx",
+    "camera": {
+      "position": [0, 3.7, 5.2],
+      "target": [0, 0, 0],
+      "fov": 48
+    },
+    "lighting": {
+      "direction": [0.25, 0.85, 0.35]
+    },
+    "initialParameters": {
+      "sphereSmoothness": 0.7
+    },
+    "parameterControls": [
+      {
+        "key": "sphereSmoothness",
+        "name": "Sphere smoothness",
+        "min": 0,
+        "max": 1.5,
+        "step": 0.05
+      }
+    ]
+  },
+  {
+    "id": "wave-sdf",
+    "title": "Wave SDF",
+    "description": "Animated height-field plane built with SdfFunction.",
+    "module": "./WaveSdfScene.tsx",
+    "camera": {
+      "position": [0, 2.45, 5.6],
+      "target": [0, 0, 0],
+      "fov": 46
+    },
+    "lighting": {
+      "direction": [0.1, 0.9, 0.35]
+    },
+    "initialParameters": {
+      "waveAmplitude": 0.36,
+      "waveFrequency": 5.2,
+      "waveSpeed": 1.6
+    },
+    "parameterControls": [
+      {
+        "key": "waveAmplitude",
+        "name": "Wave amplitude",
+        "min": 0,
+        "max": 0.8,
+        "step": 0.02
+      },
+      {
+        "key": "waveFrequency",
+        "name": "Wave frequency",
+        "min": 0.5,
+        "max": 7,
+        "step": 0.1
+      },
+      {
+        "key": "waveSpeed",
+        "name": "Wave speed",
+        "min": 0,
+        "max": 5,
+        "step": 0.1
+      }
+    ]
+  }
+]

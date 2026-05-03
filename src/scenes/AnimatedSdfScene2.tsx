@@ -1,16 +1,6 @@
 import { useState } from "react";
 import { SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
-import type { NexusCamera, NexusLighting, SdfSphereProps, Vec3 } from "../nexusgpu";
-
-export const SCENE_CAMERA: Required<NexusCamera> = {
-  position: [0, 3.7, 5.2],
-  target: [0, 0, 0],
-  fov: 48,
-};
-
-export const SCENE_LIGHTING: Required<NexusLighting> = {
-  direction: [0.25, 0.85, 0.35],
-};
+import type { SdfSphereProps, Vec3 } from "../nexusgpu";
 
 type OrbitingSphereConfig = {
   center: Vec3;
@@ -84,10 +74,6 @@ export type AnimatedSdfSceneParameters = {
   sphereSmoothness: number;
 };
 
-export const INITIAL_SCENE_PARAMETERS: AnimatedSdfSceneParameters = {
-  sphereSmoothness: 0.7,
-};
-
 function getSphereProps(
   sphere: OrbitingSphereConfig,
   elapsed: number,
@@ -153,3 +139,6 @@ export function AnimatedSdfScene({ parameters }: AnimatedSdfSceneProps) {
     </>
   );
 }
+
+// scenes.jsonのmodule解決では、各sceneファイルのScene exportを共通エントリとして使う。
+export const Scene = AnimatedSdfScene;

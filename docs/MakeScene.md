@@ -198,54 +198,61 @@ export function BoxAndNotSphereScene() {
 
 ## Sceneファイルの形
 
-sceneごとの推奨カメラとライトは、scene側でexportします。`App.tsx`は個別sceneを直接importせず、`src/scenes/registry.ts`に登録されたscene定義から`NexusCanvas`へ渡します。
+sceneファイルは`Scene`という名前のReact componentをexportします。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して`NexusCanvas`へ渡します。
 
 ```tsx
 import { SdfBox, SdfSphere } from "../nexusgpu";
-import type { NexusCamera, NexusLighting } from "../nexusgpu";
 
-export const SCENE_CAMERA: Required<NexusCamera> = {
-  position: [0, 2.8, 5.2],
-  target: [0, 0, 0],
-  fov: 48,
+export type MySceneParameters = {
+  sphereSmoothness: number;
 };
 
-export const SCENE_LIGHTING: Required<NexusLighting> = {
-  direction: [0.25, 0.85, 0.35],
-};
-
-export function MyScene() {
+export function Scene({ parameters }: { parameters: MySceneParameters }) {
   return (
     <>
       <SdfBox position={[0, -0.55, 0]} size={[4, 0.1, 3]} color={[0.2, 0.23, 0.28]} />
-      <SdfSphere position={[0, 0.25, 0]} radius={0.75} color={[0.05, 0.74, 0.7]} smoothness={0.2} />
+      <SdfSphere
+        position={[0, 0.25, 0]}
+        radius={0.75}
+        color={[0.05, 0.74, 0.7]}
+        smoothness={parameters.sphereSmoothness}
+      />
     </>
   );
 }
 ```
 
-作成したsceneをアプリの切り替え対象にするには、`src/scenes/registry.ts`の`SCENES`へ追加します。
+作成したsceneをアプリの切り替え対象にするには、`src/scenes/scenes.json`へ追加します。
 
-```ts
-import {
-  MyScene,
-  SCENE_CAMERA as MY_SCENE_CAMERA,
-  SCENE_LIGHTING as MY_SCENE_LIGHTING,
-} from "./MyScene";
-import type { AnyNexusSceneDefinition } from "./types";
-
-export const SCENES = [
-  // existing scene definitions...
+```json
+[
   {
-    id: "my-scene",
-    title: "My Scene",
-    description: "Short description shown in the sidebar.",
-    camera: MY_SCENE_CAMERA,
-    lighting: MY_SCENE_LIGHTING,
-    initialParameters: {},
-    Component: MyScene,
-  },
-] satisfies readonly AnyNexusSceneDefinition[];
+    "id": "my-scene",
+    "title": "My Scene",
+    "description": "Short description shown in the sidebar.",
+    "module": "./MyScene.tsx",
+    "camera": {
+      "position": [0, 2.8, 5.2],
+      "target": [0, 0, 0],
+      "fov": 48
+    },
+    "lighting": {
+      "direction": [0.25, 0.85, 0.35]
+    },
+    "initialParameters": {
+      "sphereSmoothness": 0.4
+    },
+    "parameterControls": [
+      {
+        "key": "sphereSmoothness",
+        "name": "Sphere smoothness",
+        "min": 0,
+        "max": 1.5,
+        "step": 0.05
+      }
+    ]
+  }
+]
 ```
 
 `App.tsx`は`SCENES`の選択中定義から`camera`、`lighting`、`Component`、`parameterControls`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
@@ -274,77 +281,61 @@ export function FloatingSphere() {
 
 ## Scene固有パラメータ
 
-UIからsceneの値を変える場合は、scene側でパラメータ型と初期値をexportします。
+UIからsceneの値を変える場合は、scene側でパラメータ型を定義し、初期値は`scenes.json`の`initialParameters`へ書きます。
 
 ```tsx
 export type MySceneParameters = {
   sphereSmoothness: number;
 };
 
-export const INITIAL_SCENE_PARAMETERS: MySceneParameters = {
-  sphereSmoothness: 0.4,
-};
-
 type MySceneProps = {
   parameters: MySceneParameters;
 };
 
-export function MyScene({ parameters }: MySceneProps) {
+export function Scene({ parameters }: MySceneProps) {
   return <SdfSphere radius={0.8} smoothness={parameters.sphereSmoothness} />;
 }
 ```
 
-パラメータをsidebarから変更したい場合は、registryの`parameterControls`にslider定義を追加します。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
+パラメータをsidebarから変更したい場合は、`scenes.json`の`parameterControls`にslider定義を追加します。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
 
-```ts
-import {
-  MyScene,
-  INITIAL_SCENE_PARAMETERS as MY_SCENE_INITIAL_PARAMETERS,
-  SCENE_CAMERA as MY_SCENE_CAMERA,
-  SCENE_LIGHTING as MY_SCENE_LIGHTING,
-} from "./MyScene";
-
+```json
 {
-  id: "my-scene",
-  title: "My Scene",
-  description: "Short description shown in the sidebar.",
-  camera: MY_SCENE_CAMERA,
-  lighting: MY_SCENE_LIGHTING,
-  initialParameters: MY_SCENE_INITIAL_PARAMETERS,
-  parameterControls: [
+  "initialParameters": {
+    "sphereSmoothness": 0.4
+  },
+  "parameterControls": [
     {
-      key: "sphereSmoothness",
-      name: "Sphere smoothness",
-      min: 0,
-      max: 1.5,
-      step: 0.05,
-    },
-  ],
-  Component: MyScene,
+      "key": "sphereSmoothness",
+      "name": "Sphere smoothness",
+      "min": 0,
+      "max": 1.5,
+      "step": 0.05
+    }
+  ]
 }
 ```
 
-この形にすると、パラメータが増えてもscene componentの型とregistryの`parameterControls`を更新するだけで済みます。sceneごとのpanel componentは不要です。
+この形にすると、パラメータが増えてもscene componentの型と`scenes.json`を更新するだけで済みます。sceneごとのpanel componentは不要です。
 
 ## Scene Registry
 
-`src/scenes/registry.ts`は、アプリで選べるsceneの一覧です。各scene定義は次の項目を持ちます。
+`src/scenes/scenes.json`は、アプリで選べるsceneの一覧です。各scene定義は次の項目を持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決します。
 
 - `id`: scene selector用の一意なID
 - `title`: sidebarに表示する名前
 - `description`: sidebarに表示する説明
-- `camera`: scene側でexportした推奨カメラ
-- `lighting`: scene側でexportした推奨ライト
+- `module`: `Scene` componentをexportするsceneファイルへの相対パス
+- `camera`: 推奨カメラ
+- `lighting`: 推奨ライト
 - `initialParameters`: scene固有パラメータの初期値
 - `parameterControls`: 任意のscene固有パラメータslider定義
-- `Component`: `parameters` propsを受け取るscene component
 
 新しいsceneを追加するときの最小手順は次の通りです。
 
-1. `src/scenes/MyScene.tsx`にscene component、`SCENE_CAMERA`、`SCENE_LIGHTING`、必要なら`INITIAL_SCENE_PARAMETERS`を作る
-2. `src/scenes/registry.ts`でscene本体をimportする
-3. `SCENES`へscene定義を1件追加し、必要なら`parameterControls`へslider定義を追加する
-4. `npm run build`で型とbundleを確認する
+1. `src/scenes/MyScene.tsx`に`Scene` componentを作る
+2. `src/scenes/scenes.json`へscene定義を1件追加する
+3. `npm run build`で型とbundleを確認する
 
 ## 新しいSDF Primitiveを追加する
 

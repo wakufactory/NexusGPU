@@ -1,74 +1,119 @@
-import {
-  AnimatedSdfScene,
-  INITIAL_SCENE_PARAMETERS as ANIMATED_SDF_INITIAL_PARAMETERS,
-  SCENE_CAMERA as ANIMATED_SDF_CAMERA,
-  SCENE_LIGHTING as ANIMATED_SDF_LIGHTING,
-} from "./AnimatedSdfScene2";
-import {
-  WaveSdfScene,
-  INITIAL_SCENE_PARAMETERS as WAVE_SDF_INITIAL_PARAMETERS,
-  SCENE_CAMERA as WAVE_SDF_CAMERA,
-  SCENE_LIGHTING as WAVE_SDF_LIGHTING,
-} from "./WaveSdfScene";
-import { defineScene } from "./types";
-import type { AnyNexusSceneDefinition } from "./types";
+import type { ComponentType } from "react";
+import sceneConfigs from "./scenes.json";
+import type { NexusCamera, NexusLighting } from "../nexusgpu";
+import type { AnyNexusSceneDefinition, SceneSliderParameter } from "./types";
 
-export const SCENES = [
-  defineScene({
-    id: "animated-sdf",
-    title: "AnimatedSdfScene2",
-    description: "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
-    camera: ANIMATED_SDF_CAMERA,
-    lighting: ANIMATED_SDF_LIGHTING,
-    initialParameters: ANIMATED_SDF_INITIAL_PARAMETERS,
-    parameterControls: [
-      {
-        key: "sphereSmoothness",
-        name: "Sphere smoothness",
-        min: 0,
-        max: 1.5,
-        step: 0.05,
-      },
-    ],
-    Component: AnimatedSdfScene,
-  }),
-  defineScene({
-    id: "wave-sdf",
-    title: "Wave SDF",
-    description: "Animated height-field plane built with SdfFunction.",
-    camera: WAVE_SDF_CAMERA,
-    lighting: WAVE_SDF_LIGHTING,
-    initialParameters: WAVE_SDF_INITIAL_PARAMETERS,
-    parameterControls: [
-      {
-        key: "waveAmplitude",
-        name: "Wave amplitude",
-        min: 0,
-        max: 0.8,
-        step: 0.02,
-      },
-      {
-        key: "waveFrequency",
-        name: "Wave frequency",
-        min: 0.5,
-        max: 7,
-        step: 0.1,
-      },
-      {
-        key: "waveSpeed",
-        name: "Wave speed",
-        min: 0,
-        max: 5,
-        step: 0.1,
-      },
-    ],
-    Component: WaveSdfScene,
-  }),
-] satisfies readonly AnyNexusSceneDefinition[];
+type SceneModule = {
+  Scene?: ComponentType<{ parameters: any }>;
+};
+
+type SceneJsonConfig = {
+  id: string;
+  title: string;
+  description: string;
+  module: string;
+  camera: {
+    position: number[];
+    target: number[];
+    fov: number;
+  };
+  lighting: {
+    direction: number[];
+  };
+  initialParameters: Record<string, unknown>;
+  parameterControls?: SceneJsonSliderParameter[];
+};
+
+type SceneJsonSliderParameter = {
+  key: string;
+  name: string;
+  min: number;
+  max: number;
+  step: number;
+  precision?: number;
+};
+
+// ビルド時点で存在するsceneファイルを自動収集し、JSONのmodule文字列から参照できるようにする。
+const sceneModules = import.meta.glob<SceneModule>("./*.tsx", {
+  eager: true,
+});
+
+// JSONから読む配列はtuple型にならないため、NexusGPUが期待するVec3形状を実行時に確認する。
+function assertVec3(value: number[], label: string): asserts value is [number, number, number] {
+  if (value.length !== 3 || value.some((item) => typeof item !== "number")) {
+    throw new Error(`${label} must be a three-number array.`);
+  }
+}
+
+function resolveCamera(config: SceneJsonConfig): Required<NexusCamera> {
+  assertVec3(config.camera.position, `${config.id}.camera.position`);
+  assertVec3(config.camera.target, `${config.id}.camera.target`);
+
+  if (typeof config.camera.fov !== "number") {
+    throw new Error(`${config.id}.camera.fov must be a number.`);
+  }
+
+  return {
+    position: config.camera.position,
+    target: config.camera.target,
+    fov: config.camera.fov,
+  };
+}
+
+function resolveLighting(config: SceneJsonConfig): Required<NexusLighting> {
+  assertVec3(config.lighting.direction, `${config.id}.lighting.direction`);
+
+  return {
+    direction: config.lighting.direction,
+  };
+}
+
+function resolveParameterControls(
+  config: SceneJsonConfig,
+): readonly SceneSliderParameter<Record<string, unknown>>[] {
+  return (config.parameterControls ?? []).map((control) => {
+    // Sliderはnumber parameter専用なので、JSONのkeyと初期値の対応をここで検証する。
+    if (!(control.key in config.initialParameters)) {
+      throw new Error(`${config.id}.parameterControls.${control.key} is missing from initialParameters.`);
+    }
+
+    if (typeof config.initialParameters[control.key] !== "number") {
+      throw new Error(`${config.id}.parameterControls.${control.key} must point to a number parameter.`);
+    }
+
+    return control as SceneSliderParameter<Record<string, unknown>>;
+  });
+}
+
+function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition {
+  // JSONにはReact componentを直接入れられないため、moduleパスからScene exportを解決する。
+  const sceneModule = sceneModules[config.module];
+
+  if (!sceneModule) {
+    throw new Error(`${config.id}.module was not found: ${config.module}`);
+  }
+
+  if (!sceneModule.Scene) {
+    throw new Error(`${config.id}.module must export a Scene component.`);
+  }
+
+  return {
+    id: config.id,
+    title: config.title,
+    description: config.description,
+    camera: resolveCamera(config),
+    lighting: resolveLighting(config),
+    initialParameters: config.initialParameters,
+    parameterControls: resolveParameterControls(config),
+    Component: sceneModule.Scene,
+  };
+}
+
+export const SCENES = (sceneConfigs as SceneJsonConfig[]).map(resolveScene);
 
 export type SceneId = (typeof SCENES)[number]["id"];
 
-export const DEFAULT_SCENE_ID: SceneId = "animated-sdf";
+export const DEFAULT_SCENE_ID: SceneId = SCENES[0]?.id ?? "animated-sdf";
 
 export function getSceneDefinition(sceneId: SceneId): AnyNexusSceneDefinition {
   return SCENES.find((scene) => scene.id === sceneId) ?? SCENES[0];

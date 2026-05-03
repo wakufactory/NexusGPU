@@ -1,27 +1,10 @@
 import { useState } from "react";
 import { SdfFunction, useFrame } from "../nexusgpu";
-import type { NexusCamera, NexusLighting } from "../nexusgpu";
-
-export const SCENE_CAMERA: Required<NexusCamera> = {
-  position: [0, 2.45, 5.6],
-  target: [0, 0, 0],
-  fov: 46,
-};
-
-export const SCENE_LIGHTING: Required<NexusLighting> = {
-  direction: [0.1, 0.9, 0.35],
-};
 
 export type WaveSdfSceneParameters = {
   waveAmplitude: number;
   waveFrequency: number;
   waveSpeed: number;
-};
-
-export const INITIAL_SCENE_PARAMETERS: WaveSdfSceneParameters = {
-  waveAmplitude: 0.36,
-  waveFrequency: 5.2,
-  waveSpeed: 1.6,
 };
 
 const WAVE_PLANE_SDF = /* wgsl */ `
@@ -88,3 +71,6 @@ export function WaveSdfScene({ parameters }: WaveSdfSceneProps) {
     />
   );
 }
+
+// scenes.jsonのmodule解決では、各sceneファイルのScene exportを共通エントリとして使う。
+export const Scene = WaveSdfScene;
