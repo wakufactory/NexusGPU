@@ -287,18 +287,19 @@ sceneが大きくなった場合も、次のように分けると整理しやす
 
 ## Panelとの接続
 
-`SceneParametersPanel`は、scene固有パラメータを編集するUIです。
+`SceneParametersPanel`は、registryの`parameterControls`からscene固有パラメータを編集するsliderを描画するUIです。
 
-`App`からは現在値と更新関数を渡します。
+`App`からは現在値、slider定義、更新関数を渡します。
 
 ```tsx
 <SceneParametersPanel
   parameters={sceneParameters}
+  controls={activeScene.parameterControls ?? []}
   onChange={updateSceneParameters}
 />
 ```
 
-panel側は、ユーザー操作に応じて`onChange`を呼びます。
+panel側は、ユーザー操作に応じて定義された`key`の値を`onChange`へ渡します。
 
 ```tsx
 onChange({ sphereSmoothness: nextValue });

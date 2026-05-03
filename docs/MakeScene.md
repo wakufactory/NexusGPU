@@ -248,7 +248,7 @@ export const SCENES = [
 ] satisfies readonly AnyNexusSceneDefinition[];
 ```
 
-`App.tsx`は`SCENES`の選択中定義から`camera`、`lighting`、`Component`、`ParametersPanel`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
+`App.tsx`は`SCENES`の選択中定義から`camera`、`lighting`、`Component`、`parameterControls`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
 
 ## アニメーション
 
@@ -294,38 +294,9 @@ export function MyScene({ parameters }: MySceneProps) {
 }
 ```
 
-パラメータをsidebarから変更したい場合は、`src/panels/`にscene用panelを作ります。panelは`parameters`と`onChange`を受け取り、変更した値だけをpartial updateとして渡します。
-
-```tsx
-import type { MySceneParameters } from "../scenes/MyScene";
-
-type MySceneParametersPanelProps = {
-  parameters: MySceneParameters;
-  onChange: (patch: Partial<MySceneParameters>) => void;
-};
-
-export function MySceneParametersPanel({ parameters, onChange }: MySceneParametersPanelProps) {
-  return (
-    <label className="control-row">
-      <span>Sphere smoothness</span>
-      <output>{parameters.sphereSmoothness.toFixed(2)}</output>
-      <input
-        type="range"
-        min="0"
-        max="1.5"
-        step="0.05"
-        value={parameters.sphereSmoothness}
-        onChange={(event) => onChange({ sphereSmoothness: Number(event.target.value) })}
-      />
-    </label>
-  );
-}
-```
-
-registryには`initialParameters`と`ParametersPanel`をセットで登録します。
+パラメータをsidebarから変更したい場合は、registryの`parameterControls`にslider定義を追加します。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
 
 ```ts
-import { MySceneParametersPanel } from "../panels/MySceneParametersPanel";
 import {
   MyScene,
   INITIAL_SCENE_PARAMETERS as MY_SCENE_INITIAL_PARAMETERS,
@@ -340,12 +311,20 @@ import {
   camera: MY_SCENE_CAMERA,
   lighting: MY_SCENE_LIGHTING,
   initialParameters: MY_SCENE_INITIAL_PARAMETERS,
+  parameterControls: [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
   Component: MyScene,
-  ParametersPanel: MySceneParametersPanel,
 }
 ```
 
-この形にすると、パラメータが増えてもscene componentとpanelの型を更新し、registryの1件を保つだけで済みます。
+この形にすると、パラメータが増えてもscene componentの型とregistryの`parameterControls`を更新するだけで済みます。sceneごとのpanel componentは不要です。
 
 ## Scene Registry
 
@@ -357,16 +336,15 @@ import {
 - `camera`: scene側でexportした推奨カメラ
 - `lighting`: scene側でexportした推奨ライト
 - `initialParameters`: scene固有パラメータの初期値
+- `parameterControls`: 任意のscene固有パラメータslider定義
 - `Component`: `parameters` propsを受け取るscene component
-- `ParametersPanel`: 任意のscene固有パラメータUI
 
 新しいsceneを追加するときの最小手順は次の通りです。
 
 1. `src/scenes/MyScene.tsx`にscene component、`SCENE_CAMERA`、`SCENE_LIGHTING`、必要なら`INITIAL_SCENE_PARAMETERS`を作る
-2. 必要なら`src/panels/MySceneParametersPanel.tsx`に操作UIを作る
-3. `src/scenes/registry.ts`でscene本体とpanelをimportする
-4. `SCENES`へscene定義を1件追加する
-5. `npm run build`で型とbundleを確認する
+2. `src/scenes/registry.ts`でscene本体をimportする
+3. `SCENES`へscene定義を1件追加し、必要なら`parameterControls`へslider定義を追加する
+4. `npm run build`で型とbundleを確認する
 
 ## 新しいSDF Primitiveを追加する
 

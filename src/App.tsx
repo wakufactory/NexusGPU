@@ -4,11 +4,11 @@ import { INITIAL_RENDER_SETTINGS } from "./app/renderSettings";
 import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { NexusCanvas } from "./nexusgpu";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
+import { SceneParametersPanel } from "./panels/SceneParametersPanel";
 import { DEFAULT_SCENE_ID, getSceneDefinition, SCENES } from "./scenes/registry";
 import type { NexusRenderSettings, NexusRenderStats } from "./nexusgpu";
-import type { AnyNexusSceneDefinition, SceneParametersPanelProps } from "./scenes/types";
+import type { AnyNexusSceneDefinition } from "./scenes/types";
 import type { SceneId } from "./scenes/registry";
-import type { ComponentType } from "react";
 
 const ACTIVE_SCENE_STORAGE_KEY = "nexusgpu.activeSceneId";
 
@@ -51,11 +51,15 @@ function ActiveSceneParametersPanel<Parameters extends object>({
   parameters,
   onChange,
 }: ActiveSceneParametersPanelProps<Parameters>) {
-  const ParametersPanel = scene.ParametersPanel as
-    | ComponentType<SceneParametersPanelProps<Parameters>>
-    | undefined;
+  const controls = scene.parameterControls ?? [];
 
-  return ParametersPanel ? <ParametersPanel parameters={parameters} onChange={onChange} /> : null;
+  return (
+    <SceneParametersPanel
+      parameters={parameters}
+      controls={controls}
+      onChange={onChange}
+    />
+  );
 }
 
 function isSceneId(value: string | null): value is SceneId {

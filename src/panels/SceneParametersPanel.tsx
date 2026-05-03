@@ -1,13 +1,25 @@
 import { SlidersHorizontal } from "lucide-react";
-import type { AnimatedSdfSceneParameters } from "../scenes/AnimatedSdfScene2";
+import type { SceneSliderParameter } from "../scenes/types";
 
-type SceneParametersPanelProps = {
-  parameters: AnimatedSdfSceneParameters;
-  onChange: (patch: Partial<AnimatedSdfSceneParameters>) => void;
+type SceneParametersPanelProps<Parameters extends object> = {
+  parameters: Parameters;
+  controls: readonly SceneSliderParameter<Parameters>[];
+  onChange: (patch: Partial<Parameters>) => void;
 };
 
-export function SceneParametersPanel({ parameters, onChange }: SceneParametersPanelProps) {
-  const { sphereSmoothness } = parameters;
+function getPrecision(step: number) {
+  const [, fraction = ""] = String(step).split(".");
+  return fraction.length;
+}
+
+export function SceneParametersPanel<Parameters extends object>({
+  parameters,
+  controls,
+  onChange,
+}: SceneParametersPanelProps<Parameters>) {
+  if (controls.length === 0) {
+    return null;
+  }
 
   return (
     <section className="panel debug-panel">
@@ -16,18 +28,27 @@ export function SceneParametersPanel({ parameters, onChange }: SceneParametersPa
         <h2>Parameters</h2>
       </div>
 
-      <label className="control-row">
-        <span>Sphere smoothness</span>
-        <output>{sphereSmoothness.toFixed(2)}</output>
-        <input
-          type="range"
-          min="0"
-          max="1.5"
-          step="0.05"
-          value={sphereSmoothness}
-          onChange={(event) => onChange({ sphereSmoothness: Number(event.target.value) })}
-        />
-      </label>
+      {controls.map((control) => {
+        const value = Number(parameters[control.key]);
+        const precision = control.precision ?? getPrecision(control.step);
+
+        return (
+          <label className="control-row" key={control.key}>
+            <span>{control.name}</span>
+            <output>{value.toFixed(precision)}</output>
+            <input
+              type="range"
+              min={control.min}
+              max={control.max}
+              step={control.step}
+              value={value}
+              onChange={(event) =>
+                onChange({ [control.key]: Number(event.target.value) } as Partial<Parameters>)
+              }
+            />
+          </label>
+        );
+      })}
     </section>
   );
 }
