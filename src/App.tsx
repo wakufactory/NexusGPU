@@ -192,7 +192,6 @@ export function App() {
           onClick={() => setRenderingEnabled((current) => !current)}
         >
           {renderingEnabled ? <Pause size={18} /> : <Play size={18} />}
-          <span>{renderingEnabled ? "Stop" : "Resume"}</span>
         </button>
         <button
           className="fullscreen-toggle"

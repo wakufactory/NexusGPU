@@ -103,7 +103,7 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <input
           type="range"
           min="16"
-          max="200"
+          max="300"
           step="4"
           value={settings.maxSteps}
           onChange={(event) => updateSetting("maxSteps", Number(event.target.value))}
@@ -116,7 +116,7 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <input
           type="range"
           min="12"
-          max="150"
+          max="200"
           step="2"
           value={settings.maxDistance}
           onChange={(event) => updateSetting("maxDistance", Number(event.target.value))}
