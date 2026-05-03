@@ -83,12 +83,13 @@ function resolveParameterControls(
   });
 }
 
-function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition {
+function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition | null {
   // JSONにはReact componentを直接入れられないため、moduleパスからScene exportを解決する。
   const sceneModule = sceneModules[config.module];
 
   if (!sceneModule) {
-    throw new Error(`${config.id}.module was not found: ${config.module}`);
+    console.warn(`[NexusGPU] Skipping scene because its module was not found: ${config.id} (${config.module})`);
+    return null;
   }
 
   if (!sceneModule.Scene) {
@@ -111,7 +112,9 @@ function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition {
   };
 }
 
-export const SCENES = (sceneConfigs as SceneJsonConfig[]).map(resolveScene);
+export const SCENES = (sceneConfigs as SceneJsonConfig[])
+  .map(resolveScene)
+  .filter((scene): scene is AnyNexusSceneDefinition => scene !== null);
 
 export type SceneId = (typeof SCENES)[number]["id"];
 

@@ -11,6 +11,10 @@ import type { AnyNexusSceneDefinition } from "./scenes/types";
 import type { SceneId } from "./scenes/registry";
 
 const ACTIVE_SCENE_STORAGE_KEY = "nexusgpu.activeSceneId";
+const RENDER_SETTINGS_STORAGE_KEY = "nexusgpu.renderSettings";
+const SCENE_PARAMETERS_STORAGE_KEY = "nexusgpu.sceneParametersBySceneId";
+
+type StoredSceneParameters = Record<string, Record<string, unknown>>;
 
 type SceneCanvasProps = {
   scene: AnyNexusSceneDefinition;
@@ -78,6 +82,43 @@ function getInitialActiveSceneId(): SceneId {
   }
 }
 
+function readStorageJson<T>(key: string): T | null {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? (JSON.parse(value) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStorageJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore unavailable storage and keep the in-memory settings working.
+  }
+}
+
+function mergeStoredObject<Settings extends object>(
+  defaults: Settings,
+  stored: unknown,
+): Settings {
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return defaults;
+  }
+
+  const storedRecord = stored as Record<string, unknown>;
+  const restored: Record<string, unknown> = { ...(defaults as Record<string, unknown>) };
+
+  for (const [key, defaultValue] of Object.entries(defaults)) {
+    if (typeof storedRecord[key] === typeof defaultValue) {
+      restored[key] = storedRecord[key];
+    }
+  }
+
+  return restored as Settings;
+}
+
 function saveActiveSceneId(sceneId: SceneId) {
   try {
     localStorage.setItem(ACTIVE_SCENE_STORAGE_KEY, sceneId);
@@ -86,25 +127,57 @@ function saveActiveSceneId(sceneId: SceneId) {
   }
 }
 
+function getInitialRenderSettings() {
+  return mergeStoredObject(INITIAL_RENDER_SETTINGS, readStorageJson(RENDER_SETTINGS_STORAGE_KEY));
+}
+
+function saveRenderSettings(settings: typeof INITIAL_RENDER_SETTINGS) {
+  writeStorageJson(RENDER_SETTINGS_STORAGE_KEY, settings);
+}
+
+function getStoredSceneParameters(sceneId: SceneId) {
+  const storedParameters = readStorageJson<StoredSceneParameters>(SCENE_PARAMETERS_STORAGE_KEY);
+  const scene = getSceneDefinition(sceneId);
+  return mergeStoredObject(scene.initialParameters, storedParameters?.[sceneId]);
+}
+
+function saveSceneParameters(sceneId: SceneId, parameters: object) {
+  const storedParameters = readStorageJson<StoredSceneParameters>(SCENE_PARAMETERS_STORAGE_KEY) ?? {};
+  writeStorageJson(SCENE_PARAMETERS_STORAGE_KEY, {
+    ...storedParameters,
+    [sceneId]: parameters,
+  });
+}
+
 /** NexusGPUの現在のAPIを触るためのデモアプリ。 */
 export function App() {
   const { shellRef, isFullscreen, fullscreenStyle, toggleFullscreen } = useFullscreenViewport();
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
-  const [renderSettings, setRenderSettings] = useState(INITIAL_RENDER_SETTINGS);
+  const [renderSettings, setRenderSettings] = useState(getInitialRenderSettings);
   const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [activeSceneId, setActiveSceneId] = useState<SceneId>(getInitialActiveSceneId);
   const [renderStats, setRenderStats] = useState<NexusRenderStats | null>(null);
   const activeScene = getSceneDefinition(activeSceneId);
-  const [sceneParameters, setSceneParameters] = useState<object>(activeScene.initialParameters);
+  const [sceneParameters, setSceneParameters] = useState<object>(() =>
+    getStoredSceneParameters(activeSceneId),
+  );
+
+  const updateRenderSettings = (settings: typeof INITIAL_RENDER_SETTINGS) => {
+    setRenderSettings(settings);
+    saveRenderSettings(settings);
+  };
 
   const updateSceneParameters = (patch: Partial<object>) => {
-    setSceneParameters((current) => ({ ...current, ...patch }));
+    setSceneParameters((current) => {
+      const nextParameters = { ...current, ...patch };
+      saveSceneParameters(activeSceneId, nextParameters);
+      return nextParameters;
+    });
   };
 
   const changeScene = (sceneId: SceneId) => {
-    const nextScene = getSceneDefinition(sceneId);
     setActiveSceneId(sceneId);
-    setSceneParameters(nextScene.initialParameters);
+    setSceneParameters(getStoredSceneParameters(sceneId));
     saveActiveSceneId(sceneId);
   };
 
@@ -170,7 +243,7 @@ export function App() {
         <RenderSettingsPanel
           settings={renderSettings}
           renderStats={renderStats}
-          onChange={setRenderSettings}
+          onChange={updateRenderSettings}
         />
         <div className="brand">
           <Sparkles size={24} />
