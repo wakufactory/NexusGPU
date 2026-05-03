@@ -1,6 +1,18 @@
 import type { ComponentType } from "react";
 import type { NexusCamera, NexusLighting } from "../nexusgpu";
 
+type WidenLiteral<Value> = Value extends string
+  ? string
+  : Value extends number
+    ? number
+    : Value extends boolean
+      ? boolean
+      : Value;
+
+type WidenObject<ObjectType extends object> = {
+  [Key in keyof ObjectType]: WidenLiteral<ObjectType[Key]>;
+};
+
 type NumberParameterKey<Parameters extends object> = {
   [Key in keyof Parameters]-?: Parameters[Key] extends number ? Key : never;
 }[keyof Parameters] &
@@ -28,19 +40,21 @@ export type NexusSceneDefinition<Parameters extends object> = {
 
 export type AnyNexusSceneDefinition = NexusSceneDefinition<any>;
 
-export type NexusSceneSettings<Parameters extends object> = Pick<
-  NexusSceneDefinition<Parameters>,
-  "camera" | "lighting" | "initialParameters" | "parameterControls"
->;
-
 export function defineScene<Parameters extends object>(
   definition: NexusSceneDefinition<Parameters>,
 ) {
   return definition;
 }
 
-export function defineSceneSettings<Parameters extends object>(
-  settings: NexusSceneSettings<Parameters>,
+export function defineSceneParameters<const Parameters extends object>(
+  parameters: Parameters,
+): WidenObject<Parameters> {
+  return parameters as WidenObject<Parameters>;
+}
+
+export function defineSceneSliderParameters<Parameters extends object>(
+  _parameters: Parameters,
+  controls: readonly SceneSliderParameter<Parameters>[],
 ) {
-  return settings;
+  return controls;
 }
