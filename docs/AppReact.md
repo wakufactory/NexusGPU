@@ -4,6 +4,11 @@
 
 WebGPU、WGSL、シェーダーの詳細は扱いません。sceneをReactコンポーネントとして作り、stateとpropsで画面に反映する流れを中心にします。
 
+関連ドキュメント:
+
+- scene作成時に使うprimitive、`SdfFunction`、`SdfGroup`、新規primitive追加手順: `docs/MakeScene.md`
+- レンダリングフロー、Storage Buffer、WGSL展開の詳細: `docs/architecture.md`
+
 ## 全体像
 
 NexusGPUの画面は、通常のReactアプリと同じように上から下へpropsを渡して組み立てます。

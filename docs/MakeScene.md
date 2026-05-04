@@ -2,8 +2,6 @@
 
 このドキュメントは、NexusGPUでsceneを作るユーザ向けのガイドです。内部構造の詳細は扱わず、既存のSDF primitiveを使ってsceneを組み立てる方法と、新しいSDF primitiveを追加して使えるようにする手順を説明します。
 
-内部のレンダリングフローやStorage Bufferの詳細を知りたい場合は、`docs/architecture.md`を参照してください。
-
 ## 基本
 
 NexusGPUのsceneはReactコンポーネントです。`<NexusCanvas>`のchildrenとして`<SdfSphere>`、`<SdfBox>`、`<SdfCylinder>`、`<SdfTorus>`、`<SdfEllipsoid>`、`<SdfFunction>`などを並べると、WebGPUのSDF rendererに登録されて描画されます。複数のSDFをCSG/boolean演算でまとめたい場合は`<SdfGroup>`、`<SdfNot>`、`<SdfSubtract>`を使います。
@@ -298,16 +296,16 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 `App.tsx`は`SCENES`の選択中定義から`Component`、`initialParameters`、`parameterControls`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
 
-## アニメーション
+## Sceneの動的な値
 
-`useFrame`を使うと、`NexusCanvas`内で毎フレーム処理を実行できます。`useFrame`はGPU objectを直接変更するAPIではありません。React stateを更新し、そのstateをprimitiveのpropsへ渡します。
+アニメーションやUI操作で値を変える場合も、考え方は通常のReactと同じです。`useFrame`やpanel入力からReact stateを更新し、そのstateをprimitiveのpropsへ渡します。GPU objectを直接変更する命令型APIとして扱う必要はありません。
 
 ```tsx
 import { useState } from "react";
 import { SdfSphere, useFrame } from "../nexusgpu";
 import type { Vec3 } from "../nexusgpu";
 
-export function FloatingSphere() {
+function FloatingSphere() {
   const [position, setPosition] = useState<Vec3>([0, 0, 0]);
 
   useFrame(({ elapsed }) => {
@@ -318,55 +316,7 @@ export function FloatingSphere() {
 }
 ```
 
-複数objectを動かす場合は、設定配列からprops配列を作ると見通しがよくなります。現在の`src/scenes/AnimatedSdfScene.tsx`がこの形です。
-
-カメラやライトをscene内で動かしたい場合は、`NexusCanvas`の内側のcomponentで`useCamera()`や`useLighting()`を使います。
-
-```tsx
-import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
-
-function SceneContent() {
-  const camera = useCamera();
-  const lighting = useLighting();
-
-  useFrame(({ elapsed }) => {
-    camera.set({
-      position: [Math.sin(elapsed * 0.3) * 4, 1.4, Math.cos(elapsed * 0.3) * 4],
-      target: [0, 0, 0],
-    });
-
-    lighting.set({
-      direction: [Math.sin(elapsed * 0.6), 0.8, Math.cos(elapsed * 0.6)],
-    });
-  });
-
-  return <SdfSphere radius={1} />;
-}
-```
-
-`useCamera()`で継続的にカメラを動かすsceneでは、`orbitControls`を同時に有効化すると操作方針が衝突しやすくなります。スクリプト制御のカメラsceneでは、基本的に`orbitControls`を付けません。
-
-## Scene固有パラメータ
-
-UIからsceneの値を変える場合は、scene側で`initialParameters`を定義し、その値からパラメータ型を作ります。
-
-```tsx
-export const initialParameters = defineSceneParameters({
-  sphereSmoothness: 0.4,
-});
-
-export type MySceneParameters = typeof initialParameters;
-
-type MySceneProps = {
-  parameters: MySceneParameters;
-};
-
-export function Scene({ parameters }: MySceneProps) {
-  return <SdfSphere radius={0.8} smoothness={parameters.sphereSmoothness} />;
-}
-```
-
-パラメータをsidebarから変更したい場合は、`parameterControls`にslider定義を追加します。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
+scene固有パラメータをsidebarから変更したい場合は、sceneファイルで`initialParameters`と`parameterControls`をexportします。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
 
 ```ts
 export const initialParameters = defineSceneParameters({
@@ -386,28 +336,60 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
 ]);
 ```
 
-この形にすると、パラメータが増えても`initialParameters`と必要なslider定義を更新するだけで済みます。sceneごとのpanel componentは不要です。
+### useCamera / useLighting
 
-## Scene Registry
+カメラやライトをscene内のcomponentから動かしたい場合は、`NexusCanvas`の内側で`useCamera()`や`useLighting()`を使います。どちらも`set()`だけを持つ小さなAPIを返し、`SceneStore`へ新しい設定を反映します。
 
-`src/scenes/scenes.json`は、アプリで選べるsceneの薄い一覧です。各JSON定義は次の項目だけを持ちます。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルの`Scene`、任意の`initialParameters`、`parameterControls`と結合します。`initialParameters`がないsceneは空 object として扱われます。
+- `useCamera().set(camera)`: `position`、`target`、`fov`などを更新する
+- `useLighting().set(lighting)`: `direction`などを更新する
 
-- `id`: scene selector用の一意なID
-- `title`: sidebarに表示する名前
-- `description`: sidebarに表示する説明
-- `module`: `Scene` componentをexportするsceneファイルへの相対パス
+`useFrame`と組み合わせると、時間に応じてカメラやライトを動かせます。
 
-各sceneファイルは次をexportします。
+```tsx
+import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
 
-- `Scene`: `parameters`と`canvasProps`を受け取り、`NexusCanvas`を返すReact component
-- `initialParameters`: 任意。scene固有パラメータの初期値
-- `parameterControls`: 任意のscene固有パラメータslider定義
+function MovingViewContent() {
+  const camera = useCamera();
+  const lighting = useLighting();
 
-新しいsceneを追加するときの最小手順は次の通りです。
+  useFrame(({ elapsed }) => {
+    camera.set({
+      position: [Math.sin(elapsed * 0.3) * 4, 1.4, Math.cos(elapsed * 0.3) * 4],
+      target: [0, 0, 0],
+      fov: 48,
+    });
+
+    lighting.set({
+      direction: [Math.sin(elapsed * 0.6), 0.8, Math.cos(elapsed * 0.6)],
+    });
+  });
+
+  return <SdfSphere radius={1} color={[0.05, 0.74, 0.7]} />;
+}
+```
+
+`useCamera()`や`useLighting()`は`NexusCanvas`の外では使えません。`Scene` component自体で`NexusCanvas`を返す場合は、その内側に`SceneContent`のような子componentを置き、そこでhookを呼びます。
+
+```tsx
+export function Scene({ canvasProps }: MySceneProps) {
+  return (
+    <NexusCanvas {...canvasProps} orbitControls={false}>
+      <MovingViewContent />
+    </NexusCanvas>
+  );
+}
+```
+
+継続的にカメラを動かすsceneでは、ユーザー操作用の`orbitControls`と制御が競合しやすくなります。スクリプトでカメラを制御するsceneでは、基本的に`orbitControls={false}`にします。
+
+`App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。
+
+## 追加手順のまとめ
 
 1. `src/scenes/MyScene.tsx`に`Scene` componentを作る
-2. `src/scenes/scenes.json`へscene定義を1件追加する
-3. `npm run build`で型とbundleを確認する
+2. 必要なら同じファイルで`initialParameters`と`parameterControls`をexportする
+3. `src/scenes/scenes.json`へscene定義を1件追加する
+4. `npm run build`で型とbundleを確認する
 
 ## 新しいSDF Primitiveを追加する
 
