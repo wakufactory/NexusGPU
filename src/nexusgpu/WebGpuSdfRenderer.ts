@@ -26,6 +26,7 @@ const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
   stereoSbs: false,
   stereoBase: 0.08,
   stereoSwapEyes: false,
+  hitInteriorSurfaces: true,
 };
 
 /**
@@ -373,7 +374,7 @@ export class WebGpuSdfRenderer {
       [
         Math.min(countPrimitiveRecords(snapshot.sceneNodes), MAX_SDF_OBJECTS),
         this.renderSettings.surfaceEpsilon,
-        0,
+        this.renderSettings.hitInteriorSurfaces ? 1 : 0,
         0,
       ],
       20,
@@ -736,6 +737,7 @@ function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Req
     stereoSbs: settings?.stereoSbs ?? DEFAULT_RENDER_SETTINGS.stereoSbs,
     stereoBase: clamp(settings?.stereoBase ?? DEFAULT_RENDER_SETTINGS.stereoBase, 0, 1),
     stereoSwapEyes: settings?.stereoSwapEyes ?? DEFAULT_RENDER_SETTINGS.stereoSwapEyes,
+    hitInteriorSurfaces: settings?.hitInteriorSurfaces ?? DEFAULT_RENDER_SETTINGS.hitInteriorSurfaces,
   };
 }
 

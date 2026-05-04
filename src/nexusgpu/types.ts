@@ -46,6 +46,7 @@ export type NexusRenderSettings = {
   stereoSbs?: boolean;
   stereoBase?: number;
   stereoSwapEyes?: boolean;
+  hitInteriorSurfaces?: boolean;
 };
 
 /** Canvasの実描画ピクセル数。CSSサイズではなくWebGPUへ渡すbacking storeサイズを表す。 */

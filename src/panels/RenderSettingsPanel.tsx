@@ -158,6 +158,15 @@ export function RenderSettingsPanel({ settings, renderStats, onChange }: RenderS
         <span>Shadows</span>
       </label>
 
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={settings.hitInteriorSurfaces}
+          onChange={(event) => updateSetting("hitInteriorSurfaces", event.target.checked)}
+        />
+        <span>Interior surface hits</span>
+      </label>
+
     </section>
   </>
   );

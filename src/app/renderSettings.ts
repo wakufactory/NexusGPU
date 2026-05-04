@@ -13,4 +13,5 @@ export const INITIAL_RENDER_SETTINGS: RenderSettings = {
   stereoSbs: false,
   stereoBase: 0.08,
   stereoSwapEyes: false,
+  hitInteriorSurfaces: true,
 };
