@@ -62,6 +62,98 @@ fn rotateByQuaternion(point: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
   return point + ((uv * q.w) + uuv) * 2.0;
 }
 `,
+  "noise/simplex": /* wgsl */ `
+// 3D simplex noise。戻り値はおおむね[-1, 1]。
+fn simplexMod289Vec3(x: vec3<f32>) -> vec3<f32> {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+fn simplexMod289Vec4(x: vec4<f32>) -> vec4<f32> {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+fn simplexPermute(x: vec4<f32>) -> vec4<f32> {
+  return simplexMod289Vec4(((x * 34.0) + vec4<f32>(10.0)) * x);
+}
+
+fn simplexTaylorInvSqrt(r: vec4<f32>) -> vec4<f32> {
+  return vec4<f32>(1.79284291400159) - 0.85373472095314 * r;
+}
+
+fn simplexNoise3d(point: vec3<f32>) -> f32 {
+  let c = vec2<f32>(1.0 / 6.0, 1.0 / 3.0);
+  let d = vec4<f32>(0.0, 0.5, 1.0, 2.0);
+
+  var i = floor(point + dot(point, c.yyy));
+  let x0 = point - i + dot(i, c.xxx);
+
+  let g = step(x0.yzx, x0.xyz);
+  let l = vec3<f32>(1.0) - g;
+  let i1 = min(g.xyz, l.zxy);
+  let i2 = max(g.xyz, l.zxy);
+
+  let x1 = x0 - i1 + c.xxx;
+  let x2 = x0 - i2 + c.yyy;
+  let x3 = x0 - d.yyy;
+
+  i = simplexMod289Vec3(i);
+  let p = simplexPermute(
+    simplexPermute(
+      simplexPermute(vec4<f32>(i.z) + vec4<f32>(0.0, i1.z, i2.z, 1.0)) + vec4<f32>(i.y) + vec4<f32>(0.0, i1.y, i2.y, 1.0)
+    ) + vec4<f32>(i.x) + vec4<f32>(0.0, i1.x, i2.x, 1.0)
+  );
+
+  let n = 0.142857142857;
+  let ns = n * d.wyz - d.xzx;
+
+  let j = p - vec4<f32>(49.0) * floor(p * ns.z * ns.z);
+  let x_ = floor(j * ns.z);
+  let y_ = floor(j - 7.0 * x_);
+
+  let x = x_ * ns.x + ns.yyyy;
+  let y = y_ * ns.x + ns.yyyy;
+  let h = vec4<f32>(1.0) - abs(x) - abs(y);
+
+  let b0 = vec4<f32>(x.xy, y.xy);
+  let b1 = vec4<f32>(x.zw, y.zw);
+
+  let s0 = floor(b0) * 2.0 + vec4<f32>(1.0);
+  let s1 = floor(b1) * 2.0 + vec4<f32>(1.0);
+  let sh = -step(h, vec4<f32>(0.0));
+
+  let a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+  let a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+  var p0 = vec3<f32>(a0.xy, h.x);
+  var p1 = vec3<f32>(a0.zw, h.y);
+  var p2 = vec3<f32>(a1.xy, h.z);
+  var p3 = vec3<f32>(a1.zw, h.w);
+
+  let norm = simplexTaylorInvSqrt(vec4<f32>(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+  var m = max(vec4<f32>(0.6) - vec4<f32>(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), vec4<f32>(0.0));
+  m *= m;
+  return 42.0 * dot(m * m, vec4<f32>(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+fn simplexNoise(point: vec3<f32>) -> f32 {
+  return simplexNoise3d(point);
+}
+`,
+  "color/hsl2rgb": /* wgsl */ `
+// hsl.xは色相[0, 1]、hsl.yは彩度[0, 1]、hsl.zは輝度[0, 1]。
+fn hsl2rgb(hsl: vec3<f32>) -> vec3<f32> {
+  let hue = fract(hsl.x);
+  let saturation = clamp(hsl.y, 0.0, 1.0);
+  let lightness = clamp(hsl.z, 0.0, 1.0);
+  let rgb = clamp(abs(fract(vec3<f32>(hue) + vec3<f32>(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - vec3<f32>(3.0)) - vec3<f32>(1.0), vec3<f32>(0.0), vec3<f32>(1.0));
+  return vec3<f32>(lightness) + saturation * (rgb - vec3<f32>(0.5)) * (1.0 - abs(2.0 * lightness - 1.0));
+}
+`,
 } satisfies ShaderChunkLibrary;
 
 export function resolveShaderIncludes(
