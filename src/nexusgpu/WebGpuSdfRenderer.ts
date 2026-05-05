@@ -6,6 +6,8 @@ import type {
   NexusRenderSettings,
   NexusRenderStats,
   SceneSnapshot,
+  SdfData,
+  SdfModifierSceneNode,
   SdfNode,
   SdfSceneNode,
   Vec3,
@@ -275,9 +277,8 @@ export class WebGpuSdfRenderer {
 
   /** SdfFunctionとscene tree構造をshaderへ展開し、必要なときだけpipelineを作り直す。 */
   private configureScenePipeline(snapshot: SceneSnapshot) {
-    const sdfFunctions = unique(
-      snapshot.nodes.flatMap((node) => (node.kind === "function" && node.sdfFunction ? [node.sdfFunction] : [])),
-    );
+    const sdfFunctions = unique(collectSdfFunctionSources(snapshot.sceneNodes));
+    const modifierFunctions = uniqueModifierFunctionSources(snapshot.sceneNodes);
 
     // 同じWGSL文字列は1つのcustom関数として共有し、scene内ではkind IDと関数名で参照する。
     const customSdfFunctions = sdfFunctions.map((sdfFunction, index) => {
@@ -289,7 +290,16 @@ export class WebGpuSdfRenderer {
         ...createCustomSdfFunctionSource(sdfFunction, functionName),
       };
     });
-    const customShaders = customSdfFunctions.map<CustomSdfFunctionShader>((customSdfFunction) => {
+    const customModifierFunctions = modifierFunctions.map((modifierFunction, index) => {
+      const functionName = `customSdfModifierFunction${index}`;
+
+      return {
+        ...modifierFunction,
+        kindId: CUSTOM_SDF_PRIMITIVE_KIND_START + customSdfFunctions.length + index,
+        ...createCustomSdfModifierFunctionSource(modifierFunction.source, functionName, modifierFunction.mode),
+      };
+    });
+    const customShaders = [...customSdfFunctions, ...customModifierFunctions].map<CustomSdfFunctionShader>((customSdfFunction) => {
       return {
         kindId: customSdfFunction.kindId,
         functionName: customSdfFunction.functionName,
@@ -313,11 +323,27 @@ export class WebGpuSdfRenderer {
         ];
       }),
     );
+    const customModifierFunctionNames = new Map(
+      customModifierFunctions.map((customModifierFunction) => {
+        return [
+          customModifierFunction.key,
+          {
+            functionName: customModifierFunction.functionName,
+            returnsSceneHit: customModifierFunction.returnsSceneHit,
+          },
+        ];
+      }),
+    );
 
     // シーン木はGPU側で解釈せず、mapScene()のWGSLコードとして展開する。
-    const mapSceneBody = createExpandedMapSceneBody(snapshot.sceneNodes, customSdfFunctionNames);
+    const mapSceneBody = createExpandedMapSceneBody(
+      snapshot.sceneNodes,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+    );
     const signature = [
       sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
+      modifierFunctions.map((modifierFunction) => `${modifierFunction.mode}:${modifierFunction.source}`).join("\n/* nexusgpu-sdf-modifier */\n"),
       createSceneTopologySignature(snapshot.sceneNodes),
     ].join("\n/* nexusgpu-scene-topology */\n");
 
@@ -518,7 +544,7 @@ function countPrimitiveRecords(sceneNodes: readonly SdfSceneNode[]): number {
   }, 0);
 }
 
-/** グループノードを展開し、葉のprimitiveだけをrecordsへ追加する。 */
+/** グループ / modifierノードを展開し、葉のprimitiveだけをrecordsへ追加する。 */
 function appendPrimitiveRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
   if (node.type === "primitive") {
     records.push(createPrimitiveRecord(node.node, getSdfKindId(node.node)));
@@ -580,10 +606,26 @@ type CustomSdfFunctionCallSpec = {
 
 type CustomSdfFunctionNameMap = ReadonlyMap<string, CustomSdfFunctionCallSpec>;
 
+type CustomSdfModifierFunctionCallSpec = {
+  /** レンダラが割り当てたGPU側の安全な関数名。 */
+  functionName: string;
+  /** post modifierがSceneHitを直接返すか。pre modifierでは使わない。 */
+  returnsSceneHit: boolean;
+};
+
+type CustomSdfModifierFunctionNameMap = ReadonlyMap<string, CustomSdfModifierFunctionCallSpec>;
+
+type SdfModifierFunctionSource = {
+  key: string;
+  mode: "pre" | "post";
+  source: string;
+};
+
 /** scene tree全体を、Fragment Shaderから呼ぶmapScene(point)関数のWGSL bodyへ展開する。 */
 function createExpandedMapSceneBody(
   sceneNodes: readonly SdfSceneNode[],
   customSdfFunctionNames: CustomSdfFunctionNameMap,
+  customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
 ) {
   const state: ExpandedSceneCompileState = { primitiveIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
@@ -592,7 +634,7 @@ function createExpandedMapSceneBody(
   ];
 
   for (const node of sceneNodes) {
-    const result = compileExpandedSceneNode(node, state, customSdfFunctionNames);
+    const result = compileExpandedSceneNode(node, state, customSdfFunctionNames, customModifierFunctionNames, "point");
     chunks.push(result.code);
     chunks.push(`  best = unionHit(best, ${result.hitName}, ${result.smoothnessExpression});`);
   }
@@ -617,6 +659,8 @@ function compileExpandedSceneNode(
   node: SdfSceneNode,
   state: ExpandedSceneCompileState,
   customSdfFunctionNames: CustomSdfFunctionNameMap,
+  customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
+  pointExpression: string,
 ): ExpandedSceneCompileResult {
   if (node.type === "primitive") {
     const primitiveIndex = state.primitiveIndex;
@@ -635,7 +679,7 @@ function compileExpandedSceneNode(
     return {
       code: [
         `  let ${objectName} = objects[${primitiveIndex}u];`,
-        `  let ${localPointName} = ${createLocalPointExpression(node.node, objectName)};`,
+        `  let ${localPointName} = ${createLocalPointExpression(node.node, objectName, pointExpression)};`,
         `  let ${hitName} = ${hitExpression};`,
       ].join("\n"),
       hitName,
@@ -643,7 +687,19 @@ function compileExpandedSceneNode(
     };
   }
 
-  const children = node.children.map((child) => compileExpandedSceneNode(child, state, customSdfFunctionNames));
+  if (node.type === "modifier") {
+    return compileExpandedModifierNode(
+      node,
+      state,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+      pointExpression,
+    );
+  }
+
+  const children = node.children.map((child) =>
+    compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, pointExpression),
+  );
   const hitName = nextTempName("groupHit", state);
   const smoothness = formatWgslFloat(node.smoothness);
 
@@ -683,9 +739,91 @@ function compileExpandedSceneNode(
   };
 }
 
+/** modifier nodeを評価し、preなら子の入力point、postなら子のSceneHitを加工する。 */
+function compileExpandedModifierNode(
+  node: SdfModifierSceneNode,
+  state: ExpandedSceneCompileState,
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
+  customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
+  pointExpression: string,
+): ExpandedSceneCompileResult {
+  if (node.children.length === 0) {
+    const hitName = nextTempName("modifierHit", state);
+
+    return {
+      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
+      hitName,
+      smoothnessExpression: `${hitName}.smoothness`,
+    };
+  }
+
+  const preCallSpec = node.preModifierFunction
+    ? customModifierFunctionNames.get(createSdfModifierFunctionKey("pre", node.preModifierFunction))
+    : null;
+  const postCallSpec = node.postModifierFunction
+    ? customModifierFunctionNames.get(createSdfModifierFunctionKey("post", node.postModifierFunction))
+    : null;
+
+  if (node.preModifierFunction && !preCallSpec) {
+    throw new Error("SdfModifier pre function was not registered before scene shader expansion.");
+  }
+
+  if (node.postModifierFunction && !postCallSpec) {
+    throw new Error("SdfModifier post function was not registered before scene shader expansion.");
+  }
+
+  const lines: string[] = [];
+  let childPointExpression = pointExpression;
+
+  if (preCallSpec) {
+    childPointExpression = nextTempName("modifiedPoint", state);
+    lines.push(`  let ${childPointExpression} = ${preCallSpec.functionName}(${pointExpression}, ${formatSdfDataArgs(node.data)});`);
+  }
+
+  const childResult = compileExpandedSceneNode(
+    node.children.length === 1 ? node.children[0] : createImplicitUnionGroup(node.children),
+    state,
+    customSdfFunctionNames,
+    customModifierFunctionNames,
+    childPointExpression,
+  );
+  lines.push(childResult.code);
+
+  if (!postCallSpec) {
+    return {
+      code: lines.join("\n"),
+      hitName: childResult.hitName,
+      smoothnessExpression: childResult.smoothnessExpression,
+    };
+  }
+
+  const hitName = nextTempName("modifiedHit", state);
+  const customCall = `${postCallSpec.functionName}(${childResult.hitName}, ${pointExpression}, ${formatSdfDataArgs(node.data)})`;
+  const hitExpression = postCallSpec.returnsSceneHit
+    ? customCall
+    : `SceneHit(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness)`;
+  lines.push(`  let ${hitName} = ${hitExpression};`);
+
+  return {
+    code: lines.join("\n"),
+    hitName,
+    smoothnessExpression: `${hitName}.smoothness`,
+  };
+}
+
+function createImplicitUnionGroup(children: readonly SdfSceneNode[]): SdfSceneNode {
+  return {
+    type: "group",
+    op: "or",
+    smoothness: 0,
+    children,
+    bounds: { center: [0, 0, 0], radius: -1 },
+  };
+}
+
 /** rotation propが省略されていれば、WGSL上のquaternion計算を生成せず平行移動だけにする。 */
-function createLocalPointExpression(node: SdfNode, objectName: string) {
-  const translatedPoint = `point - ${objectName}.positionKind.xyz`;
+function createLocalPointExpression(node: SdfNode, objectName: string, pointExpression: string) {
+  const translatedPoint = `${pointExpression} - ${objectName}.positionKind.xyz`;
 
   if (!node.hasRotation) {
     return translatedPoint;
@@ -767,6 +905,12 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
       : `${node.node.kind}:${rotationSignature}`;
   }
 
+  if (node.type === "modifier") {
+    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}:${formatSdfDataArgs(node.data)}(${node.children
+      .map(createSceneNodeTopologySignature)
+      .join(",")})`;
+  }
+
   return `group:${node.op}:${formatWgslFloat(node.smoothness)}(${node.children
     .map(createSceneNodeTopologySignature)
     .join(",")})`;
@@ -789,9 +933,75 @@ function formatWgslFloat(value: number) {
   return Number.isInteger(rounded) ? `${rounded}.0` : `${rounded}`;
 }
 
+function formatWgslVec4(value: readonly [number, number, number, number]) {
+  return `vec4<f32>(${value.map(formatWgslFloat).join(", ")})`;
+}
+
+function formatSdfDataArgs(data: SdfData) {
+  return data.map(formatWgslVec4).join(", ");
+}
+
 /** 出現順を保ったまま重複を取り除く。 */
 function unique(values: readonly string[]) {
   return [...new Set(values)];
+}
+
+function uniqueModifierFunctionSources(sceneNodes: readonly SdfSceneNode[]): SdfModifierFunctionSource[] {
+  const byKey = new Map<string, SdfModifierFunctionSource>();
+
+  for (const modifierFunction of collectSdfModifierFunctionSources(sceneNodes)) {
+    if (!byKey.has(modifierFunction.key)) {
+      byKey.set(modifierFunction.key, modifierFunction);
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+function collectSdfFunctionSources(sceneNodes: readonly SdfSceneNode[]): string[] {
+  return sceneNodes.flatMap((node) => {
+    if (node.type === "primitive") {
+      return node.node.kind === "function" && node.node.sdfFunction ? [node.node.sdfFunction] : [];
+    }
+
+    return collectSdfFunctionSources(node.children);
+  });
+}
+
+function collectSdfModifierFunctionSources(sceneNodes: readonly SdfSceneNode[]): SdfModifierFunctionSource[] {
+  return sceneNodes.flatMap((node) => {
+    if (node.type === "primitive") {
+      return [];
+    }
+
+    if (node.type === "modifier") {
+      const ownFunctions: SdfModifierFunctionSource[] = [];
+
+      if (node.preModifierFunction) {
+        ownFunctions.push({
+          key: createSdfModifierFunctionKey("pre", node.preModifierFunction),
+          mode: "pre",
+          source: node.preModifierFunction,
+        });
+      }
+
+      if (node.postModifierFunction) {
+        ownFunctions.push({
+          key: createSdfModifierFunctionKey("post", node.postModifierFunction),
+          mode: "post",
+          source: node.postModifierFunction,
+        });
+      }
+
+      return [...ownFunctions, ...collectSdfModifierFunctionSources(node.children)];
+    }
+
+    return collectSdfModifierFunctionSources(node.children);
+  });
+}
+
+function createSdfModifierFunctionKey(mode: "pre" | "post", source: string) {
+  return `${mode}:${source}`;
 }
 
 /** SdfFunctionの入力文字列を、renderer管理の関数名を持つWGSL関数へ正規化する。 */
@@ -836,11 +1046,64 @@ fn ${functionName}(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: 
   };
 }
 
+/** SdfModifierの入力文字列を、pre/post別の固定シグネチャを持つWGSL関数へ正規化する。 */
+function createCustomSdfModifierFunctionSource(
+  source: string,
+  functionName: string,
+  mode: "pre" | "post",
+): CustomSdfModifierFunctionCallSpec & { source: string } {
+  const trimmed = source.trim();
+  if (!trimmed) {
+    throw new Error("SdfModifier requires a non-empty WGSL function string.");
+  }
+
+  const declaration = parseWgslFunctionDeclaration(trimmed);
+  if (declaration) {
+    const renamedSource = trimmed.replace(
+      new RegExp(`\\bfn\\s+${declaration.name}\\s*\\(`),
+      `fn ${functionName}(`,
+    );
+
+    return {
+      functionName,
+      returnsSceneHit: declaration.returnType === "SceneHit",
+      source: renamedSource,
+    };
+  }
+
+  const body = trimmed.includes(";") || /\breturn\b/.test(trimmed) ? trimmed : `return ${trimmed};`;
+
+  if (mode === "pre") {
+    return {
+      functionName,
+      returnsSceneHit: false,
+      source: /* wgsl */ `
+fn ${functionName}(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> vec3<f32> {
+  ${body}
+}
+`,
+    };
+  }
+
+  const returnsSceneHit = /\bSceneHit\s*\(/.test(trimmed);
+  const returnType = returnsSceneHit ? "SceneHit" : "f32";
+
+  return {
+    functionName,
+    returnsSceneHit,
+    source: /* wgsl */ `
+fn ${functionName}(hit: SceneHit, point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> ${returnType} {
+  ${body}
+}
+`,
+  };
+}
+
 /** WGSL関数宣言から関数名、引数数、戻り値型だけを抜き出す。 */
 function parseWgslFunctionDeclaration(source: string) {
   const match =
-    source.match(/\bfn\s+(sdfFunction)\s*\(([^)]*)\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)/s) ??
-    source.match(/\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)/s);
+    source.match(/\bfn\s+(sdfFunction)\s*\(([^)]*)\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^>]+>)?)/s) ??
+    source.match(/\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^>]+>)?)/s);
   if (!match) {
     return null;
   }

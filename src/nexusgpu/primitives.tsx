@@ -10,6 +10,8 @@ import type {
   SdfEllipsoidProps,
   SdfFunctionProps,
   SdfGroupProps,
+  SdfModifierProps,
+  SdfModifierPreset,
   SdfNode,
   SdfSceneNode,
   SdfSphereProps,
@@ -286,6 +288,50 @@ export function SdfSubtract({ children }: Pick<SdfGroupProps, "children">) {
   return <SdfGroup op="subtract">{children}</SdfGroup>;
 }
 
+/** 子SDFの評価前後にWGSL関数を差し込むmodifier。boundsは保持だけ行い、現状は枝刈りしない。 */
+export function SdfModifier({
+  preset,
+  preModifierFunction,
+  postModifierFunction,
+  data0 = DEFAULT_DATA,
+  data1 = DEFAULT_DATA,
+  data2 = DEFAULT_DATA,
+  bounds,
+  children,
+}: SdfModifierProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+  const registry = useMemo(() => new SdfGroupRegistry(), []);
+  const resolvedFunctions = useMemo(
+    () => resolveSdfModifierFunctions(preset, preModifierFunction, postModifierFunction),
+    [postModifierFunction, preModifierFunction, preset],
+  );
+
+  useEffect(() => {
+    return registry.subscribe((childNodes) => {
+      if (childNodes.length === 0) {
+        target.removeSceneNode(id);
+        return;
+      }
+
+      target.upsertSceneNode(id, {
+        type: "modifier",
+        preModifierFunction: resolvedFunctions.preModifierFunction,
+        postModifierFunction: resolvedFunctions.postModifierFunction,
+        data: createSdfData(data0, data1, data2),
+        children: childNodes,
+        bounds: createModifierBounds(childNodes, bounds),
+      });
+    });
+  }, [bounds, data0, data1, data2, id, registry, resolvedFunctions, target]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return <SdfSceneNodeTargetContext.Provider value={registry}>{children}</SdfSceneNodeTargetContext.Provider>;
+}
+
 /** React再レンダーをまたいで同じSDFノードIDを保つ。 */
 function useStableId() {
   return useMemo(() => Symbol("nexusgpu.sdf"), []);
@@ -453,6 +499,87 @@ function inflateBounds(bounds: SdfBoundingSphere, amount: number): SdfBoundingSp
     center: bounds.center,
     radius: bounds.radius < 0 ? bounds.radius : bounds.radius + Math.max(0, amount),
   };
+}
+
+function createModifierBounds(
+  children: readonly SdfSceneNode[],
+  bounds: Partial<SdfBoundingSphere> | undefined,
+): SdfBoundingSphere {
+  const childBounds = createGroupBounds("or", children, 0);
+
+  return {
+    center: normalizeVec3(bounds?.center ?? childBounds.center, DEFAULT_POSITION),
+    radius: Math.max(0.001, bounds?.radius ?? childBounds.radius),
+  };
+}
+
+function resolveSdfModifierFunctions(
+  preset: SdfModifierProps["preset"] | undefined,
+  preModifierFunction: string | undefined,
+  postModifierFunction: string | undefined,
+) {
+  const presets = typeof preset === "string" ? [preset] : preset ?? [];
+  let resolvedPreModifierFunction = preModifierFunction;
+  let resolvedPostModifierFunction = postModifierFunction;
+
+  for (const presetName of presets) {
+    const presetFunctions = resolveSdfModifierPreset(presetName);
+
+    if (presetFunctions.preModifierFunction && !resolvedPreModifierFunction) {
+      resolvedPreModifierFunction = presetFunctions.preModifierFunction;
+    }
+
+    if (presetFunctions.postModifierFunction && !resolvedPostModifierFunction) {
+      resolvedPostModifierFunction = presetFunctions.postModifierFunction;
+    }
+  }
+
+  return {
+    preModifierFunction: resolvedPreModifierFunction,
+    postModifierFunction: resolvedPostModifierFunction,
+  };
+}
+
+type SdfModifierPresetFunctions = {
+  preModifierFunction?: string;
+  postModifierFunction?: string;
+};
+
+function resolveSdfModifierPreset(preset: SdfModifierPreset) {
+  if (preset === "preRepeat") {
+    return {
+      preModifierFunction: /* wgsl */ `
+let cell = max(abs(data0.xyz), vec3<f32>(0.0001));
+return point - cell * round(point / cell);
+`,
+    } satisfies SdfModifierPresetFunctions;
+  }
+
+  if (preset === "twistY") {
+    return {
+      preModifierFunction: /* wgsl */ `
+let angle = point.y * data0.x;
+let c = cos(angle);
+let s = sin(angle);
+return vec3<f32>(c * point.x - s * point.z, point.y, s * point.x + c * point.z);
+`,
+      postModifierFunction: /* wgsl */ `
+let radial = length(point.xz);
+let stretch = sqrt(1.0 + data0.x * data0.x * radial * radial);
+return hit.distance / max(stretch, 1.0);
+`,
+    } satisfies SdfModifierPresetFunctions;
+  }
+
+  if (preset === "postOnion") {
+    return {
+      postModifierFunction: /* wgsl */ `return abs(hit.distance) - data0.x;`,
+    } satisfies SdfModifierPresetFunctions;
+  }
+
+  return {
+    postModifierFunction: /* wgsl */ `return hit.distance - data0.x;`,
+  } satisfies SdfModifierPresetFunctions;
 }
 
 function subtractVec3(a: Vec3, b: Vec3): Vec3 {

@@ -227,6 +227,7 @@ Reactで使うSDFプリミティブを定義します。
 - `<SdfGroup />`
 - `<SdfNot />`
 - `<SdfSubtract />`
+- `<SdfModifier />`
 
 各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめた`SdfGroupSceneNode`が親の登録先へ渡されます。
 
@@ -253,6 +254,22 @@ Reactで使うSDFプリミティブを定義します。
 ```
 
 現在のグループ実装はGPU上でグループ命令列を解釈しません。React側で作られたシーン木を`WebGpuSdfRenderer`がWGSLの`mapScene()`へ展開し、primitiveデータだけをStorage Bufferへ詰めます。これにより、数十オブジェクト規模ではグループ用のループ、stack、動的op分岐を避けられます。
+
+`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"postInflate"`、`"postOnion"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
+
+```tsx
+<SdfModifier
+  preset="twistY"
+  data0={[0.5, 0, 0, 0]}
+>
+  <SdfGroup op="or">
+    <SdfSphere radius={0.7} />
+    <SdfBox position={[0.8, 0, 0]} />
+  </SdfGroup>
+</SdfModifier>
+```
+
+modifierはprimitiveレコードとしてStorage Bufferへは入りません。React側では子registryを持ち、子がprimitiveでもgroupでも同じように`SdfModifierSceneNode`として親へ登録します。レンダラは`mapScene()`展開時に、preを子ツリーの入力`point`として渡し、postを子ツリーから返った`SceneHit`に適用します。`bounds`はnodeに保持しますが、現状のGPU評価では枝刈りには使っていません。
 
 ### sdfKinds.ts
 
@@ -310,6 +327,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `setScene(snapshot)`で`SceneSnapshot.sceneNodes`からprimitiveだけを取り出し、最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
 - `SceneSnapshot.sceneNodes`をWGSLの`mapScene()`へ展開し、グループ構造やboolean演算をshaderコードとして焼き込む
 - `SdfFunction`の関数文字列セット、またはシーン木のtopologyが変わった場合は、custom SDF関数と展開済み`mapScene()`を差し込んだShader Module / Render Pipelineを作り直す
+- `SdfModifier`のpre/post関数文字列セット、modifier topology、またはmodifierの`data0-2`が変わった場合もShader Module / Render Pipelineを作り直す
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
 - 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定をUniform Bufferへアップロードする
 - フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
@@ -317,7 +335,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。グループ自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapScene()`を生成します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。グループとmodifier自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapScene()`を生成します。
 
 例として、次のシーン木がある場合:
 
@@ -354,11 +372,24 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
 
 この方式は、オブジェクト数が数十程度のシーンでGPU上の汎用インタプリタ方式より軽くなることを優先した設計です。scene topologyや`SdfFunction`の種類が変わるとpipeline再生成が必要ですが、位置、回転、色、サイズなどprimitiveレコードの値だけが変わる場合はStorage Buffer更新だけで済みます。
 
+modifierを含む場合は、pre/post関数もcustom WGSL関数としてshaderへ追加されます。概念的には次の順序で展開されます。
+
+```wgsl
+let modifiedPoint0 = customSdfModifierFunction0(point, data0, data1, data2);
+let object1 = objects[0u];
+let localPoint2 = modifiedPoint0 - object1.positionKind.xyz;
+let hit3 = SceneHit(sdSphere(localPoint2, object1.data0.x), object1.colorSmooth.rgb, object1.colorSmooth.w);
+let modifiedHit4 = SceneHit(customSdfModifierFunction1(hit3, point, data0, data1, data2), hit3.color, hit3.smoothness);
+best = unionHit(best, modifiedHit4, modifiedHit4.smoothness);
+```
+
+pre modifierは子ツリー全体に渡す評価点を変えるため、childrenが`SdfGroup`でもgroup配下の全primitiveが同じ加工済み座標で評価されます。post modifierは子ツリー全体の合成後に1回だけ適用されます。複数childrenを直接持つmodifierは、内部的に`smoothness=0`の`or` groupとして扱われます。
+
 ### sdfShader.ts / shaders
 
 WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配下に分かれています。`shaders/index.ts`の`assembleSdfShader(maxObjects, customSdfFunctions, mapSceneBody)`が各セクションを結合し、最終的な`shaderModule`用文字列を作ります。
 
-組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名を割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じWGSL関数を共有します。
+組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名を割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じWGSL関数を共有します。`SdfModifier`のpre/post関数も同じcustom関数セクションへ追加され、`customSdfModifierFunction0`のような名前へ差し替えられます。
 
 `mapSceneBody`は`SceneSnapshot.sceneNodes`から生成される展開済みWGSLです。`sceneMappingShader.ts`は`unionHit`、`intersectHit`、`subtractHit`、`notHit`などの共通関数を定義し、その後ろに展開済み`mapScene()`を差し込みます。グループ構造やprimitive種別をGPUでループ/分岐解釈するのではなく、CPU側でWGSLへコンパイルする形です。
 
@@ -371,7 +402,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
   -> shaderLayout
   -> vertexShader
   -> sdfPrimitivesShader
-  -> custom SDF function sources
+  -> custom SDF / modifier function sources
   -> sceneMappingShader
   -> raymarchShader
   -> lightingShader
@@ -465,7 +496,7 @@ fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data
 
 ### SdfSceneNode
 
-`SceneStore`は、root要素として`SdfSceneNode`の配列を保持します。単体primitiveは`SdfPrimitiveSceneNode`、`<SdfGroup />`は`SdfGroupSceneNode`として表現されます。
+`SceneStore`は、root要素として`SdfSceneNode`の配列を保持します。単体primitiveは`SdfPrimitiveSceneNode`、`<SdfGroup />`は`SdfGroupSceneNode`、`<SdfModifier />`は`SdfModifierSceneNode`として表現されます。
 
 ```ts
 type SdfPrimitiveSceneNode = {
@@ -482,7 +513,19 @@ type SdfGroupSceneNode = {
   bounds: SdfBoundingSphere;
 };
 
-type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode;
+type SdfModifierSceneNode = {
+  type: "modifier";
+  preModifierFunction?: string;
+  postModifierFunction?: string;
+  data: SdfData;
+  children: readonly SdfSceneNode[];
+  bounds: SdfBoundingSphere;
+};
+
+type SdfSceneNode =
+  | SdfPrimitiveSceneNode
+  | SdfGroupSceneNode
+  | SdfModifierSceneNode;
 ```
 
 `SceneSnapshot`には互換・custom SDF収集用のフラットな`nodes`と、レンダラが`mapScene()`展開に使う`sceneNodes`の両方が含まれます。

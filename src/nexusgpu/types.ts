@@ -131,6 +131,21 @@ export type SdfGroupProps = {
   children?: ReactNode;
 };
 
+/** SDF modifierの組み込みプリセット。1つのpresetがpre/postの両方を持つ場合がある。 */
+export type SdfModifierPreset = "twistY" | "preRepeat" | "postInflate" | "postOnion";
+
+/** 子SDFの評価前後にWGSL modifierを差し込むコンポーネントのprops。 */
+export type SdfModifierProps = {
+  preset?: SdfModifierPreset | readonly SdfModifierPreset[];
+  preModifierFunction?: string;
+  postModifierFunction?: string;
+  data0?: Vec4;
+  data1?: Vec4;
+  data2?: Vec4;
+  bounds?: Partial<SdfBoundingSphere>;
+  children?: ReactNode;
+};
+
 /** NexusCanvasが受け取るReact側の公開props。 */
 export type NexusCanvasProps = {
   camera?: NexusCamera;
@@ -171,7 +186,16 @@ export type SdfGroupSceneNode = {
   bounds: SdfBoundingSphere;
 };
 
-export type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode;
+export type SdfModifierSceneNode = {
+  type: "modifier";
+  preModifierFunction?: string;
+  postModifierFunction?: string;
+  data: SdfData;
+  children: readonly SdfSceneNode[];
+  bounds: SdfBoundingSphere;
+};
+
+export type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode | SdfModifierSceneNode;
 
 /** SceneStoreからレンダラへ渡す一貫したシーン状態。 */
 export type SceneSnapshot = {
