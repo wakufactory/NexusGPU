@@ -89,16 +89,18 @@ primitive固有props:
 
 ## SdfFunctionでWGSLを直接使う
 
-`SdfFunction`は、専用componentを追加せずにscene内でSDFを試すためのprimitiveです。`sdfFunction`にはWGSL文字列を渡します。関数内で使える引数は次の4つです。
+`SdfFunction`は、専用componentを追加せずにscene内でSDFを試すためのprimitiveです。`sdfFunction`にはWGSL文字列を渡します。関数body / 式として渡す場合、関数内で使える引数は次の6つです。
 
 ```wgsl
 point: vec3<f32>
 data0: vec4<f32>
 data1: vec4<f32>
 data2: vec4<f32>
+color: vec3<f32>
+smoothness: f32
 ```
 
-`point`はオブジェクトの`position`と`rotation`を適用済みのローカル座標です。つまりSDF関数内では、原点中心の形状として距離を計算します。
+`point`はオブジェクトの`position`と`rotation`を適用済みのローカル座標です。つまりSDF関数内では、原点中心の形状として距離を計算します。`color`と`smoothness`は`SdfFunction`の同名propから渡されます。
 
 短い式や関数bodyだけを渡せます。
 
@@ -116,7 +118,24 @@ export function CustomSphereScene() {
 }
 ```
 
-WGSL関数全体を渡す場合は、`sdfFunction`という名前で定義できます。レンダラ内部では安全に別名へ差し替えられます。
+色もWGSL内で決めたい場合は、`SceneHit(distance, color, smoothness)`を返します。
+
+```tsx
+<SdfFunction
+  sdfFunction={/* wgsl */ `
+    let distance = length(point) - data0.x;
+    let stripe = 0.5 + 0.5 * sin(point.y * data1.x);
+    let painted = mix(color, data2.rgb, stripe);
+    return SceneHit(distance, painted, smoothness);
+  `}
+  data0={[0.8, 0, 0, 0]}
+  data1={[18, 0, 0, 0]}
+  data2={[0.1, 0.35, 1.0, 0]}
+  color={[0.9, 0.18, 0.38]}
+/>
+```
+
+WGSL関数全体を渡す場合は、`sdfFunction`という名前で定義できます。レンダラ内部では安全に別名へ差し替えられます。既存の4引数で`f32`を返す形式もそのまま使えます。ベース色を受け取りたい場合は5番目の引数に`color`、smoothnessも受け取りたい場合は6番目の引数に`smoothness`を追加し、色つきの結果を返したい場合は戻り値を`SceneHit`にします。
 
 ```tsx
 const roundedBoxSdf = /* wgsl */ `

@@ -15,6 +15,8 @@ const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const OBJECT_STRIDE_FLOATS = 24;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+
+/** UIから省略された描画設定に使う初期値。 */
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
   maxFps: 60,
   resolutionScale: 0.75,
@@ -217,11 +219,13 @@ export class WebGpuSdfRenderer {
     }
   }
 
+  /** 統計情報を部分更新し、購読側へ最新値を通知する。 */
   private setRenderStats(stats: Partial<NexusRenderStats>) {
     this.renderStats = { ...this.renderStats, ...stats };
     this.onRenderStatsChange?.(this.renderStats);
   }
 
+  /** 500msごとに平均FPSを再計算し、UI更新頻度を抑える。 */
   private updateFps(now: number) {
     this.framesSinceFpsSample += 1;
 
@@ -235,6 +239,7 @@ export class WebGpuSdfRenderer {
     this.lastFpsSampleTime = now;
   }
 
+  /** maxFps設定に合わせて、現在フレームの描画を間引くか判定する。 */
   private shouldSkipRender(now: number) {
     const frameInterval = 1000 / this.renderSettings.maxFps;
 
@@ -273,23 +278,43 @@ export class WebGpuSdfRenderer {
     const sdfFunctions = unique(
       snapshot.nodes.flatMap((node) => (node.kind === "function" && node.sdfFunction ? [node.sdfFunction] : [])),
     );
-    const customShaders = sdfFunctions.map<CustomSdfFunctionShader>((sdfFunction, index) => {
+
+    // 同じWGSL文字列は1つのcustom関数として共有し、scene内ではkind IDと関数名で参照する。
+    const customSdfFunctions = sdfFunctions.map((sdfFunction, index) => {
       const functionName = `customSdfFunction${index}`;
-      const kindId = CUSTOM_SDF_PRIMITIVE_KIND_START + index;
 
       return {
-        kindId,
-        functionName,
-        source: createCustomSdfFunctionSource(sdfFunction, functionName),
+        sdfFunction,
+        kindId: CUSTOM_SDF_PRIMITIVE_KIND_START + index,
+        ...createCustomSdfFunctionSource(sdfFunction, functionName),
+      };
+    });
+    const customShaders = customSdfFunctions.map<CustomSdfFunctionShader>((customSdfFunction) => {
+      return {
+        kindId: customSdfFunction.kindId,
+        functionName: customSdfFunction.functionName,
+        source: customSdfFunction.source,
       };
     });
 
     this.customSdfKindIds = new Map(
-      sdfFunctions.map((sdfFunction, index) => [sdfFunction, CUSTOM_SDF_PRIMITIVE_KIND_START + index]),
+      customSdfFunctions.map((customSdfFunction) => [customSdfFunction.sdfFunction, customSdfFunction.kindId]),
     );
     const customSdfFunctionNames = new Map(
-      sdfFunctions.map((sdfFunction, index) => [sdfFunction, `customSdfFunction${index}`]),
+      customSdfFunctions.map((customSdfFunction) => {
+        return [
+          customSdfFunction.sdfFunction,
+          {
+            functionName: customSdfFunction.functionName,
+            returnsSceneHit: customSdfFunction.returnsSceneHit,
+            acceptsColor: customSdfFunction.acceptsColor,
+            acceptsSmoothness: customSdfFunction.acceptsSmoothness,
+          },
+        ];
+      }),
     );
+
+    // シーン木はGPU側で解釈せず、mapScene()のWGSLコードとして展開する。
     const mapSceneBody = createExpandedMapSceneBody(snapshot.sceneNodes, customSdfFunctionNames);
     const signature = [
       sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
@@ -306,6 +331,7 @@ export class WebGpuSdfRenderer {
     this.bindGroup = pipelineState.bindGroup;
   }
 
+  /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */
   private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
     const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody);
     console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
@@ -344,6 +370,7 @@ export class WebGpuSdfRenderer {
     return { pipeline, bindGroup };
   }
 
+  /** 組み込みprimitiveは固定ID、SdfFunctionは関数文字列ごとに割り当てた動的IDを返す。 */
   private getSdfKindId(node: SdfNode) {
     if (node.kind === "function") {
       return node.sdfFunction ? (this.customSdfKindIds.get(node.sdfFunction) ?? 999999) : 999999;
@@ -428,6 +455,7 @@ export class WebGpuSdfRenderer {
     this.renderFrame(performance.now(), false);
   }
 
+  /** カメラUniformを更新し、現在のpipelineでフルスクリーン三角形を1回描画する。 */
   private renderFrame(now: number, updateStats: boolean) {
     if (updateStats) {
       this.updateFps(now);
@@ -466,6 +494,7 @@ export class WebGpuSdfRenderer {
 type SdfRecord = number[];
 type GetSdfKindId = (node: SdfNode) => number;
 
+/** シーン木を深さ優先でたどり、Storage Bufferへ積むprimitiveレコード列へ変換する。 */
 function compilePrimitiveRecords(sceneNodes: readonly SdfSceneNode[], getSdfKindId: GetSdfKindId) {
   const records: SdfRecord[] = [];
 
@@ -476,6 +505,7 @@ function compilePrimitiveRecords(sceneNodes: readonly SdfSceneNode[], getSdfKind
   return records;
 }
 
+/** グループを除いた実primitive数を数え、camera.objectInfo.xへ渡す値に使う。 */
 function countPrimitiveRecords(sceneNodes: readonly SdfSceneNode[]): number {
   return sceneNodes.reduce((count, node) => {
     if (node.type === "primitive") {
@@ -486,6 +516,7 @@ function countPrimitiveRecords(sceneNodes: readonly SdfSceneNode[]): number {
   }, 0);
 }
 
+/** グループノードを展開し、葉のprimitiveだけをrecordsへ追加する。 */
 function appendPrimitiveRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
   if (node.type === "primitive") {
     records.push(createPrimitiveRecord(node.node, getSdfKindId(node.node)));
@@ -497,6 +528,7 @@ function appendPrimitiveRecord(node: SdfSceneNode, records: SdfRecord[], getSdfK
   }
 }
 
+/** SdfNodeをWGSL側のSdfObject構造体と同じ24個のf32配列へ詰める。 */
 function createPrimitiveRecord(node: SdfNode, kindId: number): SdfRecord {
   return [
     node.position[0],
@@ -518,18 +550,35 @@ function createPrimitiveRecord(node: SdfNode, kindId: number): SdfRecord {
 }
 
 type ExpandedSceneCompileState = {
+  /** objects[]の何番目を参照するか。Storage Bufferへの詰め順と一致させる。 */
   primitiveIndex: number;
+  /** 生成WGSL内の一時変数名を衝突させないための連番。 */
   tempIndex: number;
 };
 
 type ExpandedSceneCompileResult = {
+  /** このnodeを評価するためのWGSL文列。 */
   code: string;
+  /** codeの末尾で生成されたSceneHit変数名。 */
   hitName: string;
+  /** 親グループがboolean演算時に使うsmoothness式。 */
   smoothnessExpression: string;
 };
 
-type CustomSdfFunctionNameMap = ReadonlyMap<string, string>;
+type CustomSdfFunctionCallSpec = {
+  /** レンダラが割り当てたGPU側の安全な関数名。 */
+  functionName: string;
+  /** trueなら戻り値をSceneHitとしてそのまま使い、falseならf32距離としてSceneHitへ包む。 */
+  returnsSceneHit: boolean;
+  /** 関数呼び出しへobject.colorSmooth.rgbを渡すか。 */
+  acceptsColor: boolean;
+  /** 関数呼び出しへobject.colorSmooth.wを渡すか。 */
+  acceptsSmoothness: boolean;
+};
 
+type CustomSdfFunctionNameMap = ReadonlyMap<string, CustomSdfFunctionCallSpec>;
+
+/** scene tree全体を、Fragment Shaderから呼ぶmapScene(point)関数のWGSL bodyへ展開する。 */
 function createExpandedMapSceneBody(
   sceneNodes: readonly SdfSceneNode[],
   customSdfFunctionNames: CustomSdfFunctionNameMap,
@@ -552,6 +601,7 @@ function createExpandedMapSceneBody(
   return chunks.join("\n");
 }
 
+/** scene未設定時に使う空のmapScene()。背景距離を返して何もhitしない状態にする。 */
 function createEmptyMapSceneBody() {
   return [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
@@ -560,6 +610,7 @@ function createEmptyMapSceneBody() {
   ].join("\n");
 }
 
+/** 1つのscene nodeを評価するWGSL片へ再帰的にコンパイルする。 */
 function compileExpandedSceneNode(
   node: SdfSceneNode,
   state: ExpandedSceneCompileState,
@@ -570,7 +621,7 @@ function compileExpandedSceneNode(
     const hitName = nextTempName("hit", state);
     const objectName = nextTempName("object", state);
     const localPointName = nextTempName("localPoint", state);
-    const distanceExpression = createPrimitiveDistanceExpression(
+    const hitExpression = createPrimitiveHitExpression(
       node.node,
       localPointName,
       objectName,
@@ -582,11 +633,11 @@ function compileExpandedSceneNode(
     return {
       code: [
         `  let ${objectName} = objects[${primitiveIndex}u];`,
-        `  let ${localPointName} = rotateByQuaternion(point - ${objectName}.positionKind.xyz, vec4<f32>(-${objectName}.rotation.xyz, ${objectName}.rotation.w));`,
-        `  let ${hitName} = SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w);`,
+        `  let ${localPointName} = ${createLocalPointExpression(node.node, objectName)};`,
+        `  let ${hitName} = ${hitExpression};`,
       ].join("\n"),
       hitName,
-      smoothnessExpression: `${objectName}.colorSmooth.w`,
+      smoothnessExpression: `${hitName}.smoothness`,
     };
   }
 
@@ -630,51 +681,88 @@ function compileExpandedSceneNode(
   };
 }
 
-function createPrimitiveDistanceExpression(
+/** rotation propが省略されていれば、WGSL上のquaternion計算を生成せず平行移動だけにする。 */
+function createLocalPointExpression(node: SdfNode, objectName: string) {
+  const translatedPoint = `point - ${objectName}.positionKind.xyz`;
+
+  if (!node.hasRotation) {
+    return translatedPoint;
+  }
+
+  return `rotateByQuaternion(${translatedPoint}, vec4<f32>(-${objectName}.rotation.xyz, ${objectName}.rotation.w))`;
+}
+
+/** 組み込みprimitiveまたはSdfFunction呼び出しをSceneHit式として生成する。 */
+function createPrimitiveHitExpression(
   node: SdfNode,
   localPointName: string,
   objectName: string,
   customSdfFunctionNames: CustomSdfFunctionNameMap,
 ) {
+  // f32距離だけを返す形式は、objectの色とsmoothnessで従来通りSceneHitへ包む。
+  const createDefaultHit = (distanceExpression: string) =>
+    `SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w)`;
+
   if (node.kind === "sphere") {
-    return `sdSphere(${localPointName}, ${objectName}.data0.x)`;
+    return createDefaultHit(`sdSphere(${localPointName}, ${objectName}.data0.x)`);
   }
 
   if (node.kind === "box") {
-    return `sdBox(${localPointName}, ${objectName}.data0.xyz)`;
+    return createDefaultHit(`sdBox(${localPointName}, ${objectName}.data0.xyz)`);
   }
 
   if (node.kind === "cylinder") {
-    return `sdCylinder(${localPointName}, ${objectName}.data0.xy)`;
+    return createDefaultHit(`sdCylinder(${localPointName}, ${objectName}.data0.xy)`);
   }
 
   if (node.kind === "torus") {
-    return `sdTorus(${localPointName}, ${objectName}.data0.xy)`;
+    return createDefaultHit(`sdTorus(${localPointName}, ${objectName}.data0.xy)`);
   }
 
   if (node.kind === "ellipsoid") {
-    return `sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`;
+    return createDefaultHit(`sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`);
   }
 
   if (!node.sdfFunction) {
     throw new Error("SdfFunction requires a non-empty WGSL function string.");
   }
 
-  const functionName = customSdfFunctionNames.get(node.sdfFunction);
-  if (!functionName) {
+  const callSpec = customSdfFunctionNames.get(node.sdfFunction);
+  if (!callSpec) {
     throw new Error("SdfFunction was not registered before scene shader expansion.");
   }
 
-  return `${functionName}(${localPointName}, ${objectName}.data0, ${objectName}.data1, ${objectName}.data2)`;
+  const args = [
+    localPointName,
+    `${objectName}.data0`,
+    `${objectName}.data1`,
+    `${objectName}.data2`,
+    ...(callSpec.acceptsColor ? [`${objectName}.colorSmooth.rgb`] : []),
+    ...(callSpec.acceptsSmoothness ? [`${objectName}.colorSmooth.w`] : []),
+  ].join(", ");
+  const customCall = `${callSpec.functionName}(${args})`;
+
+  // SceneHit形式はWGSL関数内で色とsmoothnessを決めるため、そのままmapScene()へ渡す。
+  if (callSpec.returnsSceneHit) {
+    return customCall;
+  }
+
+  return createDefaultHit(customCall);
 }
 
+/** pipeline再生成の要否を判定するため、scene treeの形だけを安定した文字列にする。 */
 function createSceneTopologySignature(sceneNodes: readonly SdfSceneNode[]): string {
   return sceneNodes.map(createSceneNodeTopologySignature).join("|");
 }
 
+/** 1つのscene nodeをtopology signature用の短い文字列へ変換する。 */
 function createSceneNodeTopologySignature(node: SdfSceneNode): string {
   if (node.type === "primitive") {
-    return node.node.kind === "function" ? `function:${node.node.sdfFunction ?? ""}` : node.node.kind;
+    const rotationSignature = node.node.hasRotation ? "rotated" : "unrotated";
+
+    return node.node.kind === "function"
+      ? `function:${rotationSignature}:${node.node.sdfFunction ?? ""}`
+      : `${node.node.kind}:${rotationSignature}`;
   }
 
   return `group:${node.op}:${formatWgslFloat(node.smoothness)}(${node.children
@@ -682,12 +770,14 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
     .join(",")})`;
 }
 
+/** 生成WGSL内で使う一時変数名を発行する。 */
 function nextTempName(prefix: string, state: ExpandedSceneCompileState) {
   const name = `${prefix}${state.tempIndex}`;
   state.tempIndex += 1;
   return name;
 }
 
+/** JSのnumberをWGSLのf32リテラルとして安全に埋め込む。 */
 function formatWgslFloat(value: number) {
   if (!Number.isFinite(value)) {
     return "0.0";
@@ -697,31 +787,69 @@ function formatWgslFloat(value: number) {
   return Number.isInteger(rounded) ? `${rounded}.0` : `${rounded}`;
 }
 
+/** 出現順を保ったまま重複を取り除く。 */
 function unique(values: readonly string[]) {
   return [...new Set(values)];
 }
 
-function createCustomSdfFunctionSource(source: string, functionName: string) {
+/** SdfFunctionの入力文字列を、renderer管理の関数名を持つWGSL関数へ正規化する。 */
+function createCustomSdfFunctionSource(source: string, functionName: string): CustomSdfFunctionCallSpec & { source: string } {
   const trimmed = source.trim();
   if (!trimmed) {
     throw new Error("SdfFunction requires a non-empty WGSL function string.");
   }
 
-  if (/\bfn\s+sdfFunction\s*\(/.test(trimmed)) {
-    return trimmed.replace(/\bfn\s+sdfFunction\s*\(/, `fn ${functionName}(`);
+  const declaration = parseWgslFunctionDeclaration(trimmed);
+  if (declaration) {
+    // 関数全体が渡された場合は戻り値型と引数数を見て、SceneHit/color/smoothness対応を判定する。
+    const renamedSource = trimmed.replace(
+      new RegExp(`\\bfn\\s+${declaration.name}\\s*\\(`),
+      `fn ${functionName}(`,
+    );
+
+    return {
+      functionName,
+      returnsSceneHit: declaration.returnType === "SceneHit",
+      acceptsColor: declaration.parameterCount >= 5,
+      acceptsSmoothness: declaration.parameterCount >= 6,
+      source: renamedSource,
+    };
   }
 
-  if (/^\s*fn\s+/.test(trimmed)) {
-    return trimmed.replace(/\bfn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/, `fn ${functionName}(`);
-  }
-
+  const returnsSceneHit = /\bSceneHit\s*\(/.test(trimmed);
   const body = trimmed.includes(";") || /\breturn\b/.test(trimmed) ? trimmed : `return ${trimmed};`;
+  const returnType = returnsSceneHit ? "SceneHit" : "f32";
 
-  return /* wgsl */ `
-fn ${functionName}(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> f32 {
+  // body / 式形式は便利さ優先でcolorとsmoothnessを常に使えるラッパー関数にする。
+  return {
+    functionName,
+    returnsSceneHit,
+    acceptsColor: true,
+    acceptsSmoothness: true,
+    source: /* wgsl */ `
+fn ${functionName}(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>, color: vec3<f32>, smoothness: f32) -> ${returnType} {
   ${body}
 }
-`;
+`,
+  };
+}
+
+/** WGSL関数宣言から関数名、引数数、戻り値型だけを抜き出す。 */
+function parseWgslFunctionDeclaration(source: string) {
+  const match =
+    source.match(/\bfn\s+(sdfFunction)\s*\(([^)]*)\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)/s) ??
+    source.match(/\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)/s);
+  if (!match) {
+    return null;
+  }
+
+  const parameters = match[2].trim();
+
+  return {
+    name: match[1],
+    parameterCount: parameters ? parameters.split(",").length : 0,
+    returnType: match[3],
+  };
 }
 
 /** UI由来の設定値を、シェーダが想定する安全な範囲に丸める。 */

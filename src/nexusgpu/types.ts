@@ -142,6 +142,7 @@ export type SdfNode = {
   kind: SdfPrimitiveKind;
   position: Vec3;
   rotation: Quaternion;
+  hasRotation: boolean;
   color: Vec3;
   data: SdfData;
   smoothness: number;

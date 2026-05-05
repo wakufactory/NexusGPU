@@ -450,13 +450,16 @@ type SdfNode = {
 - cylinder: `data[0].x`が半径、`data[0].y`が半分の高さ
 - torus: `data[0].x`がmajor radius、`data[0].y`がminor radius
 - ellipsoid: `data[0].xyz`がX/Y/Z各軸の半径
-- function: `data[0]`、`data[1]`、`data[2]`を`sdfFunction`へそのまま渡す
+- function: `data[0]`、`data[1]`、`data[2]`を`sdfFunction`へそのまま渡す。関数body / 式形式では`color` propと`smoothness` propも`color: vec3<f32>`、`smoothness: f32`として渡す
 
 `sdfFunction`は`kind: "function"`のときだけ使います。文字列はWGSL関数全体、または関数body / 式として指定できます。レンダラは内部で関数名を`customSdfFunctionN`へ差し替え、呼び出しシグネチャを次の形に揃えます。
 
 ```wgsl
 fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> f32
+fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>, color: vec3<f32>, smoothness: f32) -> SceneHit
 ```
+
+`f32`を返す場合は従来通り距離だけを受け取り、色とsmoothnessはobjectレコードの`colorSmooth`から作ります。`SceneHit`を返す場合は、WGSL関数内で距離、色、smoothnessをまとめて決められます。
 
 `bounds`はグループのbounding sphere計算に使うCPU側メタデータです。現在の展開型`mapScene()`ではboundsによるGPU枝刈りはまだ行っていませんが、グループ木には保持しておき、将来の展開コード内bounds skipや空間分割へ使えるようにしています。
 
