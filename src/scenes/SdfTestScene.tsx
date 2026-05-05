@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NexusCanvas, SdfFunction, useFrame } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfFunction, SdfGroup, useFrame } from "../nexusgpu";
 import { defineSceneParameters, defineSceneSliderParameters } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
@@ -12,12 +12,21 @@ export const initialParameters = defineSceneParameters({
 
 export type SdfTestSceneParameters = typeof initialParameters;
 
+type SdfTestSceneProps = {
+  parameters: SdfTestSceneParameters;
+  canvasProps: NexusSceneCanvasProps;
+};
+
+type SdfTestSceneContentProps = {
+  parameters: SdfTestSceneParameters;
+};
+
 export const parameterControls = defineSceneSliderParameters(initialParameters, [
   {
     key: "experimentAmplitude",
     name: "Amplitude",
     min: 0,
-    max: 1.2,
+    max: 5,
     step: 0.02,
   },
   {
@@ -38,35 +47,27 @@ export const parameterControls = defineSceneSliderParameters(initialParameters, 
     key: "experimentThickness",
     name: "Thickness",
     min: 0.005,
-    max: 0.12,
-    step: 0.005,
+    max: 5,
+    step: 0.05,
     precision: 3,
   },
 ]);
 
 const EXPERIMENT_SDF = /* wgsl */ `
 // SDF実験用テンプレート。
-// data0: xy = half size, z = amplitude, w = half thickness.
-// data1: x = x frequency, y = z frequency, z = animated phase.
-// data2: 自由に使える追加パラメータ。必要に応じてregistryのsliderも増やす。
+let gs = 2.;
+let cell = vec3<f32>(gs);
+let div = floor(point / gs)  ;
+var ppoint = fract((point.xyz + cell * 0.5) / cell) * cell - cell * 0.5;
+//if(div.x %2.==0.&& div.y%2.==0.) {ppoint.x += gs/2.;ppoint.y+=gs/2.;} ;
+var slabDistance = length(ppoint) - data0.z+sin(data1.z)*0.5;
 let halfSize = data0.xy;
-let amplitude = data0.z;
-let halfThickness = data0.w;
-let phase = data1.z;
-
-// ここを差し替えると、別の高さ場SDFをすぐ試せる。
-// pointはSdfFunctionのlocal space上の評価点。
-let radial = length(point.xz);
-let ripple = sin(radial * data1.x - phase);
-let crossWave = sin((point.x + point.z) * data1.y + phase * 0.5) * 0.35;
-let height = amplitude * (ripple + crossWave);
-
-// 高さ場の距離は勾配が大きいとraymarchが飛び越えやすい。
-// 実験しやすさを優先して、frequency/amplitudeから保守的な補正をかける。
-let maxGradient = sqrt(1.0 + pow(max(abs(data1.x), abs(data1.y)) * amplitude * 1.35, 2.0));
-let heightDistance = (point.y - height) / maxGradient;
-let slabDistance = abs(heightDistance) - halfThickness;
-
+slabDistance = abs(slabDistance) - data0.w ;
+slabDistance = abs(slabDistance) - data0.w/2. ;
+slabDistance = abs(slabDistance) - data0.w/4. ;
+slabDistance = abs(slabDistance) - data0.w/8. ;
+slabDistance = abs(slabDistance) - data0.w/16. ;
+slabDistance = abs(slabDistance) - data0.w/32. ;
 /*
 // 無限平面ではなく有限矩形にして、実験対象の境界を見やすくする。
 let edgeDistance = max(abs(point.x) - halfSize.x, abs(point.z) - halfSize.y);
@@ -74,17 +75,10 @@ let outsideDistance = length(max(vec2<f32>(edgeDistance, slabDistance), vec2<f32
 let insideDistance = min(max(edgeDistance, slabDistance), 0.0);
 return outsideDistance + insideDistance;
 */
-return slabDistance; 
+//return slabDistance; 
+return SceneHit(slabDistance, vec3<f32>(abs(ppoint)/gs), smoothness);
 `;
 
-type SdfTestSceneProps = {
-  parameters: SdfTestSceneParameters;
-  canvasProps: NexusSceneCanvasProps;
-};
-
-type SdfTestSceneContentProps = {
-  parameters: SdfTestSceneParameters;
-};
 
 function SdfTestSceneContent({ parameters }: SdfTestSceneContentProps) {
   const [phase, setPhase] = useState(0);
@@ -94,19 +88,24 @@ function SdfTestSceneContent({ parameters }: SdfTestSceneContentProps) {
   });
 
   return (
+    <SdfGroup op="and" smoothness={0.}>
     <SdfFunction
       sdfFunction={EXPERIMENT_SDF}
       // data0は形状の大きさ、変形量、厚みを渡す。
-      data0={[12, 12, parameters.experimentAmplitude, parameters.experimentThickness]}
+      data0={[0.5, 0.5, parameters.experimentAmplitude, parameters.experimentThickness]}
       // data1は主に周期性とアニメーション位相を渡す。
       data1={[parameters.experimentFrequency, parameters.experimentFrequency * 0.72, phase, 0]}
       // data2はWGSL実験時の予備スロットとして空けておく。
       data2={[0, 0, 0, 0]}
-      position={[0, 0, 0]}
+      position={[0, -1.3, 0.1]}
       color={[0.18, 0.62, 0.95]}
-      smoothness={0}
+      smoothness={0.5}
       bounds={{ radius: 18 }}
     />
+
+    <SdfBox position={[0, -1.3, 0]} size={[50, 50, 50]} color={[0.95, 0.55, 0.18]} smoothness={0.1}/>
+  
+    </SdfGroup>
   );
 }
 
@@ -115,7 +114,7 @@ export function Scene({ parameters, canvasProps }: SdfTestSceneProps) {
   return (
     <NexusCanvas
       {...canvasProps}
-      camera={{ position: [0, 3.2, 7.4], target: [0, 0, 0], fov: 60 }}
+      camera={{ position: [0, 23.2, 27.4], target: [0, 0, 0], fov: 60 }}
       lighting={{ direction: [0.18, 0.9, 0.32] }}
       orbitControls
     >
