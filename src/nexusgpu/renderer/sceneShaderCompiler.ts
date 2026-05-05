@@ -1,4 +1,4 @@
-import type { SdfData, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
+import type { SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
 import {
   createSdfModifierFunctionKey,
   type CustomSdfFunctionNameMap,
@@ -7,7 +7,7 @@ import {
 
 type ExpandedSceneCompileState = {
   /** objects[]の何番目を参照するか。Storage Bufferへの詰め順と一致させる。 */
-  primitiveIndex: number;
+  objectIndex: number;
   /** 生成WGSL内の一時変数名を衝突させないための連番。 */
   tempIndex: number;
 };
@@ -27,7 +27,7 @@ export function createExpandedMapSceneBody(
   customSdfFunctionNames: CustomSdfFunctionNameMap,
   customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
 ) {
-  const state: ExpandedSceneCompileState = { primitiveIndex: 0, tempIndex: 0 };
+  const state: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
     "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
@@ -63,7 +63,7 @@ function compileExpandedSceneNode(
   pointExpression: string,
 ): ExpandedSceneCompileResult {
   if (node.type === "primitive") {
-    const primitiveIndex = state.primitiveIndex;
+    const objectIndex = state.objectIndex;
     const hitName = nextTempName("hit", state);
     const objectName = nextTempName("object", state);
     const localPointName = nextTempName("localPoint", state);
@@ -74,11 +74,11 @@ function compileExpandedSceneNode(
       customSdfFunctionNames,
     );
 
-    state.primitiveIndex += 1;
+    state.objectIndex += 1;
 
     return {
       code: [
-        `  let ${objectName} = objects[${primitiveIndex}u];`,
+        `  let ${objectName} = objects[${objectIndex}u];`,
         `  let ${localPointName} = ${createLocalPointExpression(node.node, objectName, pointExpression)};`,
         `  let ${hitName} = ${hitExpression};`,
       ].join("\n"),
@@ -147,6 +147,10 @@ function compileExpandedModifierNode(
   customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
   pointExpression: string,
 ): ExpandedSceneCompileResult {
+  const modifierObjectIndex = state.objectIndex;
+  const modifierObjectName = nextTempName("modifierObject", state);
+  state.objectIndex += 1;
+
   if (node.children.length === 0) {
     const hitName = nextTempName("modifierHit", state);
 
@@ -175,9 +179,15 @@ function compileExpandedModifierNode(
   const lines: string[] = [];
   let childPointExpression = pointExpression;
 
+  if (preCallSpec || postCallSpec) {
+    lines.push(`  let ${modifierObjectName} = objects[${modifierObjectIndex}u];`);
+  }
+
   if (preCallSpec) {
     childPointExpression = nextTempName("modifiedPoint", state);
-    lines.push(`  let ${childPointExpression} = ${preCallSpec.functionName}(${pointExpression}, ${formatSdfDataArgs(node.data)});`);
+    lines.push(
+      `  let ${childPointExpression} = ${preCallSpec.functionName}(${pointExpression}, ${formatSdfDataArgs(modifierObjectName)});`,
+    );
   }
 
   const childResult = compileExpandedSceneNode(
@@ -198,7 +208,7 @@ function compileExpandedModifierNode(
   }
 
   const hitName = nextTempName("modifiedHit", state);
-  const customCall = `${postCallSpec.functionName}(${childResult.hitName}, ${pointExpression}, ${formatSdfDataArgs(node.data)})`;
+  const customCall = `${postCallSpec.functionName}(${childResult.hitName}, ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`;
   const hitExpression = postCallSpec.returnsSceneHit
     ? customCall
     : `SceneHit(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness)`;
@@ -306,7 +316,7 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
   }
 
   if (node.type === "modifier") {
-    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}:${formatSdfDataArgs(node.data)}(${node.children
+    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}(${node.children
       .map(createSceneNodeTopologySignature)
       .join(",")})`;
   }
@@ -333,10 +343,6 @@ function formatWgslFloat(value: number) {
   return Number.isInteger(rounded) ? `${rounded}.0` : `${rounded}`;
 }
 
-function formatWgslVec4(value: readonly [number, number, number, number]) {
-  return `vec4<f32>(${value.map(formatWgslFloat).join(", ")})`;
-}
-
-function formatSdfDataArgs(data: SdfData) {
-  return data.map(formatWgslVec4).join(", ");
+function formatSdfDataArgs(objectName: string) {
+  return `${objectName}.data0, ${objectName}.data1, ${objectName}.data2`;
 }

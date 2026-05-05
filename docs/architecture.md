@@ -269,7 +269,7 @@ Reactで使うSDFプリミティブを定義します。
 </SdfModifier>
 ```
 
-modifierはprimitiveレコードとしてStorage Bufferへは入りません。React側では子registryを持ち、子がprimitiveでもgroupでも同じように`SdfModifierSceneNode`として親へ登録します。レンダラは`mapScene()`展開時に、preを子ツリーの入力`point`として渡し、postを子ツリーから返った`SceneHit`に適用します。`bounds`はnodeに保持しますが、現状のGPU評価では枝刈りには使っていません。
+modifierはprimitiveではありませんが、`data0-2`を動的に更新できるようにStorage Bufferの`SdfObject`レイアウトへ補助レコードとして入ります。React側では子registryを持ち、子がprimitiveでもgroupでも同じように`SdfModifierSceneNode`として親へ登録します。レンダラは`mapScene()`展開時に、modifier補助レコードの`data0-2`をpre/post関数へ渡し、preを子ツリーの入力`point`として使い、postを子ツリーから返った`SceneHit`に適用します。`bounds`はnodeに保持しますが、現状のGPU評価では枝刈りには使っていません。
 
 ### sdfKinds.ts
 
@@ -327,7 +327,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `setScene(snapshot)`で`SceneSnapshot.sceneNodes`からprimitiveだけを取り出し、最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
 - `SceneSnapshot.sceneNodes`をWGSLの`mapScene()`へ展開し、グループ構造やboolean演算をshaderコードとして焼き込む
 - `SdfFunction`の関数文字列セット、またはシーン木のtopologyが変わった場合は、custom SDF関数と展開済み`mapScene()`を差し込んだShader Module / Render Pipelineを作り直す
-- `SdfModifier`のpre/post関数文字列セット、modifier topology、またはmodifierの`data0-2`が変わった場合もShader Module / Render Pipelineを作り直す
+- `SdfModifier`のpre/post関数文字列セット、またはmodifier topologyが変わった場合もShader Module / Render Pipelineを作り直す。modifierの`data0-2`だけが変わる場合はStorage Buffer更新だけで済む
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
 - 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定をUniform Bufferへアップロードする
 - フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
@@ -335,7 +335,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。グループとmodifier自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapScene()`を生成します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。グループ自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveとmodifierの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapScene()`を生成します。
 
 例として、次のシーン木がある場合:
 
@@ -375,11 +375,12 @@ fn mapScene(point: vec3<f32>) -> SceneHit {
 modifierを含む場合は、pre/post関数もcustom WGSL関数としてshaderへ追加されます。概念的には次の順序で展開されます。
 
 ```wgsl
-let modifiedPoint0 = customSdfModifierFunction0(point, data0, data1, data2);
-let object1 = objects[0u];
-let localPoint2 = modifiedPoint0 - object1.positionKind.xyz;
-let hit3 = SceneHit(sdSphere(localPoint2, object1.data0.x), object1.colorSmooth.rgb, object1.colorSmooth.w);
-let modifiedHit4 = SceneHit(customSdfModifierFunction1(hit3, point, data0, data1, data2), hit3.color, hit3.smoothness);
+let modifierObject0 = objects[0u];
+let modifiedPoint1 = customSdfModifierFunction0(point, modifierObject0.data0, modifierObject0.data1, modifierObject0.data2);
+let object2 = objects[1u];
+let localPoint2 = modifiedPoint1 - object2.positionKind.xyz;
+let hit3 = SceneHit(sdSphere(localPoint2, object2.data0.x), object2.colorSmooth.rgb, object2.colorSmooth.w);
+let modifiedHit4 = SceneHit(customSdfModifierFunction1(hit3, point, modifierObject0.data0, modifierObject0.data1, modifierObject0.data2), hit3.color, hit3.smoothness);
 best = unionHit(best, modifiedHit4, modifiedHit4.smoothness);
 ```
 

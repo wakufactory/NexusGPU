@@ -1,5 +1,5 @@
 import { MAX_SDF_OBJECTS } from "../sdfShader";
-import type { SdfNode, SdfSceneNode } from "../types";
+import type { SdfData, SdfNode, SdfSceneNode } from "../types";
 
 export const OBJECT_STRIDE_FLOATS = 24;
 export const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -7,37 +7,45 @@ export const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float
 type SdfRecord = number[];
 type GetSdfKindId = (node: SdfNode) => number;
 
-/** シーン木を深さ優先でたどり、Storage Bufferへ積むprimitiveレコード列へ変換する。 */
-export function compilePrimitiveRecords(sceneNodes: readonly SdfSceneNode[], getSdfKindId: GetSdfKindId) {
+/** シーン木を深さ優先でたどり、Storage Bufferへ積むprimitive / modifierレコード列へ変換する。 */
+export function compileSceneObjectRecords(sceneNodes: readonly SdfSceneNode[], getSdfKindId: GetSdfKindId) {
   const records: SdfRecord[] = [];
 
   for (const node of sceneNodes) {
-    appendPrimitiveRecord(node, records, getSdfKindId);
+    appendSceneObjectRecord(node, records, getSdfKindId);
   }
 
   return records;
 }
 
-/** グループを除いた実primitive数を数え、camera.objectInfo.xへ渡す値に使う。 */
-export function countPrimitiveRecords(sceneNodes: readonly SdfSceneNode[]): number {
+/** グループを除いたprimitive / modifierレコード数を数え、camera.objectInfo.xへ渡す値に使う。 */
+export function countSceneObjectRecords(sceneNodes: readonly SdfSceneNode[]): number {
   return sceneNodes.reduce((count, node) => {
     if (node.type === "primitive") {
       return count + 1;
     }
 
-    return count + countPrimitiveRecords(node.children);
+    if (node.type === "modifier") {
+      return count + 1 + countSceneObjectRecords(node.children);
+    }
+
+    return count + countSceneObjectRecords(node.children);
   }, 0);
 }
 
-/** グループ / modifierノードを展開し、葉のprimitiveだけをrecordsへ追加する。 */
-function appendPrimitiveRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
+/** グループを展開し、primitiveとmodifierをrecordsへ追加する。 */
+function appendSceneObjectRecord(node: SdfSceneNode, records: SdfRecord[], getSdfKindId: GetSdfKindId) {
   if (node.type === "primitive") {
     records.push(createPrimitiveRecord(node.node, getSdfKindId(node.node)));
     return;
   }
 
+  if (node.type === "modifier") {
+    records.push(createModifierRecord(node.data));
+  }
+
   for (const child of node.children) {
-    appendPrimitiveRecord(child, records, getSdfKindId);
+    appendSceneObjectRecord(child, records, getSdfKindId);
   }
 }
 
@@ -59,5 +67,26 @@ function createPrimitiveRecord(node: SdfNode, kindId: number): SdfRecord {
     node.rotation[1],
     node.rotation[2],
     node.rotation[3],
+  ];
+}
+
+/** Modifierはdata0-2だけを使うため、同じSdfObjectレイアウトへ補助レコードとして詰める。 */
+function createModifierRecord(data: SdfData): SdfRecord {
+  return [
+    0,
+    0,
+    0,
+    0,
+    ...data[0],
+    ...data[1],
+    ...data[2],
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
   ];
 }

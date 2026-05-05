@@ -317,6 +317,8 @@ return hit.distance / max(stretch, 1.0);
 
 `SdfModifier.bounds`はnodeに保持されますが、現在のrendererはboundsによるGPU枝刈りをまだ行っていません。将来の枝刈りや空間分割用のメタデータとして扱ってください。任意pre modifierは評価空間を曲げるため、将来bounds枝刈りを有効にする場合も自動推定せず、modifier側で保守的なboundsを指定する方針です。
 
+`SdfModifier.data0`、`data1`、`data2`はStorage Bufferへ入るため、値だけを変えた場合はShader Module / Render Pipelineを作り直しません。`preset`、`preModifierFunction`、`postModifierFunction`、children構造が変わった場合は、生成される`mapScene()`やcustom WGSL関数が変わるためpipeline再生成が発生します。
+
 ## SdfGroupでSDFを組み合わせる
 
 `SdfGroup`を使うと、子SDFを1つのCSG/boolean演算としてまとめられます。通常のなめらかな合成は`op="or"`です。

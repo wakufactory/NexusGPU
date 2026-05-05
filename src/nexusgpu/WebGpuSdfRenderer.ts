@@ -14,8 +14,8 @@ import {
   createSceneTopologySignature,
 } from "./renderer/sceneShaderCompiler";
 import {
-  compilePrimitiveRecords,
-  countPrimitiveRecords,
+  compileSceneObjectRecords,
+  countSceneObjectRecords,
   OBJECT_BUFFER_SIZE,
   OBJECT_STRIDE_FLOATS,
 } from "./renderer/sceneBuffers";
@@ -277,7 +277,7 @@ export class WebGpuSdfRenderer {
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
   private uploadObjects(snapshot: SceneSnapshot) {
-    const records = compilePrimitiveRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
+    const records = compileSceneObjectRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
     this.objectData.fill(0);
 
     records.forEach((record, index) => {
@@ -441,7 +441,7 @@ export class WebGpuSdfRenderer {
     this.cameraData.set([...up, 0], 16);
     this.cameraData.set(
       [
-        Math.min(countPrimitiveRecords(snapshot.sceneNodes), MAX_SDF_OBJECTS),
+        Math.min(countSceneObjectRecords(snapshot.sceneNodes), MAX_SDF_OBJECTS),
         this.renderSettings.surfaceEpsilon,
         this.renderSettings.hitInteriorSurfaces ? 1 : 0,
         0,
