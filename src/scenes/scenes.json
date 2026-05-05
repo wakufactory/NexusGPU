@@ -1,4 +1,5 @@
 [
+
   {
     "id": "animated-sdf",
     "title": "AnimatedSdfScene",
@@ -22,5 +23,17 @@
     "title": "SDF test",
     "description": "Scene copied from SDF Experiment Template.",
     "module": "./SdfTestScene.tsx"
+  },
+  {
+    "id": "sdf-modifier",
+    "title": "SDF modifier test",
+    "description": "Scene for testing SDF modifiers ",
+    "module": "./SdfModifier.tsx"
+  },
+  {
+    "id": "boids-spheres",
+    "title": "Boids Spheres",
+    "description": "Ten differently colored spheres flocking with smooth OR blending.",
+    "module": "./BoidsSpheresScene.tsx"
   }
 ]

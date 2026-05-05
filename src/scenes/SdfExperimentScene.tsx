@@ -1,48 +1,49 @@
 import { useState } from "react";
 import { NexusCanvas, SdfFunction, useFrame } from "../nexusgpu";
-import { defineSceneParameters, defineSceneSliderParameters } from "./types";
+import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
-export const initialParameters = defineSceneParameters({
-  experimentAmplitude: 0.42,
-  experimentFrequency: 3.6,
-  experimentSpeed: 1.2,
-  experimentThickness: 0.025,
-});
+export const { initialParameters, parameterControls } = defineSceneParameterControls(
+  {
+    experimentAmplitude: 0.42,
+    experimentFrequency: 3.6,
+    experimentSpeed: 1.2,
+    experimentThickness: 0.025,
+  },
+  [
+    {
+      key: "experimentAmplitude",
+      name: "Amplitude",
+      min: 0,
+      max: 1.2,
+      step: 0.02,
+    },
+    {
+      key: "experimentFrequency",
+      name: "Frequency",
+      min: 0.2,
+      max: 9,
+      step: 0.1,
+    },
+    {
+      key: "experimentSpeed",
+      name: "Speed",
+      min: 0,
+      max: 5,
+      step: 0.1,
+    },
+    {
+      key: "experimentThickness",
+      name: "Thickness",
+      min: 0.005,
+      max: 0.12,
+      step: 0.005,
+      precision: 3,
+    },
+  ],
+);
 
 export type SdfExperimentSceneParameters = typeof initialParameters;
-
-export const parameterControls = defineSceneSliderParameters(initialParameters, [
-  {
-    key: "experimentAmplitude",
-    name: "Amplitude",
-    min: 0,
-    max: 1.2,
-    step: 0.02,
-  },
-  {
-    key: "experimentFrequency",
-    name: "Frequency",
-    min: 0.2,
-    max: 9,
-    step: 0.1,
-  },
-  {
-    key: "experimentSpeed",
-    name: "Speed",
-    min: 0,
-    max: 5,
-    step: 0.1,
-  },
-  {
-    key: "experimentThickness",
-    name: "Thickness",
-    min: 0.005,
-    max: 0.12,
-    step: 0.005,
-    precision: 3,
-  },
-]);
 
 const EXPERIMENT_SDF = /* wgsl */ `
 // SDF実験用テンプレート。

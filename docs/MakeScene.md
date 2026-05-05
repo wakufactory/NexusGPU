@@ -401,28 +401,27 @@ export function BoxAndNotSphereScene() {
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
+sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
 
 ```tsx
 import { NexusCanvas, SdfBox, SdfSphere } from "../nexusgpu";
-import { defineSceneParameters, defineSceneSliderParameters } from "./types";
+import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
-export const initialParameters = defineSceneParameters({
-  sphereSmoothness: 0.4,
-});
+export const { initialParameters, parameterControls } = defineSceneParameterControls(
+  { sphereSmoothness: 0.4 },
+  [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+);
 
 export type MySceneParameters = typeof initialParameters;
-
-export const parameterControls = defineSceneSliderParameters(initialParameters, [
-  {
-    key: "sphereSmoothness",
-    name: "Sphere smoothness",
-    min: 0,
-    max: 1.5,
-    step: 0.05,
-  },
-]);
 
 type MySceneProps = {
   parameters: MySceneParameters;
@@ -495,24 +494,23 @@ function FloatingSphere() {
 }
 ```
 
-scene固有パラメータをsidebarから変更したい場合は、sceneファイルで`initialParameters`と`parameterControls`をexportします。`key`は`initialParameters`に存在するnumber型のプロパティを指定します。
+scene固有パラメータをsidebarから変更したい場合は、sceneファイルで`defineSceneParameterControls`を使って`initialParameters`と`parameterControls`をexportします。`key`は初期値objectに存在するnumber型のプロパティを指定します。
 
 ```ts
-export const initialParameters = defineSceneParameters({
-  sphereSmoothness: 0.4,
-});
+export const { initialParameters, parameterControls } = defineSceneParameterControls(
+  { sphereSmoothness: 0.4 },
+  [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+);
 
 export type MySceneParameters = typeof initialParameters;
-
-export const parameterControls = defineSceneSliderParameters(initialParameters, [
-  {
-    key: "sphereSmoothness",
-    name: "Sphere smoothness",
-    min: 0,
-    max: 1.5,
-    step: 0.05,
-  },
-]);
 ```
 
 ### useCamera / useLighting
@@ -561,12 +559,12 @@ export function Scene({ canvasProps }: MySceneProps) {
 
 継続的にカメラを動かすsceneでは、ユーザー操作用の`orbitControls`と制御が競合しやすくなります。スクリプトでカメラを制御するsceneでは、基本的に`orbitControls={false}`にします。
 
-`App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。
+`App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて書けます。
 
 ## 追加手順のまとめ
 
 1. `src/scenes/MyScene.tsx`に`Scene` componentを作る
-2. 必要なら同じファイルで`initialParameters`と`parameterControls`をexportする
+2. 必要なら同じファイルで`defineSceneParameterControls`を使い、`initialParameters`と`parameterControls`をexportする
 3. `src/scenes/scenes.json`へscene定義を1件追加する
 4. `npm run build`で型とbundleを確認する
 

@@ -61,3 +61,13 @@ export function defineSceneSliderParameters<Parameters extends object>(
 ) {
   return controls;
 }
+
+export function defineSceneParameterControls<const Parameters extends object>(
+  parameters: Parameters,
+  controls: readonly SceneSliderParameter<WidenObject<Parameters>>[],
+) {
+  return {
+    initialParameters: defineSceneParameters(parameters),
+    parameterControls: controls,
+  };
+}

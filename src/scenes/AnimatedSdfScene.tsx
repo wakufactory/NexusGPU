@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NexusCanvas, SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
 import type { SdfSphereProps, Vec3 } from "../nexusgpu";
-import { defineSceneParameters, defineSceneSliderParameters } from "./types";
+import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
 type OrbitingSphereConfig = {
@@ -72,21 +72,20 @@ function getOrbitPosition({ center, basisA, basisB, distance, period, phase }: O
 
 type SphereRenderProps = Pick<Required<SdfSphereProps>, "position" | "radius" | "color" | "smoothness">;
 
-export const initialParameters = defineSceneParameters({
-  sphereSmoothness: 0.7,
-});
+export const { initialParameters, parameterControls } = defineSceneParameterControls(
+  { sphereSmoothness: 0.7 },
+  [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+);
 
 export type AnimatedSdfSceneParameters = typeof initialParameters;
-
-export const parameterControls = defineSceneSliderParameters(initialParameters, [
-  {
-    key: "sphereSmoothness",
-    name: "Sphere smoothness",
-    min: 0,
-    max: 1.5,
-    step: 0.05,
-  },
-]);
 
 function getSphereProps(
   sphere: OrbitingSphereConfig,

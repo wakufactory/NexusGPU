@@ -8,7 +8,10 @@ import {
   SdfSphere,
   SdfTorus,
 } from "../nexusgpu";
+import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
+
+export const { initialParameters, parameterControls } = defineSceneParameterControls({}, []);
 
 type SimpleSceneProps = {
   canvasProps: NexusSceneCanvasProps;
