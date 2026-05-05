@@ -37,8 +37,8 @@ fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32
     color = shadeMaterial(hit, rayOrigin, direction);
   }
 
-  let vignette = smoothstep(0.82, 0.22, distance(eyeScreenUv, vec2<f32>(0.5)));
-  color = pow(color * vignette, vec3<f32>(0.92));
+// let vignette = smoothstep(0.82, 0.22, distance(eyeScreenUv, vec2<f32>(0.5)));
+//  color = pow(color * vignette, vec3<f32>(0.92));
 
   return vec4<f32>(color, 1.0);
 }
