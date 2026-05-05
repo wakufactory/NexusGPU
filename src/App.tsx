@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Layers3, Maximize2, Minimize2, Pause, Play, Sparkles } from "lucide-react";
 import { INITIAL_RENDER_SETTINGS } from "./app/renderSettings";
 import { useFullscreenViewport } from "./app/useFullscreenViewport";
@@ -159,6 +159,15 @@ export function App() {
     getStoredSceneParameters(activeSceneId),
   );
 
+  useEffect(() => {
+    // スライダー操作中にlocalStorage書き込みが連発しないよう、少し遅らせて保存する。
+    const saveId = window.setTimeout(() => {
+      saveSceneParameters(activeSceneId, sceneParameters);
+    }, 150);
+
+    return () => window.clearTimeout(saveId);
+  }, [activeSceneId, sceneParameters]);
+
   const updateRenderSettings = (settings: typeof INITIAL_RENDER_SETTINGS) => {
     setRenderSettings(settings);
     saveRenderSettings(settings);
@@ -166,8 +175,15 @@ export function App() {
 
   const updateSceneParameters = (patch: Partial<object>) => {
     setSceneParameters((current) => {
+      // range inputが同じ値を送ってきた場合は、ReactツリーとSceneStoreを更新しない。
+      const changed = Object.entries(patch).some(
+        ([key, value]) => (current as Record<string, unknown>)[key] !== value,
+      );
+      if (!changed) {
+        return current;
+      }
+
       const nextParameters = { ...current, ...patch };
-      saveSceneParameters(activeSceneId, nextParameters);
       return nextParameters;
     });
   };

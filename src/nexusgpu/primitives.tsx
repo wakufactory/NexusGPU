@@ -347,6 +347,7 @@ function useSdfSceneNodeTarget(): SdfSceneNodeTarget {
 class SdfGroupRegistry implements SdfSceneNodeTarget {
   private nodes = new Map<symbol, SdfSceneNode>();
   private listeners = new Set<SdfSceneNodeListener>();
+  private emitQueued = false;
 
   upsertSceneNode(id: symbol, node: SdfSceneNode) {
     this.nodes.set(id, node);
@@ -372,6 +373,19 @@ class SdfGroupRegistry implements SdfSceneNodeTarget {
   }
 
   private emit() {
+    // group配下の子ノード更新が連続しても、親への通知はmicrotaskで1回にまとめる。
+    if (this.emitQueued) {
+      return;
+    }
+
+    this.emitQueued = true;
+    queueMicrotask(() => {
+      this.emitQueued = false;
+      this.flushEmit();
+    });
+  }
+
+  private flushEmit() {
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
       listener(snapshot);

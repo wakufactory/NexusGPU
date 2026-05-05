@@ -75,6 +75,7 @@ export class WebGpuSdfRenderer {
   private framesSinceFpsSample = 0;
   private lastRenderTime = 0;
   private renderingEnabled = true;
+  private pendingRenderOnceFrameId = 0;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -170,7 +171,7 @@ export class WebGpuSdfRenderer {
     this.uploadObjects(snapshot);
 
     if (!this.renderingEnabled) {
-      this.renderOnce();
+      this.scheduleRenderOnce();
     }
   }
 
@@ -180,7 +181,7 @@ export class WebGpuSdfRenderer {
     this.resize();
 
     if (!this.renderingEnabled) {
-      this.renderOnce();
+      this.scheduleRenderOnce();
     }
   }
 
@@ -201,6 +202,8 @@ export class WebGpuSdfRenderer {
       return;
     }
 
+    cancelAnimationFrame(this.pendingRenderOnceFrameId);
+    this.pendingRenderOnceFrameId = 0;
     this.lastRenderTime = 0;
     this.lastFpsSampleTime = performance.now();
     this.frame();
@@ -209,6 +212,7 @@ export class WebGpuSdfRenderer {
   /** requestAnimationFrame、ResizeObserver、GPUBufferを解放する。 */
   destroy() {
     cancelAnimationFrame(this.frameId);
+    cancelAnimationFrame(this.pendingRenderOnceFrameId);
     this.resizeObserver.disconnect();
     this.cameraBuffer.destroy();
     this.objectBuffer.destroy();
@@ -484,6 +488,19 @@ export class WebGpuSdfRenderer {
 
     this.renderFrame(now, true);
   };
+
+  /** 停止中の連続したscene/settings更新を、次のRAFの1描画へまとめる。 */
+  private scheduleRenderOnce() {
+    // 停止中のスライダー操作では更新が連続するため、描画予約は1つだけ持つ。
+    if (this.pendingRenderOnceFrameId !== 0) {
+      return;
+    }
+
+    this.pendingRenderOnceFrameId = requestAnimationFrame(() => {
+      this.pendingRenderOnceFrameId = 0;
+      this.renderOnce();
+    });
+  }
 
   /** 停止中のカメラ操作や設定変更に反応して、連続ループなしで1フレームだけ描画する。 */
   private renderOnce() {

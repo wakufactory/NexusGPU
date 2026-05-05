@@ -24,6 +24,7 @@ export class SceneStore {
   private lighting = DEFAULT_LIGHTING;
   private background = DEFAULT_BACKGROUND;
   private version = 0;
+  private emitQueued = false;
 
   /** カメラpropsをストアへ反映し、購読中のレンダラへ変更を通知する。 */
   setCamera(camera: NexusCamera | undefined) {
@@ -115,6 +116,19 @@ export class SceneStore {
 
   /** バージョンを進め、全リスナーへ最新スナップショットを配信する。 */
   private emit() {
+    // 1回のReact更新で複数primitiveが反映されても、renderer通知はmicrotaskで1回にまとめる。
+    if (this.emitQueued) {
+      return;
+    }
+
+    this.emitQueued = true;
+    queueMicrotask(() => {
+      this.emitQueued = false;
+      this.flushEmit();
+    });
+  }
+
+  private flushEmit() {
     this.version += 1;
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
