@@ -28,18 +28,5 @@
     "title": "SDF modifier test",
     "description": "Scene for testing SDF modifiers ",
     "module": "./SdfModifier.tsx"
-  },
-  {
-    "id": "boids-spheres",
-    "title": "Boids Spheres",
-    "description": "Ten differently colored spheres flocking with smooth OR blending.",
-    "module": "./BoidsSpheresScene.tsx"
-  },
-  {
-    "id": "noise0",
-    "title": "noise 0",
-    "description": "Scene copied from SDF Experiment Template.",
-    "module": "./Noise0Scene.tsx"
-
   }
 ]
