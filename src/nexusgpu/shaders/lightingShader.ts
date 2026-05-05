@@ -18,8 +18,6 @@ fn estimateNormal(point: vec3<f32>) -> vec3<f32> {
 // 未ヒット時に表示する簡易背景。
 fn background(direction: vec3<f32>) -> vec3<f32> {
   let t = 0.5 * (direction.y + 1.0);
-  let horizon = vec3<f32>(0.12, 0.16, 0.17);
-  let zenith = vec3<f32>(0.02, 0.025, 0.028);
-  return mix(horizon, zenith, t);
+  return mix(camera.backgroundYNegative.rgb, camera.backgroundYPositive.rgb, t);
 }
 `;

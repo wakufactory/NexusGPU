@@ -14,6 +14,7 @@ export {
 } from "./primitives";
 export type {
   NexusCanvasPixelSize,
+  NexusBackground,
   NexusFrameCallback,
   NexusFrameState,
   NexusRenderStats,

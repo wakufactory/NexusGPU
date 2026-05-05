@@ -11,7 +11,7 @@ import type {
   Vec3,
 } from "./types";
 
-const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
+const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const OBJECT_STRIDE_FLOATS = 24;
 const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -425,6 +425,8 @@ export class WebGpuSdfRenderer {
       ],
       32,
     );
+    this.cameraData.set([...snapshot.background.yPositive, 0], 36);
+    this.cameraData.set([...snapshot.background.yNegative, 0], 40);
 
     this.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraData);
   }

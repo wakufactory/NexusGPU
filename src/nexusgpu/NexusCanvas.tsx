@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SceneStore } from "./SceneStore";
 import { SceneContext } from "./SceneContext";
 import { WebGpuSdfRenderer } from "./WebGpuSdfRenderer";
-import { DEFAULT_LIGHTING } from "./defaults";
+import { DEFAULT_BACKGROUND, DEFAULT_LIGHTING } from "./defaults";
 import { useOrbitCameraControls } from "./useOrbitCameraControls";
-import type { NexusCanvasProps, NexusLighting, SceneSnapshot } from "./types";
+import type { NexusBackground, NexusCanvasProps, NexusLighting, SceneSnapshot } from "./types";
 
 /**
  * ReactツリーとWebGPUレンダラを接続するルートコンポーネント。
@@ -13,6 +13,7 @@ import type { NexusCanvasProps, NexusLighting, SceneSnapshot } from "./types";
 export function NexusCanvas({
   camera,
   lighting,
+  background,
   orbitControls = false,
   renderingEnabled = true,
   renderSettings,
@@ -41,6 +42,19 @@ export function NexusCanvas({
     lighting?.direction?.[0],
     lighting?.direction?.[1],
     lighting?.direction?.[2],
+    store,
+  ]);
+
+  // 背景色propsが変わったらSceneStoreへ反映し、レンダラのUniform更新につなげる。
+  useEffect(() => {
+    store.setBackground(resolveBackground(background));
+  }, [
+    background?.yPositive?.[0],
+    background?.yPositive?.[1],
+    background?.yPositive?.[2],
+    background?.yNegative?.[0],
+    background?.yNegative?.[1],
+    background?.yNegative?.[2],
     store,
   ]);
 
@@ -142,5 +156,12 @@ export function NexusCanvas({
 function resolveLighting(lighting: NexusLighting | undefined): Required<NexusLighting> {
   return {
     direction: lighting?.direction ?? DEFAULT_LIGHTING.direction,
+  };
+}
+
+function resolveBackground(background: NexusBackground | undefined): Required<NexusBackground> {
+  return {
+    yPositive: background?.yPositive ?? DEFAULT_BACKGROUND.yPositive,
+    yNegative: background?.yNegative ?? DEFAULT_BACKGROUND.yNegative,
   };
 }

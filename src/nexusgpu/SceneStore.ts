@@ -1,5 +1,6 @@
 import type {
   NexusCamera,
+  NexusBackground,
   NexusFrameCallback,
   NexusFrameState,
   NexusLighting,
@@ -7,7 +8,7 @@ import type {
   SdfNode,
   SdfSceneNode,
 } from "./types";
-import { DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
+import { DEFAULT_BACKGROUND, DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
 
 type SceneListener = (snapshot: SceneSnapshot) => void;
 
@@ -21,6 +22,7 @@ export class SceneStore {
   private frameListeners = new Set<NexusFrameCallback>();
   private camera = DEFAULT_CAMERA;
   private lighting = DEFAULT_LIGHTING;
+  private background = DEFAULT_BACKGROUND;
   private version = 0;
 
   /** カメラpropsをストアへ反映し、購読中のレンダラへ変更を通知する。 */
@@ -37,6 +39,15 @@ export class SceneStore {
   setLighting(lighting: NexusLighting | undefined) {
     this.lighting = {
       direction: lighting?.direction ?? DEFAULT_LIGHTING.direction,
+    };
+    this.emit();
+  }
+
+  /** 背景propsをストアへ反映し、購読中のレンダラへ変更を通知する。 */
+  setBackground(background: NexusBackground | undefined) {
+    this.background = {
+      yPositive: background?.yPositive ?? DEFAULT_BACKGROUND.yPositive,
+      yNegative: background?.yNegative ?? DEFAULT_BACKGROUND.yNegative,
     };
     this.emit();
   }
@@ -97,6 +108,7 @@ export class SceneStore {
       sceneNodes,
       camera: this.camera,
       lighting: this.lighting,
+      background: this.background,
       version: this.version,
     };
   }

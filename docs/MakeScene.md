@@ -28,6 +28,7 @@ export function Scene({ canvasProps }: SimpleSceneProps) {
     <NexusCanvas
       {...canvasProps}
       camera={{ position: [0, 1.4, 5], target: [0, 0, 0], fov: 48 }}
+      background={{ yPositive: [0.02, 0.025, 0.028], yNegative: [0.12, 0.16, 0.17] }}
       orbitControls
     >
       <SdfGroup op="or" smoothness={0.2}>
@@ -48,7 +49,7 @@ export function Scene({ canvasProps }: SimpleSceneProps) {
 }
 ```
 
-sceneファイルは通常`src/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラやライト、必要ならscene固有パラメータを1つのファイルにまとめています。
+sceneファイルは通常`src/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラ、ライト、背景、必要ならscene固有パラメータを1つのファイルにまとめています。
 
 ## 既存のSDF Primitive
 
@@ -244,7 +245,7 @@ export function BoxAndNotSphereScene() {
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
+sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
 
 ```tsx
 import { NexusCanvas, SdfBox, SdfSphere } from "../nexusgpu";
@@ -292,6 +293,7 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
       {...canvasProps}
       camera={{ position: [0, 2.8, 5.2], target: [0, 0, 0], fov: 48 }}
       lighting={{ direction: [0.25, 0.85, 0.35] }}
+      background={{ yPositive: [0.03, 0.05, 0.08], yNegative: [0.16, 0.18, 0.2] }}
       orbitControls
     >
       <SceneContent parameters={parameters} />
@@ -299,6 +301,8 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
   );
 }
 ```
+
+`background`は未ヒット時の背景色です。`yPositive`がレイ方向のY+側、`yNegative`がY-側の色で、レンダラはこの2色を`direction.y`に応じてグラデーションします。色はprimitiveの`color`と同じRGBの`[r, g, b]`で、各値はおおむね`0.0`から`1.0`で指定します。
 
 作成したsceneをアプリの切り替え対象にするには、`src/scenes/scenes.json`へ追加します。
 

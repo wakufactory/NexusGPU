@@ -34,6 +34,12 @@ export type NexusLighting = {
   direction?: Vec3;
 };
 
+/** 未ヒット時に表示する背景色。Y軸方向の上下2色を補間する。 */
+export type NexusBackground = {
+  yPositive?: Vec3;
+  yNegative?: Vec3;
+};
+
 /** デバッグ用の描画品質設定。GPU負荷と見た目のバランスを実行時に調整する。 */
 export type NexusRenderSettings = {
   maxFps?: number;
@@ -129,6 +135,7 @@ export type SdfGroupProps = {
 export type NexusCanvasProps = {
   camera?: NexusCamera;
   lighting?: NexusLighting;
+  background?: NexusBackground;
   orbitControls?: boolean;
   renderingEnabled?: boolean;
   renderSettings?: NexusRenderSettings;
@@ -172,5 +179,6 @@ export type SceneSnapshot = {
   sceneNodes: readonly SdfSceneNode[];
   camera: Required<NexusCamera>;
   lighting: Required<NexusLighting>;
+  background: Required<NexusBackground>;
   version: number;
 };
