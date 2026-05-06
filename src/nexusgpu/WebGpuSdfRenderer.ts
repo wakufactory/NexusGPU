@@ -1,20 +1,8 @@
 import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
-import { CUSTOM_SDF_PRIMITIVE_KIND_START, SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-import {
-  collectSdfFunctionSources,
-  createCustomSdfFunctionSource,
-  createCustomSdfModifierFunctionSource,
-  unique,
-  uniqueModifierFunctionSources,
-} from "./renderer/customWgslFunctions";
-import {
-  createEmptyMapSceneBody,
-  createExpandedMapSceneBody,
-  createSceneCompileProfile,
-  createSceneTopologySignature,
-  type SceneCompileProfile,
-} from "./renderer/sceneShaderCompiler";
+import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
+import { createSceneShaderPlan } from "./renderer/scenePipelineCompiler";
+import { createEmptyMapSceneBody, type SceneCompileProfile } from "./renderer/sceneShaderCompiler";
 import {
   compileSceneObjectRecords,
   countSceneObjectRecords,
@@ -315,85 +303,16 @@ export class WebGpuSdfRenderer {
 
   /** SdfFunctionとscene tree構造をshaderへ展開し、必要なときだけpipelineを作り直す。 */
   private configureScenePipeline(snapshot: SceneSnapshot) {
-    const sdfFunctions = unique(collectSdfFunctionSources(snapshot.sceneNodes));
-    const modifierFunctions = uniqueModifierFunctionSources(snapshot.sceneNodes);
+    const shaderPlan = createSceneShaderPlan(snapshot, this.materialShader);
 
-    // 同じWGSL文字列は1つのcustom関数として共有し、scene内ではkind IDと関数名で参照する。
-    const customSdfFunctions = sdfFunctions.map((sdfFunction, index) => {
-      const functionName = `customSdfFunction${index}`;
-
-      return {
-        sdfFunction,
-        kindId: CUSTOM_SDF_PRIMITIVE_KIND_START + index,
-        ...createCustomSdfFunctionSource(sdfFunction, functionName),
-      };
-    });
-    const customModifierFunctions = modifierFunctions.map((modifierFunction, index) => {
-      const functionName = `customSdfModifierFunction${index}`;
-
-      return {
-        ...modifierFunction,
-        kindId: CUSTOM_SDF_PRIMITIVE_KIND_START + customSdfFunctions.length + index,
-        ...createCustomSdfModifierFunctionSource(modifierFunction.source, functionName, modifierFunction.mode),
-      };
-    });
-    const customShaders = [...customSdfFunctions, ...customModifierFunctions].map<CustomSdfFunctionShader>((customSdfFunction) => {
-      return {
-        kindId: customSdfFunction.kindId,
-        functionName: customSdfFunction.functionName,
-        source: customSdfFunction.source,
-      };
-    });
-
-    this.customSdfKindIds = new Map(
-      customSdfFunctions.map((customSdfFunction) => [customSdfFunction.sdfFunction, customSdfFunction.kindId]),
-    );
-    const customSdfFunctionNames = new Map(
-      customSdfFunctions.map((customSdfFunction) => {
-        return [
-          customSdfFunction.sdfFunction,
-          {
-            functionName: customSdfFunction.functionName,
-            returnsSceneHit: customSdfFunction.returnsSceneHit,
-            returnsSceneEval: customSdfFunction.returnsSceneEval,
-            acceptsColor: customSdfFunction.acceptsColor,
-            acceptsSmoothness: customSdfFunction.acceptsSmoothness,
-          },
-        ];
-      }),
-    );
-    const customModifierFunctionNames = new Map(
-      customModifierFunctions.map((customModifierFunction) => {
-        return [
-          customModifierFunction.key,
-          {
-            functionName: customModifierFunction.functionName,
-            returnsSceneHit: customModifierFunction.returnsSceneHit,
-          },
-        ];
-      }),
-    );
-
-    // シーン木はGPU側で解釈せず、mapScene()のWGSLコードとして展開する。
-    const mapSceneBody = createExpandedMapSceneBody(
-      snapshot.sceneNodes,
-      customSdfFunctionNames,
-      customModifierFunctionNames,
-    );
-    const signature = [
-      this.materialShader ?? "",
-      sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
-      modifierFunctions.map((modifierFunction) => `${modifierFunction.mode}:${modifierFunction.source}`).join("\n/* nexusgpu-sdf-modifier */\n"),
-      createSceneTopologySignature(snapshot.sceneNodes),
-    ].join("\n/* nexusgpu-scene-topology */\n");
-
-    if (signature === this.shaderSignature) {
+    if (shaderPlan.signature === this.shaderSignature) {
       return;
     }
 
-    this.shaderSignature = signature;
-    this.logSceneCompileProfile(createSceneCompileProfile(snapshot.sceneNodes, customSdfFunctionNames));
-    const pipelineState = this.createPipeline(customShaders, mapSceneBody);
+    this.shaderSignature = shaderPlan.signature;
+    this.customSdfKindIds = new Map(shaderPlan.customSdfKindIds);
+    this.logSceneCompileProfile(shaderPlan.profile);
+    const pipelineState = this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
   }
