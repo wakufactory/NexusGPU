@@ -11,7 +11,9 @@ import {
 import {
   createEmptyMapSceneBody,
   createExpandedMapSceneBody,
+  createSceneCompileProfile,
   createSceneTopologySignature,
+  type SceneCompileProfile,
 } from "./renderer/sceneShaderCompiler";
 import {
   compileSceneObjectRecords,
@@ -353,6 +355,7 @@ export class WebGpuSdfRenderer {
           {
             functionName: customSdfFunction.functionName,
             returnsSceneHit: customSdfFunction.returnsSceneHit,
+            returnsSceneEval: customSdfFunction.returnsSceneEval,
             acceptsColor: customSdfFunction.acceptsColor,
             acceptsSmoothness: customSdfFunction.acceptsSmoothness,
           },
@@ -389,9 +392,40 @@ export class WebGpuSdfRenderer {
     }
 
     this.shaderSignature = signature;
+    this.logSceneCompileProfile(createSceneCompileProfile(snapshot.sceneNodes, customSdfFunctionNames));
     const pipelineState = this.createPipeline(customShaders, mapSceneBody);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
+  }
+
+  private logSceneCompileProfile(profile: SceneCompileProfile) {
+    console.groupCollapsed("[NexusGPU] SDF scene compile profile");
+    console.log("[NexusGPU] SDF scene compile profile data", JSON.stringify(profile, null, 2));
+    console.table({
+      sceneRoots: profile.sceneRoots,
+      primitives: profile.primitives.total,
+      groups: profile.groups.total,
+      modifiers: profile.modifiers.total,
+      analyticGradientCalcsPerMapEval: profile.gradient.totalAnalyticCalcsPerMapEval,
+      builtinGradientCalcsPerMapEval: profile.gradient.analyticPrimitiveCalcsPerMapEval,
+      customSceneEvalCalcsPerMapEval: profile.gradient.customSceneEvalCalcsPerMapEval,
+      smoothGradientBlendOpsPerMapEval: profile.gradient.smoothBlendOpsPerMapEval,
+      finiteDifferenceFallbackMapSceneCalls: profile.gradient.finiteDifferenceFallbackMapSceneCalls,
+      gradientInvalidationPoints: profile.modifiers.invalidatesGrad + profile.primitives.customNoGrad,
+    });
+    console.table(profile.primitives.byKind);
+    console.table(profile.groups.byOp);
+    console.table({
+      builtinWithAnalyticGrad: profile.primitives.builtinWithAnalyticGrad,
+      customSceneEval: profile.primitives.customSceneEval,
+      customNoGrad: profile.primitives.customNoGrad,
+      modifiersWithPre: profile.modifiers.withPre,
+      modifiersWithPost: profile.modifiers.withPost,
+      modifierInvalidations: profile.modifiers.invalidatesGrad,
+      hardMergeOps: profile.groups.hardMergeOps,
+      smoothMergeOps: profile.groups.smoothMergeOps,
+    });
+    console.groupEnd();
   }
 
   /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */

@@ -8,12 +8,40 @@ export const shaderChunkLibrary = {
 fn sdSphere(point: vec3<f32>, radius: f32) -> f32 {
   return length(point) - radius;
 }
+
+fn sdSphereGrad(point: vec3<f32>) -> vec3<f32> {
+  let pointLength = length(point);
+  if (pointLength <= 0.000001) {
+    return vec3<f32>(0.0, 1.0, 0.0);
+  }
+
+  return point / pointLength;
+}
 `,
   "sdf/box": /* wgsl */ `
 // 箱のSigned Distance Function。boundsは中心から各面までの半径ベクトル。
 fn sdBox(point: vec3<f32>, bounds: vec3<f32>) -> f32 {
   let q = abs(point) - bounds;
   return length(max(q, vec3<f32>(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+fn sdBoxGrad(point: vec3<f32>, bounds: vec3<f32>) -> vec3<f32> {
+  let q = abs(point) - bounds;
+  let outside = max(q, vec3<f32>(0.0));
+
+  if (length(outside) > 0.000001) {
+    return normalize(outside * sign(point));
+  }
+
+  if (q.x > q.y && q.x > q.z) {
+    return vec3<f32>(sign(point.x), 0.0, 0.0);
+  }
+
+  if (q.y > q.z) {
+    return vec3<f32>(0.0, sign(point.y), 0.0);
+  }
+
+  return vec3<f32>(0.0, 0.0, sign(point.z));
 }
 `,
   "sdf/cylinder": /* wgsl */ `
@@ -22,12 +50,43 @@ fn sdCylinder(point: vec3<f32>, dimensions: vec2<f32>) -> f32 {
   let d = abs(vec2<f32>(length(point.xz), point.y)) - dimensions;
   return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0)));
 }
+
+fn sdCylinderGrad(point: vec3<f32>, dimensions: vec2<f32>) -> vec3<f32> {
+  let radialLength = length(point.xz);
+  let radial = point.xz / max(radialLength, 0.000001);
+  let d = abs(vec2<f32>(radialLength, point.y)) - dimensions;
+
+  if (d.x > 0.0 && d.y > 0.0) {
+    return normalize(vec3<f32>(radial.x * d.x, sign(point.y) * d.y, radial.y * d.x));
+  }
+
+  if (d.x > d.y) {
+    return vec3<f32>(radial.x, 0.0, radial.y);
+  }
+
+  return vec3<f32>(0.0, sign(point.y), 0.0);
+}
 `,
   "sdf/torus": /* wgsl */ `
 // XZ平面上のトーラスのSigned Distance Function。radiiは(majorRadius, minorRadius)。
 fn sdTorus(point: vec3<f32>, radii: vec2<f32>) -> f32 {
   let q = vec2<f32>(length(point.xz) - radii.x, point.y);
   return length(q) - radii.y;
+}
+
+fn sdTorusGrad(point: vec3<f32>, radii: vec2<f32>) -> vec3<f32> {
+  let radialLength = length(point.xz);
+  let radial = point.xz / max(radialLength, 0.000001);
+  let q = vec2<f32>(radialLength - radii.x, point.y);
+  let qLength = length(q);
+  let ringNormal = q / max(qLength, 0.000001);
+  let grad = vec3<f32>(radial.x * ringNormal.x, ringNormal.y, radial.y * ringNormal.x);
+
+  if (length(grad) <= 0.000001) {
+    return vec3<f32>(0.0, 1.0, 0.0);
+  }
+
+  return normalize(grad);
 }
 `,
   "sdf/ellipsoid": /* wgsl */ `
@@ -40,6 +99,17 @@ fn sdEllipsoid(point: vec3<f32>, radii: vec3<f32>) -> f32 {
     return -min(safeRadii.x, min(safeRadii.y, safeRadii.z));
   }
   return k0 * (k0 - 1.0) / k1;
+}
+
+fn sdEllipsoidGrad(point: vec3<f32>, radii: vec3<f32>) -> vec3<f32> {
+  let safeRadii = max(radii, vec3<f32>(0.001));
+  let implicitGrad = point / (safeRadii * safeRadii);
+  let gradLength = length(implicitGrad);
+  if (gradLength <= 0.000001) {
+    return vec3<f32>(0.0, 1.0, 0.0);
+  }
+
+  return implicitGrad / gradLength;
 }
 `,
   "sdf/smooth-min": /* wgsl */ `

@@ -5,6 +5,8 @@ export type CustomSdfFunctionCallSpec = {
   functionName: string;
   /** trueなら戻り値をSceneHitとしてそのまま使い、falseならf32距離としてSceneHitへ包む。 */
   returnsSceneHit: boolean;
+  /** trueなら戻り値をSceneEvalとしてそのまま使う。 */
+  returnsSceneEval: boolean;
   /** 関数呼び出しへobject.colorSmooth.rgbを渡すか。 */
   acceptsColor: boolean;
   /** 関数呼び出しへobject.colorSmooth.wを渡すか。 */
@@ -109,20 +111,23 @@ export function createCustomSdfFunctionSource(source: string, functionName: stri
     return {
       functionName,
       returnsSceneHit: declaration.returnType === "SceneHit",
+      returnsSceneEval: declaration.returnType === "SceneEval",
       acceptsColor: declaration.parameterCount >= 5,
       acceptsSmoothness: declaration.parameterCount >= 6,
       source: renamedSource,
     };
   }
 
-  const returnsSceneHit = /\bSceneHit\s*\(/.test(trimmed);
+  const returnsSceneEval = /\bSceneEval\s*\(/.test(trimmed) || /\bsceneEval(?:WithGrad|NoGrad|FromHit)\s*\(/.test(trimmed);
+  const returnsSceneHit = !returnsSceneEval && /\bSceneHit\s*\(/.test(trimmed);
   const body = trimmed.includes(";") || /\breturn\b/.test(trimmed) ? trimmed : `return ${trimmed};`;
-  const returnType = returnsSceneHit ? "SceneHit" : "f32";
+  const returnType = returnsSceneEval ? "SceneEval" : returnsSceneHit ? "SceneHit" : "f32";
 
   // body / 式形式は便利さ優先でcolorとsmoothnessを常に使えるラッパー関数にする。
   return {
     functionName,
     returnsSceneHit,
+    returnsSceneEval,
     acceptsColor: true,
     acceptsSmoothness: true,
     source: /* wgsl */ `

@@ -1,4 +1,5 @@
-import type { SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
+import { SDF_PRIMITIVE_KIND_IDS } from "../sdfKinds";
+import type { SdfBooleanOperation, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
 import {
   createSdfModifierFunctionKey,
   type CustomSdfFunctionNameMap,
@@ -21,7 +22,37 @@ type ExpandedSceneCompileResult = {
   smoothnessExpression: string;
 };
 
-/** scene tree全体を、Fragment Shaderから呼ぶmapScene(point)関数のWGSL bodyへ展開する。 */
+export type SceneCompileProfile = {
+  sceneRoots: number;
+  primitives: {
+    total: number;
+    byKind: Record<string, number>;
+    builtinWithAnalyticGrad: number;
+    customSceneEval: number;
+    customNoGrad: number;
+  };
+  groups: {
+    total: number;
+    byOp: Record<SdfBooleanOperation, number>;
+    smoothMergeOps: number;
+    hardMergeOps: number;
+  };
+  modifiers: {
+    total: number;
+    withPre: number;
+    withPost: number;
+    invalidatesGrad: number;
+  };
+  gradient: {
+    analyticPrimitiveCalcsPerMapEval: number;
+    customSceneEvalCalcsPerMapEval: number;
+    totalAnalyticCalcsPerMapEval: number;
+    smoothBlendOpsPerMapEval: number;
+    finiteDifferenceFallbackMapSceneCalls: number;
+  };
+};
+
+/** scene tree全体を、Fragment Shaderから呼ぶmapSceneEval(point)関数のWGSL bodyへ展開する。 */
 export function createExpandedMapSceneBody(
   sceneNodes: readonly SdfSceneNode[],
   customSdfFunctionNames: CustomSdfFunctionNameMap,
@@ -29,8 +60,8 @@ export function createExpandedMapSceneBody(
 ) {
   const state: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
-    "fn mapScene(point: vec3<f32>) -> SceneHit {",
-    "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));",
+    "fn mapSceneEval(point: vec3<f32>) -> SceneEval {",
+    "  var best = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);",
   ];
 
   for (const node of sceneNodes) {
@@ -41,6 +72,10 @@ export function createExpandedMapSceneBody(
 
   chunks.push("  return best;");
   chunks.push("}");
+  chunks.push("");
+  chunks.push("fn mapScene(point: vec3<f32>) -> SceneHit {");
+  chunks.push("  return sceneHitFromEval(mapSceneEval(point));");
+  chunks.push("}");
 
   return chunks.join("\n");
 }
@@ -48,10 +83,126 @@ export function createExpandedMapSceneBody(
 /** scene未設定時に使う空のmapScene()。背景距離を返して何もhitしない状態にする。 */
 export function createEmptyMapSceneBody() {
   return [
+    "fn mapSceneEval(point: vec3<f32>) -> SceneEval {",
+    "  return sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);",
+    "}",
+    "",
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
-    "  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));",
+    "  return sceneHitFromEval(mapSceneEval(point));",
     "}",
   ].join("\n");
+}
+
+export function createSceneCompileProfile(
+  sceneNodes: readonly SdfSceneNode[],
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
+): SceneCompileProfile {
+  const profile: SceneCompileProfile = {
+    sceneRoots: sceneNodes.length,
+    primitives: {
+      total: 0,
+      byKind: {},
+      builtinWithAnalyticGrad: 0,
+      customSceneEval: 0,
+      customNoGrad: 0,
+    },
+    groups: {
+      total: 0,
+      byOp: {
+        or: 0,
+        and: 0,
+        subtract: 0,
+        not: 0,
+      },
+      smoothMergeOps: 0,
+      hardMergeOps: 0,
+    },
+    modifiers: {
+      total: 0,
+      withPre: 0,
+      withPost: 0,
+      invalidatesGrad: 0,
+    },
+    gradient: {
+      analyticPrimitiveCalcsPerMapEval: 0,
+      customSceneEvalCalcsPerMapEval: 0,
+      totalAnalyticCalcsPerMapEval: 0,
+      smoothBlendOpsPerMapEval: 0,
+      finiteDifferenceFallbackMapSceneCalls: 4,
+    },
+  };
+
+  for (const node of sceneNodes) {
+    accumulateSceneCompileProfile(node, customSdfFunctionNames, profile);
+  }
+
+  profile.gradient.totalAnalyticCalcsPerMapEval =
+    profile.gradient.analyticPrimitiveCalcsPerMapEval + profile.gradient.customSceneEvalCalcsPerMapEval;
+  profile.gradient.smoothBlendOpsPerMapEval = profile.groups.smoothMergeOps;
+
+  return profile;
+}
+
+function accumulateSceneCompileProfile(
+  node: SdfSceneNode,
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
+  profile: SceneCompileProfile,
+) {
+  if (node.type === "primitive") {
+    const kind = node.node.kind;
+    profile.primitives.total += 1;
+    profile.primitives.byKind[kind] = (profile.primitives.byKind[kind] ?? 0) + 1;
+
+    if (kind !== "function" && kind in SDF_PRIMITIVE_KIND_IDS) {
+      profile.primitives.builtinWithAnalyticGrad += 1;
+      profile.gradient.analyticPrimitiveCalcsPerMapEval += 1;
+      return;
+    }
+
+    const callSpec = node.node.sdfFunction ? customSdfFunctionNames.get(node.node.sdfFunction) : undefined;
+    if (callSpec?.returnsSceneEval) {
+      profile.primitives.customSceneEval += 1;
+      profile.gradient.customSceneEvalCalcsPerMapEval += 1;
+    } else {
+      profile.primitives.customNoGrad += 1;
+    }
+
+    return;
+  }
+
+  if (node.type === "modifier") {
+    profile.modifiers.total += 1;
+    if (node.preModifierFunction) {
+      profile.modifiers.withPre += 1;
+    }
+    if (node.postModifierFunction) {
+      profile.modifiers.withPost += 1;
+    }
+    if (node.preModifierFunction || node.postModifierFunction) {
+      profile.modifiers.invalidatesGrad += 1;
+    }
+
+    for (const child of node.children) {
+      accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
+    }
+
+    return;
+  }
+
+  profile.groups.total += 1;
+  profile.groups.byOp[node.op] += 1;
+  if (node.children.length > 1 && node.op !== "not") {
+    const mergeOps = node.children.length - 1;
+    if (node.smoothness > 0.0001) {
+      profile.groups.smoothMergeOps += mergeOps;
+    } else {
+      profile.groups.hardMergeOps += mergeOps;
+    }
+  }
+
+  for (const child of node.children) {
+    accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
+  }
 }
 
 /** 1つのscene nodeを評価するWGSL片へ再帰的にコンパイルする。 */
@@ -105,7 +256,7 @@ function compileExpandedSceneNode(
 
   if (children.length === 0) {
     return {
-      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));`,
+      code: `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`,
       hitName,
       smoothnessExpression: smoothness,
     };
@@ -155,7 +306,7 @@ function compileExpandedModifierNode(
     const hitName = nextTempName("modifierHit", state);
 
     return {
-      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));`,
+      code: `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`,
       hitName,
       smoothnessExpression: `${hitName}.smoothness`,
     };
@@ -200,6 +351,17 @@ function compileExpandedModifierNode(
   lines.push(childResult.code);
 
   if (!postCallSpec) {
+    if (preCallSpec) {
+      const hitName = nextTempName("preModifiedHit", state);
+      lines.push(`  let ${hitName} = invalidateSceneEvalGrad(${childResult.hitName});`);
+
+      return {
+        code: lines.join("\n"),
+        hitName,
+        smoothnessExpression: `${hitName}.smoothness`,
+      };
+    }
+
     return {
       code: lines.join("\n"),
       hitName: childResult.hitName,
@@ -208,10 +370,10 @@ function compileExpandedModifierNode(
   }
 
   const hitName = nextTempName("modifiedHit", state);
-  const customCall = `${postCallSpec.functionName}(${childResult.hitName}, ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`;
+  const customCall = `${postCallSpec.functionName}(sceneHitFromEval(${childResult.hitName}), ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`;
   const hitExpression = postCallSpec.returnsSceneHit
-    ? customCall
-    : `SceneHit(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`;
+    ? `sceneEvalFromHit(${customCall})`
+    : `sceneEvalNoGrad(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`;
   lines.push(`  let ${hitName} = ${hitExpression};`);
 
   return {
@@ -249,28 +411,51 @@ function createPrimitiveHitExpression(
   objectName: string,
   customSdfFunctionNames: CustomSdfFunctionNameMap,
 ) {
-  // f32距離だけを返す形式は、objectの色とsmoothnessで従来通りSceneHitへ包む。
+  // builtinは解析的gradientつきSceneEval、customのf32距離だけを返す形式はgradientなしSceneEvalへ包む。
+  const createBuiltinHit = (distanceExpression: string, localGradExpression: string) => {
+    const worldGradExpression = node.hasRotation
+      ? `rotateByQuaternion(${localGradExpression}, ${objectName}.rotation)`
+      : localGradExpression;
+
+    return `sceneEvalWithGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName}, ${worldGradExpression})`;
+  };
+
   const createDefaultHit = (distanceExpression: string) =>
-    `SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`;
+    `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`;
 
   if (node.kind === "sphere") {
-    return createDefaultHit(`sdSphere(${localPointName}, ${objectName}.data0.x)`);
+    return createBuiltinHit(
+      `sdSphere(${localPointName}, ${objectName}.data0.x)`,
+      `sdSphereGrad(${localPointName})`,
+    );
   }
 
   if (node.kind === "box") {
-    return createDefaultHit(`sdBox(${localPointName}, ${objectName}.data0.xyz)`);
+    return createBuiltinHit(
+      `sdBox(${localPointName}, ${objectName}.data0.xyz)`,
+      `sdBoxGrad(${localPointName}, ${objectName}.data0.xyz)`,
+    );
   }
 
   if (node.kind === "cylinder") {
-    return createDefaultHit(`sdCylinder(${localPointName}, ${objectName}.data0.xy)`);
+    return createBuiltinHit(
+      `sdCylinder(${localPointName}, ${objectName}.data0.xy)`,
+      `sdCylinderGrad(${localPointName}, ${objectName}.data0.xy)`,
+    );
   }
 
   if (node.kind === "torus") {
-    return createDefaultHit(`sdTorus(${localPointName}, ${objectName}.data0.xy)`);
+    return createBuiltinHit(
+      `sdTorus(${localPointName}, ${objectName}.data0.xy)`,
+      `sdTorusGrad(${localPointName}, ${objectName}.data0.xy)`,
+    );
   }
 
   if (node.kind === "ellipsoid") {
-    return createDefaultHit(`sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`);
+    return createBuiltinHit(
+      `sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`,
+      `sdEllipsoidGrad(${localPointName}, ${objectName}.data0.xyz)`,
+    );
   }
 
   if (!node.sdfFunction) {
@@ -292,9 +477,14 @@ function createPrimitiveHitExpression(
   ].join(", ");
   const customCall = `${callSpec.functionName}(${args})`;
 
-  // SceneHit形式はWGSL関数内で色とsmoothnessを決めるため、そのままmapScene()へ渡す。
+  // SceneEval形式はWGSL関数内でgradientまで決めるため、そのままmapSceneEval()へ渡す。
+  if (callSpec.returnsSceneEval) {
+    return node.hasRotation ? `rotateSceneEvalGrad(${customCall}, ${objectName}.rotation)` : customCall;
+  }
+
+  // SceneHit形式はWGSL関数内で色とsmoothnessを決めるため、gradientなしのSceneEvalへ変換する。
   if (callSpec.returnsSceneHit) {
-    return customCall;
+    return `sceneEvalFromHit(${customCall})`;
   }
 
   return createDefaultHit(customCall);

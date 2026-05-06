@@ -76,7 +76,7 @@ let insideDistance = min(max(edgeDistance, slabDistance), 0.0);
 return outsideDistance + insideDistance;
 */
 //return slabDistance; 
-return SceneHit(slabDistance, vec3<f32>(abs(ppoint)/gs), smoothness, point);
+return SceneHit(slabDistance, vec3<f32>(abs(ppoint)/gs), smoothness, ppoint);
 `;
 
 
