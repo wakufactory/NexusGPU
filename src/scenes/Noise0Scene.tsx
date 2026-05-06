@@ -3,6 +3,17 @@ import { NexusCanvas, SdfFunction,SdfGroup,SdfBox, useFrame, SdfSphere } from ".
 import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
+export type Noise0SceneParameters = typeof initialParameters;
+
+type Noise0SceneProps = {
+  parameters: Noise0SceneParameters;
+  canvasProps: NexusSceneCanvasProps;
+};
+
+type Noise0SceneContentProps = {
+  parameters: Noise0SceneParameters;
+};
+
 export const { initialParameters, parameterControls } = defineSceneParameterControls(
   {
     freq: 5,
@@ -43,26 +54,15 @@ export const { initialParameters, parameterControls } = defineSceneParameterCont
   ],
 );
 
-export type Noise0SceneParameters = typeof initialParameters;
-
 const EXPERIMENT_SDF = /* wgsl */ `
 let freq = data0.x; // 周期性。大きいほど細かいノイズになる。;
-let div = freq*6. ;
+let div = freq*6. ; 
 var ppoint = point ;
-ppoint.z += -data0.z ;
-var heightDistance = abs(-simplexNoise(ppoint*freq) - data0.y)/div-data0.w;
+ppoint.z += -data0.z ; // アニメーションのためにzを時間で動かす。
+var noiseDistance = abs(-simplexNoise(ppoint*freq) - data0.y)/div-data0.w; 
 
-return heightDistance; // 高さ場単体で見たいときはこちらを有効に。
+return noiseDistance; 
 `;
-
-type Noise0SceneProps = {
-  parameters: Noise0SceneParameters;
-  canvasProps: NexusSceneCanvasProps;
-};
-
-type Noise0SceneContentProps = {
-  parameters: Noise0SceneParameters;
-};
 
 function Noise0SceneContent({ parameters }: Noise0SceneContentProps) {
   const [phase, setPhase] = useState(0);
@@ -92,8 +92,6 @@ function Noise0SceneContent({ parameters }: Noise0SceneContentProps) {
     </SdfGroup>
   );
 }
-
-/** SdfFunctionのWGSLを書き換えて試すための実験用テンプレートscene。 */
 export function Scene({ parameters, canvasProps }: Noise0SceneProps) {
   return (
     <NexusCanvas
