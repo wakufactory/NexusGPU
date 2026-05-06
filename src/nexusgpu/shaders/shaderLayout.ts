@@ -32,6 +32,7 @@ struct SceneHit {
   distance: f32,
   color: vec3<f32>,
   smoothness: f32,
+  localPoint: vec3<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;

@@ -30,7 +30,7 @@ export function createExpandedMapSceneBody(
   const state: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
-    "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
+    "  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));",
   ];
 
   for (const node of sceneNodes) {
@@ -49,7 +49,7 @@ export function createExpandedMapSceneBody(
 export function createEmptyMapSceneBody() {
   return [
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
-    "  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
+    "  return SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));",
     "}",
   ].join("\n");
 }
@@ -105,7 +105,7 @@ function compileExpandedSceneNode(
 
   if (children.length === 0) {
     return {
-      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
+      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));`,
       hitName,
       smoothnessExpression: smoothness,
     };
@@ -155,7 +155,7 @@ function compileExpandedModifierNode(
     const hitName = nextTempName("modifierHit", state);
 
     return {
-      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
+      code: `  let ${hitName} = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, vec3<f32>(0.0));`,
       hitName,
       smoothnessExpression: `${hitName}.smoothness`,
     };
@@ -211,7 +211,7 @@ function compileExpandedModifierNode(
   const customCall = `${postCallSpec.functionName}(${childResult.hitName}, ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`;
   const hitExpression = postCallSpec.returnsSceneHit
     ? customCall
-    : `SceneHit(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness)`;
+    : `SceneHit(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`;
   lines.push(`  let ${hitName} = ${hitExpression};`);
 
   return {
@@ -251,7 +251,7 @@ function createPrimitiveHitExpression(
 ) {
   // f32距離だけを返す形式は、objectの色とsmoothnessで従来通りSceneHitへ包む。
   const createDefaultHit = (distanceExpression: string) =>
-    `SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w)`;
+    `SceneHit(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`;
 
   if (node.kind === "sphere") {
     return createDefaultHit(`sdSphere(${localPointName}, ${objectName}.data0.x)`);

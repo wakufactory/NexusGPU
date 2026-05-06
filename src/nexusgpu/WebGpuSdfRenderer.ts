@@ -20,6 +20,7 @@ import {
   OBJECT_STRIDE_FLOATS,
 } from "./renderer/sceneBuffers";
 import type {
+  NexusMaterialShader,
   NexusRenderSettings,
   NexusRenderStats,
   SceneSnapshot,
@@ -62,6 +63,7 @@ export class WebGpuSdfRenderer {
   private pipeline: GPURenderPipeline;
   private bindGroup: GPUBindGroup;
   private shaderSignature = "";
+  private materialShader: NexusMaterialShader | undefined;
   private customSdfKindIds = new Map<string, number>();
   private snapshot: SceneSnapshot | null = null;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
@@ -179,6 +181,24 @@ export class WebGpuSdfRenderer {
   setRenderSettings(settings: NexusRenderSettings | undefined) {
     this.renderSettings = normalizeRenderSettings(settings);
     this.resize();
+
+    if (!this.renderingEnabled) {
+      this.scheduleRenderOnce();
+    }
+  }
+
+  /** scene固有のmaterial shaderを差し替え、必要ならpipelineを作り直す。 */
+  setMaterialShader(materialShader: NexusMaterialShader | undefined) {
+    if (this.materialShader === materialShader) {
+      return;
+    }
+
+    this.materialShader = materialShader;
+    this.shaderSignature = "";
+
+    if (this.snapshot) {
+      this.configureScenePipeline(this.snapshot);
+    }
 
     if (!this.renderingEnabled) {
       this.scheduleRenderOnce();
@@ -358,6 +378,7 @@ export class WebGpuSdfRenderer {
       customModifierFunctionNames,
     );
     const signature = [
+      this.materialShader ?? "",
       sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
       modifierFunctions.map((modifierFunction) => `${modifierFunction.mode}:${modifierFunction.source}`).join("\n/* nexusgpu-sdf-modifier */\n"),
       createSceneTopologySignature(snapshot.sceneNodes),
@@ -375,7 +396,7 @@ export class WebGpuSdfRenderer {
 
   /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */
   private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
-    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody);
+    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody, this.materialShader);
     console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
 
     const shaderModule = this.device.createShaderModule({

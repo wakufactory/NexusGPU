@@ -28,7 +28,7 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
       }
 
       color = hit.color;
-      return SceneHit(depth, color, hit.smoothness);
+      return SceneHit(depth, color, hit.smoothness, hit.localPoint);
     }
 
     // 符号が変わったら直前区間を戻ってゼロ交差を探す。
@@ -55,7 +55,7 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
         }
 
         color = refinedHit.color;
-        return SceneHit(high, color, refinedHit.smoothness);
+        return SceneHit(high, color, refinedHit.smoothness, refinedHit.localPoint);
       }
     }
 
@@ -74,6 +74,6 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     }
   }
 
-  return SceneHit(-1.0, color, 0.0);
+  return SceneHit(-1.0, color, 0.0, vec3<f32>(0.0));
 }
 `;

@@ -22,6 +22,7 @@ export type {
   NexusCamera,
   NexusCanvasProps,
   NexusLighting,
+  NexusMaterialShader,
   NexusRenderSettings,
   Quaternion,
   SdfBooleanOperation,
