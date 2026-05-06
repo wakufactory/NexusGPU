@@ -15,11 +15,14 @@ import type {
   NexusRenderStats,
   SceneSnapshot,
   SdfNode,
+  SdfSceneNode,
   Vec3,
 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+const LOG_SCENE_COMPILE_PROFILE = true;
+const LOG_GENERATED_SHADER_SOURCE = true;
 
 /** UIから省略された描画設定に使う初期値。 */
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
@@ -311,48 +314,84 @@ export class WebGpuSdfRenderer {
 
     this.shaderSignature = shaderPlan.signature;
     this.customSdfKindIds = new Map(shaderPlan.customSdfKindIds);
-    this.logSceneCompileProfile(shaderPlan.profile);
+    if (LOG_SCENE_COMPILE_PROFILE) {
+      this.logSceneCompileProfile(shaderPlan.profile, snapshot);
+    }
     const pipelineState = this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
   }
 
-  private logSceneCompileProfile(profile: SceneCompileProfile) {
-    console.groupCollapsed("[NexusGPU] SDF scene compile profile");
+  private logSceneCompileProfile(profile: SceneCompileProfile, snapshot: SceneSnapshot) {
+    const objectDump = this.createSceneObjectDump(snapshot.sceneNodes).slice(0, MAX_SDF_OBJECTS);
+
     console.log("[NexusGPU] SDF scene compile profile data", JSON.stringify(profile, null, 2));
-    console.table({
-      sceneRoots: profile.sceneRoots,
-      primitives: profile.primitives.total,
-      groups: profile.groups.total,
-      modifiers: profile.modifiers.total,
-      analyticGradientCalcsPerMapDistance: profile.gradient.analyticPrimitiveCalcsPerMapDistance,
-      analyticGradientCalcsPerMapEval: profile.gradient.totalAnalyticCalcsPerMapEval,
-      builtinGradientCalcsPerMapEval: profile.gradient.analyticPrimitiveCalcsPerMapEval,
-      customSceneEvalCalcsPerMapEval: profile.gradient.customSceneEvalCalcsPerMapEval,
-      smoothGradientBlendOpsPerMapEval: profile.gradient.smoothBlendOpsPerMapEval,
-      finiteDifferenceFallbackMapSceneCalls: profile.gradient.finiteDifferenceFallbackMapSceneCalls,
-      gradientInvalidationPoints: profile.modifiers.invalidatesGrad + profile.primitives.customNoGrad,
-    });
-    console.table(profile.primitives.byKind);
-    console.table(profile.groups.byOp);
-    console.table({
-      builtinWithAnalyticGrad: profile.primitives.builtinWithAnalyticGrad,
-      customSceneEval: profile.primitives.customSceneEval,
-      customNoGrad: profile.primitives.customNoGrad,
-      modifiersWithPre: profile.modifiers.withPre,
-      modifiersWithPost: profile.modifiers.withPost,
-      modifierInvalidations: profile.modifiers.invalidatesGrad,
-      hardMergeOps: profile.groups.hardMergeOps,
-      smoothMergeOps: profile.groups.smoothMergeOps,
-      raymarchUsesDistanceOnlyPath: true,
-    });
-    console.groupEnd();
+    console.log("[NexusGPU] SDF scene objects dump", JSON.stringify(objectDump, null, 2));
+  }
+
+  private createSceneObjectDump(sceneNodes: readonly SdfSceneNode[]) {
+    const rows: Array<Record<string, unknown>> = [];
+
+    for (const node of sceneNodes) {
+      this.appendSceneObjectDumpRows(node, rows);
+    }
+
+    return rows;
+  }
+
+  private appendSceneObjectDumpRows(node: SdfSceneNode, rows: Array<Record<string, unknown>>) {
+    if (node.type === "primitive") {
+      const object = node.node;
+      rows.push({
+        index: rows.length,
+        type: "primitive",
+        kind: object.kind,
+        kindId: this.getSdfKindId(object),
+        position: formatVec(object.position),
+        rotation: formatVec(object.rotation),
+        color: formatVec(object.color),
+        smoothness: object.smoothness,
+        data0: formatVec(object.data[0]),
+        data1: formatVec(object.data[1]),
+        data2: formatVec(object.data[2]),
+        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+        sdfFunction: object.sdfFunction ? previewSource(object.sdfFunction) : "",
+      });
+      return;
+    }
+
+    if (node.type === "modifier") {
+      rows.push({
+        index: rows.length,
+        type: "modifier",
+        kind: "modifier",
+        kindId: 0,
+        position: formatVec([0, 0, 0]),
+        rotation: formatVec([0, 0, 0, 1]),
+        color: formatVec([0, 0, 0]),
+        smoothness: 0,
+        data0: formatVec(node.data[0]),
+        data1: formatVec(node.data[1]),
+        data2: formatVec(node.data[2]),
+        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+        preModifier: node.preModifierFunction ? previewSource(node.preModifierFunction) : "",
+        postModifier: node.postModifierFunction ? previewSource(node.postModifierFunction) : "",
+      });
+    }
+
+    for (const child of node.children) {
+      this.appendSceneObjectDumpRows(child, rows);
+    }
   }
 
   /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */
   private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
     const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody, this.materialShader);
-    console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
+
+    if (LOG_GENERATED_SHADER_SOURCE) {
+      console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
+//      console.log("[NexusGPU] Generated WGSL shader source", shaderCode);
+    }
 
     const shaderModule = this.device.createShaderModule({
       label: "NexusGPU SDF Raymarcher",
@@ -544,6 +583,23 @@ function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Req
 /** 数値を指定範囲内に制限する。 */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function formatVec(values: readonly number[]) {
+  return `[${values.map(formatNumber).join(", ")}]`;
+}
+
+function formatNumber(value: number) {
+  if (!Number.isFinite(value)) {
+    return `${value}`;
+  }
+
+  return `${Math.round(value * 1000000) / 1000000}`;
+}
+
+function previewSource(source: string) {
+  const normalized = source.trim().replace(/\s+/g, " ");
+  return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
 }
 
 /** 3次元ベクトルの差を返す。 */
