@@ -35,5 +35,11 @@
     "title": "SDF modifier test",
     "description": "Scene for testing SDF modifiers ",
     "module": "./SdfModifier.tsx"
+  },
+  {
+    "id": "sdf-boids",
+    "title": "SDF boid test",
+    "description": "Scene for testing SDF boids ",
+    "module": "./BoidsSpheresScene.tsx"
   }
 ]
