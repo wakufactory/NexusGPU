@@ -406,6 +406,7 @@ export class WebGpuSdfRenderer {
       primitives: profile.primitives.total,
       groups: profile.groups.total,
       modifiers: profile.modifiers.total,
+      analyticGradientCalcsPerMapDistance: profile.gradient.analyticPrimitiveCalcsPerMapDistance,
       analyticGradientCalcsPerMapEval: profile.gradient.totalAnalyticCalcsPerMapEval,
       builtinGradientCalcsPerMapEval: profile.gradient.analyticPrimitiveCalcsPerMapEval,
       customSceneEvalCalcsPerMapEval: profile.gradient.customSceneEvalCalcsPerMapEval,
@@ -424,6 +425,7 @@ export class WebGpuSdfRenderer {
       modifierInvalidations: profile.modifiers.invalidatesGrad,
       hardMergeOps: profile.groups.hardMergeOps,
       smoothMergeOps: profile.groups.smoothMergeOps,
+      raymarchUsesDistanceOnlyPath: true,
     });
     console.groupEnd();
   }

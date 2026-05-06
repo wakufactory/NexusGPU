@@ -13,10 +13,12 @@ type ExpandedSceneCompileState = {
   tempIndex: number;
 };
 
+type SceneCompileMode = "distance" | "eval";
+
 type ExpandedSceneCompileResult = {
   /** このnodeを評価するためのWGSL文列。 */
   code: string;
-  /** codeの末尾で生成されたSceneHit変数名。 */
+  /** codeの末尾で生成されたSceneDistanceまたはSceneEval変数名。 */
   hitName: string;
   /** 親グループがboolean演算時に使うsmoothness式。 */
   smoothnessExpression: string;
@@ -44,6 +46,7 @@ export type SceneCompileProfile = {
     invalidatesGrad: number;
   };
   gradient: {
+    analyticPrimitiveCalcsPerMapDistance: number;
     analyticPrimitiveCalcsPerMapEval: number;
     customSceneEvalCalcsPerMapEval: number;
     totalAnalyticCalcsPerMapEval: number;
@@ -58,14 +61,41 @@ export function createExpandedMapSceneBody(
   customSdfFunctionNames: CustomSdfFunctionNameMap,
   customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
 ) {
-  const state: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
+  const distanceState: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
+  const evalState: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
-    "fn mapSceneEval(point: vec3<f32>) -> SceneEval {",
-    "  var best = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);",
+    "fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {",
+    "  var best = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
   ];
 
   for (const node of sceneNodes) {
-    const result = compileExpandedSceneNode(node, state, customSdfFunctionNames, customModifierFunctionNames, "point");
+    const result = compileExpandedSceneNode(
+      node,
+      distanceState,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+      "point",
+      "distance",
+    );
+    chunks.push(result.code);
+    chunks.push(`  best = unionDistance(best, ${result.hitName}, ${result.smoothnessExpression});`);
+  }
+
+  chunks.push("  return best;");
+  chunks.push("}");
+  chunks.push("");
+  chunks.push("fn mapSceneEval(point: vec3<f32>) -> SceneEval {");
+  chunks.push("  var best = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);");
+
+  for (const node of sceneNodes) {
+    const result = compileExpandedSceneNode(
+      node,
+      evalState,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+      "point",
+      "eval",
+    );
     chunks.push(result.code);
     chunks.push(`  best = unionHit(best, ${result.hitName}, ${result.smoothnessExpression});`);
   }
@@ -83,6 +113,10 @@ export function createExpandedMapSceneBody(
 /** scene未設定時に使う空のmapScene()。背景距離を返して何もhitしない状態にする。 */
 export function createEmptyMapSceneBody() {
   return [
+    "fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {",
+    "  return sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
+    "}",
+    "",
     "fn mapSceneEval(point: vec3<f32>) -> SceneEval {",
     "  return sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);",
     "}",
@@ -124,6 +158,7 @@ export function createSceneCompileProfile(
       invalidatesGrad: 0,
     },
     gradient: {
+      analyticPrimitiveCalcsPerMapDistance: 0,
       analyticPrimitiveCalcsPerMapEval: 0,
       customSceneEvalCalcsPerMapEval: 0,
       totalAnalyticCalcsPerMapEval: 0,
@@ -212,6 +247,7 @@ function compileExpandedSceneNode(
   customSdfFunctionNames: CustomSdfFunctionNameMap,
   customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
   pointExpression: string,
+  mode: SceneCompileMode,
 ): ExpandedSceneCompileResult {
   if (node.type === "primitive") {
     const objectIndex = state.objectIndex;
@@ -223,6 +259,7 @@ function compileExpandedSceneNode(
       localPointName,
       objectName,
       customSdfFunctionNames,
+      mode,
     );
 
     state.objectIndex += 1;
@@ -245,26 +282,31 @@ function compileExpandedSceneNode(
       customSdfFunctionNames,
       customModifierFunctionNames,
       pointExpression,
+      mode,
     );
   }
 
   const children = node.children.map((child) =>
-    compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, pointExpression),
+    compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, pointExpression, mode),
   );
   const hitName = nextTempName("groupHit", state);
   const smoothness = formatWgslFloat(node.smoothness);
 
   if (children.length === 0) {
     return {
-      code: `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`,
+      code:
+        mode === "eval"
+          ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
+          : `  let ${hitName} = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
       hitName,
       smoothnessExpression: smoothness,
     };
   }
 
   if (node.op === "not") {
+    const notFunction = mode === "eval" ? "notHit" : "notDistance";
     return {
-      code: [children[0].code, `  let ${hitName} = notHit(${children[0].hitName});`].join("\n"),
+      code: [children[0].code, `  let ${hitName} = ${notFunction}(${children[0].hitName});`].join("\n"),
       hitName,
       smoothnessExpression: smoothness,
     };
@@ -275,11 +317,11 @@ function compileExpandedSceneNode(
 
   for (const child of children.slice(1)) {
     if (node.op === "and") {
-      lines.push(`  ${hitName} = intersectHit(${hitName}, ${child.hitName}, ${smoothness});`);
+      lines.push(`  ${hitName} = ${mode === "eval" ? "intersectHit" : "intersectDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
     } else if (node.op === "subtract") {
-      lines.push(`  ${hitName} = subtractHit(${hitName}, ${child.hitName}, ${smoothness});`);
+      lines.push(`  ${hitName} = ${mode === "eval" ? "subtractHit" : "subtractDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
     } else {
-      lines.push(`  ${hitName} = unionHit(${hitName}, ${child.hitName}, ${smoothness});`);
+      lines.push(`  ${hitName} = ${mode === "eval" ? "unionHit" : "unionDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
     }
   }
 
@@ -297,6 +339,7 @@ function compileExpandedModifierNode(
   customSdfFunctionNames: CustomSdfFunctionNameMap,
   customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
   pointExpression: string,
+  mode: SceneCompileMode,
 ): ExpandedSceneCompileResult {
   const modifierObjectIndex = state.objectIndex;
   const modifierObjectName = nextTempName("modifierObject", state);
@@ -306,7 +349,10 @@ function compileExpandedModifierNode(
     const hitName = nextTempName("modifierHit", state);
 
     return {
-      code: `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`,
+      code:
+        mode === "eval"
+          ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
+          : `  let ${hitName} = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
       hitName,
       smoothnessExpression: `${hitName}.smoothness`,
     };
@@ -347,13 +393,18 @@ function compileExpandedModifierNode(
     customSdfFunctionNames,
     customModifierFunctionNames,
     childPointExpression,
+    mode,
   );
   lines.push(childResult.code);
 
   if (!postCallSpec) {
     if (preCallSpec) {
       const hitName = nextTempName("preModifiedHit", state);
-      lines.push(`  let ${hitName} = invalidateSceneEvalGrad(${childResult.hitName});`);
+      if (mode === "eval") {
+        lines.push(`  let ${hitName} = invalidateSceneEvalGrad(${childResult.hitName});`);
+      } else {
+        lines.push(`  let ${hitName} = ${childResult.hitName};`);
+      }
 
       return {
         code: lines.join("\n"),
@@ -370,10 +421,18 @@ function compileExpandedModifierNode(
   }
 
   const hitName = nextTempName("modifiedHit", state);
-  const customCall = `${postCallSpec.functionName}(sceneHitFromEval(${childResult.hitName}), ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`;
-  const hitExpression = postCallSpec.returnsSceneHit
-    ? `sceneEvalFromHit(${customCall})`
-    : `sceneEvalNoGrad(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`;
+  const customCall =
+    mode === "eval"
+      ? `${postCallSpec.functionName}(sceneHitFromEval(${childResult.hitName}), ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`
+      : `${postCallSpec.functionName}(sceneHitFromDistance(${childResult.hitName}, ${pointExpression}), ${pointExpression}, ${formatSdfDataArgs(modifierObjectName)})`;
+  const hitExpression =
+    mode === "eval"
+      ? postCallSpec.returnsSceneHit
+        ? `sceneEvalFromHit(${customCall})`
+        : `sceneEvalNoGrad(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`
+      : postCallSpec.returnsSceneHit
+        ? `sceneDistanceFromHit(${customCall})`
+        : `sceneDistance(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness)`;
   lines.push(`  let ${hitName} = ${hitExpression};`);
 
   return {
@@ -410,9 +469,14 @@ function createPrimitiveHitExpression(
   localPointName: string,
   objectName: string,
   customSdfFunctionNames: CustomSdfFunctionNameMap,
+  mode: SceneCompileMode,
 ) {
   // builtinは解析的gradientつきSceneEval、customのf32距離だけを返す形式はgradientなしSceneEvalへ包む。
   const createBuiltinHit = (distanceExpression: string, localGradExpression: string) => {
+    if (mode === "distance") {
+      return `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w)`;
+    }
+
     const worldGradExpression = node.hasRotation
       ? `rotateByQuaternion(${localGradExpression}, ${objectName}.rotation)`
       : localGradExpression;
@@ -421,7 +485,9 @@ function createPrimitiveHitExpression(
   };
 
   const createDefaultHit = (distanceExpression: string) =>
-    `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`;
+    mode === "eval"
+      ? `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`
+      : `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w)`;
 
   if (node.kind === "sphere") {
     return createBuiltinHit(
@@ -479,12 +545,16 @@ function createPrimitiveHitExpression(
 
   // SceneEval形式はWGSL関数内でgradientまで決めるため、そのままmapSceneEval()へ渡す。
   if (callSpec.returnsSceneEval) {
+    if (mode === "distance") {
+      return `sceneDistanceFromEval(${customCall})`;
+    }
+
     return node.hasRotation ? `rotateSceneEvalGrad(${customCall}, ${objectName}.rotation)` : customCall;
   }
 
   // SceneHit形式はWGSL関数内で色とsmoothnessを決めるため、gradientなしのSceneEvalへ変換する。
   if (callSpec.returnsSceneHit) {
-    return `sceneEvalFromHit(${customCall})`;
+    return mode === "eval" ? `sceneEvalFromHit(${customCall})` : `sceneDistanceFromHit(${customCall})`;
   }
 
   return createDefaultHit(customCall);

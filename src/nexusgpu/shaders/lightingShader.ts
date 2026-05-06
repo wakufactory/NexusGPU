@@ -12,10 +12,10 @@ fn estimateNormal(point: vec3<f32>) -> vec3<f32> {
   let k3 = vec3<f32>(-1.0, 1.0, -1.0);
   let k4 = vec3<f32>(1.0, 1.0, 1.0);
   let normal =
-    k1 * mapScene(point + k1 * e).distance +
-    k2 * mapScene(point + k2 * e).distance +
-    k3 * mapScene(point + k3 * e).distance +
-    k4 * mapScene(point + k4 * e).distance;
+    k1 * mapSceneDistance(point + k1 * e).distance +
+    k2 * mapSceneDistance(point + k2 * e).distance +
+    k3 * mapSceneDistance(point + k3 * e).distance +
+    k4 * mapSceneDistance(point + k4 * e).distance;
 
   return normalize(normal);
 }

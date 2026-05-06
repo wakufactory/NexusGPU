@@ -49,10 +49,10 @@ src/
     shaders/
       index.ts               WGSLセクションの結合
       shaderConstants.ts     MAX_OBJECTS / MAX_STEPS_CAP の生成
-      shaderLayout.ts        Uniform / Storage Buffer / SceneHit のWGSL定義
+      shaderLayout.ts        Uniform / Storage Buffer / SceneDistance / SceneHit / SceneEval のWGSL定義
       vertexShader.ts        フルスクリーン三角形のvertex shader
       sdfPrimitivesShader.ts SDFプリミティブと補助関数
-      sceneMappingShader.ts  SDF評価関数と展開済みmapSceneの生成
+      sceneMappingShader.ts  SDF評価関数と展開済みscene mapの生成
       raymarchShader.ts      レイマーチング本体
       lightingShader.ts      法線推定と背景色
       defaultMaterialShader.ts hit結果から最終的な材質色を計算
@@ -253,7 +253,7 @@ Reactで使うSDFプリミティブを定義します。
 </SdfGroup>
 ```
 
-現在のグループ実装はGPU上でグループ命令列を解釈しません。React側で作られたシーン木を`WebGpuSdfRenderer`がWGSLの`mapScene()`へ展開し、primitiveデータだけをStorage Bufferへ詰めます。これにより、数十オブジェクト規模ではグループ用のループ、stack、動的op分岐を避けられます。
+現在のグループ実装はGPU上でグループ命令列を解釈しません。React側で作られたシーン木を`WebGpuSdfRenderer`がWGSLの`mapSceneDistance()`と`mapSceneEval()`へ展開し、primitiveデータだけをStorage Bufferへ詰めます。これにより、数十オブジェクト規模ではグループ用のループ、stack、動的op分岐を避けられます。
 
 `<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"postInflate"`、`"postOnion"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
 
@@ -269,7 +269,7 @@ Reactで使うSDFプリミティブを定義します。
 </SdfModifier>
 ```
 
-modifierはprimitiveではありませんが、`data0-2`を動的に更新できるようにStorage Bufferの`SdfObject`レイアウトへ補助レコードとして入ります。React側では子registryを持ち、子がprimitiveでもgroupでも同じように`SdfModifierSceneNode`として親へ登録します。レンダラは`mapScene()`展開時に、modifier補助レコードの`data0-2`をpre/post関数へ渡し、preを子ツリーの入力`point`として使い、postを子ツリーから返った`SceneHit`に適用します。`bounds`はnodeに保持しますが、現状のGPU評価では枝刈りには使っていません。
+modifierはprimitiveではありませんが、`data0-2`を動的に更新できるようにStorage Bufferの`SdfObject`レイアウトへ補助レコードとして入ります。React側では子registryを持ち、子がprimitiveでもgroupでも同じように`SdfModifierSceneNode`として親へ登録します。レンダラはscene map展開時に、modifier補助レコードの`data0-2`をpre/post関数へ渡し、preを子ツリーの入力`point`として使い、postを子ツリーから返った`SceneHit`に適用します。pre/post modifierを通った評価結果は、保守的にgradient無効として扱います。`bounds`はnodeに保持しますが、現状のGPU評価では枝刈りには使っていません。
 
 ### sdfKinds.ts
 
@@ -325,8 +325,8 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決め、変化した場合は`NexusRenderStats.canvasPixelSize`として通知する
 - requestAnimationFrameの進みからFPSを500msごとに集計し、`NexusRenderStats.fps`として通知する
 - `setScene(snapshot)`で`SceneSnapshot.sceneNodes`からprimitiveだけを取り出し、最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
-- `SceneSnapshot.sceneNodes`をWGSLの`mapScene()`へ展開し、グループ構造やboolean演算をshaderコードとして焼き込む
-- `SdfFunction`の関数文字列セット、またはシーン木のtopologyが変わった場合は、custom SDF関数と展開済み`mapScene()`を差し込んだShader Module / Render Pipelineを作り直す
+- `SceneSnapshot.sceneNodes`をWGSLの`mapSceneDistance()`と`mapSceneEval()`へ展開し、グループ構造やboolean演算をshaderコードとして焼き込む
+- `SdfFunction`の関数文字列セット、またはシーン木のtopologyが変わった場合は、custom SDF関数と展開済みscene mapを差し込んだShader Module / Render Pipelineを作り直す
 - `SdfModifier`のpre/post関数文字列セット、またはmodifier topologyが変わった場合もShader Module / Render Pipelineを作り直す。modifierの`data0-2`だけが変わる場合はStorage Buffer更新だけで済む
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
 - 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定をUniform Bufferへアップロードする
@@ -335,7 +335,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。グループ自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveとmodifierの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapScene()`を生成します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。グループ自体はStorage Bufferへは入りません。`WebGpuSdfRenderer`がシーン木をたどり、primitiveとmodifierの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。
 
 例として、次のシーン木がある場合:
 
@@ -349,28 +349,45 @@ Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32
 </SdfGroup>
 ```
 
-概念的には次のようなWGSLへ展開されます。
+概念的には次のようなWGSLへ展開されます。実際にはraymarch用のdistance pathと、hit後評価用のeval pathの2つが生成されます。
 
 ```wgsl
-fn mapScene(point: vec3<f32>) -> SceneHit {
-  var best = SceneHit(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);
+fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {
+  var best = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);
   let object0 = objects[0u];
   let localPoint1 = rotateByQuaternion(point - object0.positionKind.xyz, vec4<f32>(-object0.rotation.xyz, object0.rotation.w));
-  let hit2 = SceneHit(sdSphere(localPoint1, object0.data0.x), object0.colorSmooth.rgb, object0.colorSmooth.w);
+  let hit2 = sceneDistance(sdSphere(localPoint1, object0.data0.x), object0.colorSmooth.rgb, object0.colorSmooth.w);
   let object3 = objects[1u];
   let localPoint4 = rotateByQuaternion(point - object3.positionKind.xyz, vec4<f32>(-object3.rotation.xyz, object3.rotation.w));
-  let hit5 = SceneHit(sdSphere(localPoint4, object3.data0.x), object3.colorSmooth.rgb, object3.colorSmooth.w);
-  var groupHit6 = unionHit(hit2, hit5, 0.7);
+  let hit5 = sceneDistance(sdSphere(localPoint4, object3.data0.x), object3.colorSmooth.rgb, object3.colorSmooth.w);
+  var groupHit6 = unionDistance(hit2, hit5, 0.7);
   let object7 = objects[2u];
   let localPoint8 = rotateByQuaternion(point - object7.positionKind.xyz, vec4<f32>(-object7.rotation.xyz, object7.rotation.w));
-  let hit9 = SceneHit(customSdfFunction0(localPoint8, object7.data0, object7.data1, object7.data2), object7.colorSmooth.rgb, object7.colorSmooth.w);
-  var groupHit10 = intersectHit(groupHit6, hit9);
-  best = unionHit(best, groupHit10, 0.7);
+  let hit9 = sceneDistance(customSdfFunction0(localPoint8, object7.data0, object7.data1, object7.data2), object7.colorSmooth.rgb, object7.colorSmooth.w);
+  var groupHit10 = intersectDistance(groupHit6, hit9, 0.7);
+  best = unionDistance(best, groupHit10, 0.7);
+  return best;
+}
+
+fn mapSceneEval(point: vec3<f32>) -> SceneEval {
+  var best = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);
+  let object0 = objects[0u];
+  let localPoint1 = rotateByQuaternion(point - object0.positionKind.xyz, vec4<f32>(-object0.rotation.xyz, object0.rotation.w));
+  let hit2 = sceneEvalWithGrad(
+    sdSphere(localPoint1, object0.data0.x),
+    object0.colorSmooth.rgb,
+    object0.colorSmooth.w,
+    localPoint1,
+    rotateByQuaternion(sdSphereGrad(localPoint1), object0.rotation)
+  );
+  // 残りの子も同じtopologyでSceneEvalとして展開される
   return best;
 }
 ```
 
-この方式は、オブジェクト数が数十程度のシーンでGPU上の汎用インタプリタ方式より軽くなることを優先した設計です。scene topologyや`SdfFunction`の種類が変わるとpipeline再生成が必要ですが、位置、回転、色、サイズなどprimitiveレコードの値だけが変わる場合はStorage Buffer更新だけで済みます。
+`mapSceneDistance()`はraymarch、shadow、有限差分fallbackに使われ、`localPoint`やgradientを計算しません。`mapSceneEval()`はhit後のmaterial/normal取得に使われ、組み込みprimitiveでは`sdSphereGrad()`などの解析的gradientを返します。この方式は、オブジェクト数が数十程度のシーンでGPU上の汎用インタプリタ方式より軽くなることを優先した設計です。scene topologyや`SdfFunction`の種類が変わるとpipeline再生成が必要ですが、位置、回転、色、サイズなどprimitiveレコードの値だけが変わる場合はStorage Buffer更新だけで済みます。
+
+pipeline再生成時には、開発用consoleへ`[NexusGPU] SDF scene compile profile`を出力します。profileにはprimitive種別ごとの数、group op数、smooth合成数、`mapSceneDistance()`内の解析的gradient計算数、`mapSceneEval()`内の解析的gradient計算数、有限差分fallback時の`mapSceneDistance()`呼び出し回数などが含まれます。`[NexusGPU] SDF scene compile profile data`は同じ内容をJSON文字列で出すため、ブラウザログ収集でも確認できます。
 
 modifierを含む場合は、pre/post関数もcustom WGSL関数としてshaderへ追加されます。概念的には次の順序で展開されます。
 
@@ -379,8 +396,8 @@ let modifierObject0 = objects[0u];
 let modifiedPoint1 = customSdfModifierFunction0(point, modifierObject0.data0, modifierObject0.data1, modifierObject0.data2);
 let object2 = objects[1u];
 let localPoint2 = modifiedPoint1 - object2.positionKind.xyz;
-let hit3 = SceneHit(sdSphere(localPoint2, object2.data0.x), object2.colorSmooth.rgb, object2.colorSmooth.w);
-let modifiedHit4 = SceneHit(customSdfModifierFunction1(hit3, point, modifierObject0.data0, modifierObject0.data1, modifierObject0.data2), hit3.color, hit3.smoothness);
+let hit3 = sceneEvalWithGrad(sdSphere(localPoint2, object2.data0.x), object2.colorSmooth.rgb, object2.colorSmooth.w, localPoint2, sdSphereGrad(localPoint2));
+let modifiedHit4 = sceneEvalNoGrad(customSdfModifierFunction1(sceneHitFromEval(hit3), point, modifierObject0.data0, modifierObject0.data1, modifierObject0.data2), hit3.color, hit3.smoothness, hit3.localPoint);
 best = unionHit(best, modifiedHit4, modifiedHit4.smoothness);
 ```
 
@@ -392,7 +409,7 @@ WGSLコードは機能別の文字列パーツとして`src/nexusgpu/shaders`配
 
 組み込みプリミティブだけの初期状態では、custom SDF関数なしでShader Moduleを作ります。シーン内に`SdfFunction`が含まれる場合、`WebGpuSdfRenderer`がユニークな`sdfFunction`文字列を集め、`customSdfFunction0`、`customSdfFunction1`のようなWGSL関数名を割り当てて`assembleSdfShader()`へ渡します。同じ関数文字列を複数ノードで使う場合は、同じWGSL関数を共有します。`SdfModifier`のpre/post関数も同じcustom関数セクションへ追加され、`customSdfModifierFunction0`のような名前へ差し替えられます。
 
-`mapSceneBody`は`SceneSnapshot.sceneNodes`から生成される展開済みWGSLです。`sceneMappingShader.ts`は`unionHit`、`intersectHit`、`subtractHit`、`notHit`などの共通関数を定義し、その後ろに展開済み`mapScene()`を差し込みます。グループ構造やprimitive種別をGPUでループ/分岐解釈するのではなく、CPU側でWGSLへコンパイルする形です。
+`mapSceneBody`は`SceneSnapshot.sceneNodes`から生成される展開済みWGSLです。`sceneMappingShader.ts`は`unionDistance`、`unionHit`、`intersectDistance`、`intersectHit`、`subtractDistance`、`subtractHit`、`notDistance`、`notHit`などの共通関数を定義し、その後ろに展開済み`mapSceneDistance()`、`mapSceneEval()`、互換用`mapScene()`を差し込みます。グループ構造やprimitive種別をGPUでループ/分岐解釈するのではなく、CPU側でWGSLへコンパイルする形です。
 
 各WGSLセクション内では、組み込みチャンクライブラリから`#include <sdf/sphere>`の形式で関数群を取り込めます。includeは`assembleSdfShader()`の最後に再帰的に解決され、未登録チャンクや循環参照は例外として検出されます。組み込みチャンクは`src/nexusgpu/shaders/shaderLibrary.ts`に定義します。
 
@@ -414,11 +431,11 @@ createShaderConstants(MAX_SDF_OBJECTS)
 各ファイルの役割:
 
 - `shaderConstants.ts`: `MAX_OBJECTS`と`MAX_STEPS_CAP`をWGSL定数として生成する
-- `shaderLayout.ts`: `CameraUniform`、`SdfObject`、`SceneHit`、`@group(0)`のbuffer bindingを定義する
+- `shaderLayout.ts`: `CameraUniform`、`SdfObject`、`SceneDistance`、`SceneHit`、`SceneEval`、`@group(0)`のbuffer bindingを定義する
 - `vertexShader.ts`: 画面全体を覆う三角形を1枚描く`vertexMain`を定義する
-- `sdfPrimitivesShader.ts`: `sdSphere`、`sdBox`、`sdCylinder`、`sdTorus`、`sdEllipsoid`、`smoothMin`、`rotateByQuaternion`を定義する
-- `sceneMappingShader.ts`: boolean合成用の補助関数と、展開済み`mapScene()`を含むシーン評価コードを生成する
-- `raymarchShader.ts`: `mapScene`を使ってレイを進める`raymarch`を定義する
+- `sdfPrimitivesShader.ts`: `sdSphere`、`sdBox`、`sdCylinder`、`sdTorus`、`sdEllipsoid`、各primitiveのgradient関数、`smoothMin`、`rotateByQuaternion`を定義する
+- `sceneMappingShader.ts`: boolean合成用の補助関数と、展開済み`mapSceneDistance()` / `mapSceneEval()`を含むシーン評価コードを生成する
+- `raymarchShader.ts`: `mapSceneDistance()`でレイを進め、hit確定時だけ`mapSceneEval()`を呼ぶ`raymarch`を定義する
 - `lightingShader.ts`: `estimateNormal`と未ヒット時の`background`を定義する
 - `defaultMaterialShader.ts`: hit位置、法線、ライト、影から材質色を計算する`shadeMaterial`を定義する
 - `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す
@@ -434,9 +451,11 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `customSdfFunctionN`: `SdfFunction`から生成されたユーザー定義SDF
 - `smoothMin`: SDF同士の滑らかな結合
 - `rotateByQuaternion`: SDFオブジェクトのローカル座標変換
-- `mapScene`: 展開済みのシーン木を評価し、最短距離を返す
+- `mapSceneDistance`: 展開済みのシーン木を距離・色・smoothnessだけで評価する
+- `mapSceneEval`: 展開済みのシーン木を`localPoint`とgradientつきで評価する
+- `mapScene`: `mapSceneEval`から`SceneHit`へ変換する互換関数
 - `raymarch`: レイを進めてSDF表面を探す
-- `estimateNormal`: 距離場の勾配から法線を近似
+- `estimateNormal`: `SceneEval.gradInfo`が有効なら解析的gradientを使い、無効なら`mapSceneDistance()`の有限差分で法線を近似
 - `background`: 未ヒット時の背景色を返す
 - `fragmentMain`: ピクセルごとの最終色を計算
 
@@ -489,11 +508,16 @@ type SdfNode = {
 ```wgsl
 fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>) -> f32
 fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>, color: vec3<f32>, smoothness: f32) -> SceneHit
+fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data2: vec4<f32>, color: vec3<f32>, smoothness: f32) -> SceneEval
 ```
 
-`f32`を返す場合は従来通り距離だけを受け取り、色とsmoothnessはobjectレコードの`colorSmooth`から作ります。`SceneHit`を返す場合は、WGSL関数内で距離、色、smoothnessをまとめて決められます。
+`f32`を返す場合は従来通り距離だけを受け取り、色とsmoothnessはobjectレコードの`colorSmooth`から作ります。`SceneHit`を返す場合は、WGSL関数内で距離、色、smoothness、material用`localPoint`をまとめて決められます。`SceneEval`または`sceneEvalWithGrad(...)`を返す場合はgradientも渡せるため、その評価結果が最終hitに使われればnormalの有限差分fallbackを避けられます。
 
-`bounds`はグループのbounding sphere計算に使うCPU側メタデータです。現在の展開型`mapScene()`ではboundsによるGPU枝刈りはまだ行っていませんが、グループ木には保持しておき、将来の展開コード内bounds skipや空間分割へ使えるようにしています。
+`SdfFunction`が`SceneEval`を返す場合、distance pathでは`sceneDistanceFromEval(customSdfFunctionN(...))`として距離だけを取り出します。そのため、`SceneEval`内で重いgradient計算を行うとraymarch中にもその計算が走ります。`SceneEval`は、距離計算とgradient計算の中間値を共有できる場合や、解析的gradientが十分軽い場合に使う想定です。
+
+組み込みprimitiveは`mapSceneEval()`側で解析的gradientを返します。`or`、`and`、`subtract`、`not`は選ばれた側のgradientを継承し、smooth合成では両側のgradientが有効な場合だけ補間します。`SdfFunction`が`f32`または`SceneHit`を返す場合、あるいは`SdfModifier`のpre/postを通った場合はgradient無効として扱われ、必要に応じて`estimateNormal()`が`mapSceneDistance()`の有限差分へfallbackします。
+
+`bounds`はグループのbounding sphere計算に使うCPU側メタデータです。現在の展開型scene mapではboundsによるGPU枝刈りはまだ行っていませんが、グループ木には保持しておき、将来の展開コード内bounds skipや空間分割へ使えるようにしています。
 
 ### SdfSceneNode
 
@@ -529,7 +553,7 @@ type SdfSceneNode =
   | SdfModifierSceneNode;
 ```
 
-`SceneSnapshot`には互換・custom SDF収集用のフラットな`nodes`と、レンダラが`mapScene()`展開に使う`sceneNodes`の両方が含まれます。
+`SceneSnapshot`には互換・custom SDF収集用のフラットな`nodes`と、レンダラが`mapSceneDistance()` / `mapSceneEval()`展開に使う`sceneNodes`の両方が含まれます。
 
 ```ts
 type SceneSnapshot = {
@@ -715,7 +739,8 @@ sequenceDiagram
   GPU->>Shader: vertexMain()
   GPU->>Shader: fragmentMain()
   Shader->>Shader: raymarch()
-  Shader->>Shader: mapScene()
+  Shader->>Shader: mapSceneDistance()
+  Shader->>Shader: mapSceneEval() at hit
   Renderer->>GPU: queue.submit()
 ```
 
@@ -725,14 +750,16 @@ sequenceDiagram
 
 1. `fragmentMain()`がピクセル座標からカメラレイを作る
 2. `raymarch()`がレイ上の現在位置を計算する
-3. `mapScene()`が展開済みのシーン木に従ってSDF距離を評価する
+3. `mapSceneDistance()`が展開済みのシーン木に従ってSDF距離を評価する
 4. 最短距離ぶんレイを前進させる
 5. 距離が`surfaceEpsilon`未満ならヒット扱いにする
-6. ヒットしたら`estimateNormal()`で法線を近似する
+6. ヒットしたら`mapSceneEval()`で`localPoint`とgradientを回収し、`estimateNormal()`で法線を決める
 7. ライティング、リムライト、影を計算して色を返す
 8. ヒットしなければ背景色を返す
 
 `maxSteps`と`maxDistance`を小さくすると軽くなりますが、形状が欠けたり遠景が消えたりしやすくなります。
+
+`estimateNormal()`はまず`mapSceneEval(point).gradInfo`を確認します。gradientが有効ならそれをnormalizeして使い、無効なら`normalEpsilon`幅の四面体サンプルで`mapSceneDistance()`を4回呼びます。raymarch本体とshadow rayはdistance-only pathを使うため、組み込みprimitiveのgradient関数はstep中には走りません。
 
 `stereoSbs`が有効な場合、`fragmentMain()`はcanvas全体の`screenUv`から左右どちらのviewportかを判定し、片目ごとのローカルUVへ変換します。左eye / 右eyeは`stereoBase`の半分だけ`camera.right`方向にずらした`rayOrigin`を使います。`stereoSwapEyes`が有効な場合は左右の割り当てを反転し、交差法向けのSBS表示にします。
 
@@ -793,9 +820,9 @@ WebGpuSdfRenderer.updateFps()
 
 - 組み込みSDFプリミティブはsphere、box、cylinder、torus、ellipsoid
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
-- `SdfGroup`の構造、boolean演算、グループsmoothnessが変わると、展開済み`mapScene()`が変わるためShader Module / Render Pipelineを再生成する
+- `SdfGroup`の構造、boolean演算、グループsmoothnessが変わると、展開済みscene mapが変わるためShader Module / Render Pipelineを再生成する
 - primitiveのposition、rotation、color、size、radius、dataなどの値だけが変わる場合は、原則としてStorage Buffer更新だけで済む
-- ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と`mapScene()`内の直接呼び出しが増える
+- ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と展開済みscene map内の直接呼び出しが増える
 - `SdfGroup`は現在、常にWGSLへ展開される。数十オブジェクト規模を想定しており、大量オブジェクトではshaderコードサイズやpipeline再生成コストが課題になる
 - オブジェクト数上限は`MAX_SDF_OBJECTS = 128`
 - Storage Bufferは変更時に全体再アップロード
@@ -811,7 +838,7 @@ WebGpuSdfRenderer.updateFps()
 2. `SceneStore`にdirty管理を追加し、Storage Bufferの部分更新を行う
 3. Compute ShaderでBVHまたはグリッド加速構造を構築する
 4. SDFプリミティブを増やす
-5. 展開済み`mapScene()`にbounding sphere skipを生成し、グループ単位の枝刈りを追加する
+5. 展開済み`mapSceneDistance()` / `mapSceneEval()`にbounding sphere skipを生成し、グループ単位の枝刈りを追加する
 6. マテリアル、ブレンド演算、CSG演算を型として表現する
 7. デバッグビューで距離場、法線、ステップ数、ヒット距離を可視化する
 8. 3DGS用のソートと合成パスを追加する

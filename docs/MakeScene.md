@@ -142,7 +142,7 @@ export function CustomSphereScene() {
 />
 ```
 
-解析的なgradientを返せる場合は、`sceneEvalWithGrad(distance, color, smoothness, localPoint, grad)`を返します。`grad`はworld変換前の`SdfFunction`内ではローカル座標系のgradientです。
+解析的なgradientを返せる場合は、`sceneEvalWithGrad(distance, color, smoothness, localPoint, grad)`を返します。`grad`はworld変換前の`SdfFunction`内ではローカル座標系のgradientです。これを返すと、最終hitがその評価結果を使う場合に法線計算の有限差分fallbackを避けられます。
 
 ```tsx
 <SdfFunction
@@ -156,6 +156,16 @@ export function CustomSphereScene() {
 ```
 
 WGSL関数全体を渡す場合は、`sdfFunction`という名前で定義できます。レンダラ内部では安全に別名へ差し替えられます。既存の4引数で`f32`を返す形式もそのまま使えます。ベース色を受け取りたい場合は5番目の引数に`color`、smoothnessも受け取りたい場合は6番目の引数に`smoothness`を追加し、色つきの結果を返したい場合は戻り値を`SceneHit`、gradientつきの結果を返したい場合は戻り値を`SceneEval`にします。
+
+`SdfFunction`の返却形式は次の3種類です。
+
+| 戻り値 | 用途 | normal |
+| --- | --- | --- |
+| `f32` | 距離だけを返す最軽量形式 | 有限差分fallback |
+| `SceneHit` | 距離、色、smoothness、material用`localPoint`を返す | 有限差分fallback |
+| `SceneEval` | `SceneHit`相当の情報に加えてgradientを返す | `gradInfo`が有効なら解析的gradientを使用 |
+
+raymarch中は軽量な`mapSceneDistance()`が使われ、hit後のmaterial/normal取得時だけ`mapSceneEval()`が使われます。ただし`SdfFunction`が`SceneEval`を返す場合、距離だけを取り出すためにdistance pathでもその関数を呼びます。重い数値微分gradientを`SceneEval`内に埋め込むとraymarch中にも走るため、`SceneEval`は安くgradientを出せる関数向けです。
 
 ```tsx
 const roundedBoxSdf = /* wgsl */ `
@@ -178,7 +188,7 @@ export function RoundedBoxScene() {
 }
 ```
 
-同じ`sdfFunction`文字列を複数objectで使う場合は、同じGPU側関数が共有されます。異なる`sdfFunction`文字列が増えると、シェーダの再生成と`mapScene()`内の直接呼び出し先が増えるため、頻繁に変わる値は関数文字列に埋め込まず`data0-2`で渡してください。
+同じ`sdfFunction`文字列を複数objectで使う場合は、同じGPU側関数が共有されます。異なる`sdfFunction`文字列が増えると、シェーダの再生成と展開済みscene map内の直接呼び出し先が増えるため、頻繁に変わる値は関数文字列に埋め込まず`data0-2`で渡してください。
 
 ## SdfModifierでpointやdistanceを加工する
 
@@ -330,7 +340,7 @@ return hit.distance / max(stretch, 1.0);
 
 `SdfModifier.bounds`はnodeに保持されますが、現在のrendererはboundsによるGPU枝刈りをまだ行っていません。将来の枝刈りや空間分割用のメタデータとして扱ってください。任意pre modifierは評価空間を曲げるため、将来bounds枝刈りを有効にする場合も自動推定せず、modifier側で保守的なboundsを指定する方針です。
 
-`SdfModifier.data0`、`data1`、`data2`はStorage Bufferへ入るため、値だけを変えた場合はShader Module / Render Pipelineを作り直しません。`preset`、`preModifierFunction`、`postModifierFunction`、children構造が変わった場合は、生成される`mapScene()`やcustom WGSL関数が変わるためpipeline再生成が発生します。
+`SdfModifier.data0`、`data1`、`data2`はStorage Bufferへ入るため、値だけを変えた場合はShader Module / Render Pipelineを作り直しません。`preset`、`preModifierFunction`、`postModifierFunction`、children構造が変わった場合は、生成される`mapSceneDistance()` / `mapSceneEval()`やcustom WGSL関数が変わるためpipeline再生成が発生します。
 
 ## SdfGroupでSDFを組み合わせる
 
@@ -402,7 +412,7 @@ export function BoxAndNotSphereScene() {
 </SdfGroup>
 ```
 
-現在の実装では、グループ構造はGPU上で命令列として解釈されず、レンダラがWGSLの`mapScene()`へ展開します。そのため数十object程度のsceneでは軽く動きますが、`op`やグループ構成、グループの`smoothness`を頻繁に変更するとShader Module / Render Pipelineの再生成が発生します。毎フレーム動かす値は、primitiveの`position`、`rotation`、`radius`、`size`、`color`、`data0-2`などにするのが安全です。
+現在の実装では、グループ構造はGPU上で命令列として解釈されず、レンダラがWGSLの`mapSceneDistance()` / `mapSceneEval()`へ展開します。そのため数十object程度のsceneでは軽く動きますが、`op`やグループ構成、グループの`smoothness`を頻繁に変更するとShader Module / Render Pipelineの再生成が発生します。毎フレーム動かす値は、primitiveの`position`、`rotation`、`radius`、`size`、`color`、`data0-2`などにするのが安全です。
 
 `SdfFunction`をグループに含める場合は、必要に応じて`bounds`を指定してください。現在はGPU側の枝刈りには使っていませんが、グループのbounding sphereメタデータとして保持されます。
 
@@ -680,25 +690,36 @@ fn sdTorus(point: vec3<f32>, radii: vec2<f32>) -> f32 {
 #include <sdf/torus>
 ```
 
-### 5. mapScene生成に距離式を追加する
+### 5. mapScene生成に距離式とgradient式を追加する
 
-`src/nexusgpu/WebGpuSdfRenderer.ts`の`createPrimitiveDistanceExpression()`で、新しいprimitive種別に対応するSDF関数呼び出しを追加します。`mapScene()`はシーン木からリニアに展開されるため、WGSL側でkind ID分岐を追加する必要はありません。
+`src/nexusgpu/renderer/sceneShaderCompiler.ts`の`createPrimitiveHitExpression()`で、新しいprimitive種別に対応するSDF関数呼び出しを追加します。レンダラは同じscene graphからraymarch用の`mapSceneDistance()`と、hit後評価用の`mapSceneEval()`を生成します。WGSL側でkind ID分岐を追加する必要はありません。
 
 ```ts
 if (node.kind === "sphere") {
-  return `sdSphere(${localPointName}, ${objectName}.data0.x)`;
+  return createBuiltinHit(
+    `sdSphere(${localPointName}, ${objectName}.data0.x)`,
+    `sdSphereGrad(${localPointName})`,
+  );
 }
 
 if (node.kind === "box") {
-  return `sdBox(${localPointName}, ${objectName}.data0.xyz)`;
+  return createBuiltinHit(
+    `sdBox(${localPointName}, ${objectName}.data0.xyz)`,
+    `sdBoxGrad(${localPointName}, ${objectName}.data0.xyz)`,
+  );
 }
 
 if (node.kind === "torus") {
-  return `sdTorus(${localPointName}, ${objectName}.data0.xy)`;
+  return createBuiltinHit(
+    `sdTorus(${localPointName}, ${objectName}.data0.xy)`,
+    `sdTorusGrad(${localPointName}, ${objectName}.data0.xy)`,
+  );
 }
 ```
 
-`SdfFunction`の場合は、レンダラが関数文字列ごとに`customSdfFunction0`のような関数名を割り当て、展開済み`mapScene()`内から直接呼び出します。
+`createBuiltinHit()`はdistance pathでは距離だけを`SceneDistance`へ包み、eval pathではgradientを`SceneEval`へ包みます。新しい組み込みprimitiveを追加する場合は、距離関数に加えて`sdTorusGrad()`のようなgradient関数も用意してください。gradientが未実装の段階では`sceneEvalNoGrad(...)`に落とせますが、そのprimitiveが最終hitになるとnormalは有限差分fallbackになります。
+
+`SdfFunction`の場合は、レンダラが関数文字列ごとに`customSdfFunction0`のような関数名を割り当て、展開済み`mapSceneDistance()` / `mapSceneEval()`内から直接呼び出します。
 
 ### 6. exportを追加する
 
@@ -742,7 +763,7 @@ export function TorusScene() {
 - `primitives.tsx`で`upsertSceneNode(id, { type: "primitive", node, bounds })`と`removeSceneNode(id)`を使って登録・解除した
 - `shaderLibrary.ts`にWGSL関数を追加した
 - `sdfPrimitivesShader.ts`でWGSLチャンクをincludeした
-- `WebGpuSdfRenderer.ts`の`createPrimitiveDistanceExpression()`で距離計算を追加した
+- `sceneShaderCompiler.ts`の`createPrimitiveHitExpression()`で距離計算とgradient計算を追加した
 - `index.ts`からcomponentと型をexportした
 - scene内で新しいcomponentをimportして描画確認した
 
@@ -750,9 +771,9 @@ export function TorusScene() {
 
 - 現在のSDF object数上限は`MAX_SDF_OBJECTS = 128`
 - `SdfGroup`を使わないフラットなsceneは全objectをunion評価する
-- `SdfGroup`を使うsceneは、レンダラがシーン木をWGSLの`mapScene()`へ展開して`or`、`and`、`subtract`、`not`を評価する
+- `SdfGroup`を使うsceneは、レンダラがシーン木をWGSLの`mapSceneDistance()` / `mapSceneEval()`へ展開して`or`、`and`、`subtract`、`not`を評価する
 - primitiveごとの追加データは`data0`, `data1`, `data2`の`vec4` 3本まで
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
-- ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と`mapScene()`内の直接呼び出しが増える
+- ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と展開済みscene map内の直接呼び出しが増える
 - `rotation`はquaternionで指定する
 - SDF primitiveはDOMを描画しないため、CSSでは見た目を変更できない
