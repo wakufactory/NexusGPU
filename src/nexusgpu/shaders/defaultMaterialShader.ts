@@ -1,7 +1,7 @@
 export const defaultMaterialShader = /* wgsl */ `
-fn shadeMaterial(hit: SceneHit, rayOrigin: vec3<f32>, direction: vec3<f32>) -> vec3<f32> {
+fn shadeMaterial(hit: RaymarchHit, rayOrigin: vec3<f32>, direction: vec3<f32>) -> vec3<f32> {
   let point = rayOrigin + direction * hit.distance;
-  let normal = estimateNormal(point);
+  let normal = estimateNormalFromHit(hit, point);
   let lightDirection = normalize(camera.lightInfo.xyz);
   let diffuse = max(dot(normal, lightDirection), 0.0);
   let rim = 0.0 * pow(max(0.0, 1.0 - dot(normal, -direction)), 3.0);

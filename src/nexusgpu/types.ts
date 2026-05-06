@@ -34,7 +34,7 @@ export type NexusLighting = {
   direction?: Vec3;
 };
 
-/** sceneごとに差し替えるmaterial WGSL。shadeMaterial()関数全体を定義する。 */
+/** sceneごとに差し替えるmaterial WGSL。shadeMaterial(hit: RaymarchHit, ...)関数全体を定義する。 */
 export type NexusMaterialShader = string;
 
 /** 未ヒット時に表示する背景色。Y軸方向の上下2色を補間する。 */

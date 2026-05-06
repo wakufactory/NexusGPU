@@ -1,6 +1,6 @@
 export const raymarchShader = /* wgsl */ `
 // レイを少しずつ進め、距離場にヒットするまで探索する。
-fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
+fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
   var depth = 0.0;
   var color = vec3<f32>(0.0);
   let initialHit = mapSceneDistance(origin);
@@ -29,7 +29,7 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
 
       let evalHit = mapSceneEval(point);
       color = evalHit.color;
-      return SceneHit(depth, color, evalHit.smoothness, evalHit.localPoint);
+      return RaymarchHit(depth, color, evalHit.smoothness, evalHit.localPoint, evalHit.gradInfo);
     }
 
     // 符号が変わったら直前区間を戻ってゼロ交差を探す。
@@ -39,7 +39,6 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     ) {
       var low = previousDepth;
       var high = depth;
-      var refinedHit = hit;
       let enteringSurface = hit.distance < 0.0;
 
       if (enteringSurface || hitInteriorSurfaces) {
@@ -51,13 +50,12 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
             low = mid;
           } else {
             high = mid;
-            refinedHit = midHit;
           }
         }
 
         let refinedEval = mapSceneEval(origin + direction * high);
         color = refinedEval.color;
-        return SceneHit(high, color, refinedEval.smoothness, refinedEval.localPoint);
+        return RaymarchHit(high, color, refinedEval.smoothness, refinedEval.localPoint, refinedEval.gradInfo);
       }
     }
 
@@ -76,6 +74,6 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     }
   }
 
-  return SceneHit(-1.0, color, 0.0, vec3<f32>(0.0));
+  return RaymarchHit(-1.0, color, 0.0, vec3<f32>(0.0), vec4<f32>(0.0));
 }
 `;

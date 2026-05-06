@@ -65,7 +65,7 @@ export function createExpandedMapSceneBody(
   const evalState: ExpandedSceneCompileState = { objectIndex: 0, tempIndex: 0 };
   const chunks: string[] = [
     "fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {",
-    "  var best = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
+    "  var best = sceneDistance(camera.renderInfo.y, 0.0);",
   ];
 
   for (const node of sceneNodes) {
@@ -114,7 +114,7 @@ export function createExpandedMapSceneBody(
 export function createEmptyMapSceneBody() {
   return [
     "fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {",
-    "  return sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);",
+    "  return sceneDistance(camera.renderInfo.y, 0.0);",
     "}",
     "",
     "fn mapSceneEval(point: vec3<f32>) -> SceneEval {",
@@ -297,7 +297,7 @@ function compileExpandedSceneNode(
       code:
         mode === "eval"
           ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
-          : `  let ${hitName} = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
+          : `  let ${hitName} = sceneDistance(camera.renderInfo.y, 0.0);`,
       hitName,
       smoothnessExpression: smoothness,
     };
@@ -352,7 +352,7 @@ function compileExpandedModifierNode(
       code:
         mode === "eval"
           ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
-          : `  let ${hitName} = sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);`,
+          : `  let ${hitName} = sceneDistance(camera.renderInfo.y, 0.0);`,
       hitName,
       smoothnessExpression: `${hitName}.smoothness`,
     };
@@ -432,7 +432,7 @@ function compileExpandedModifierNode(
         : `sceneEvalNoGrad(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`
       : postCallSpec.returnsSceneHit
         ? `sceneDistanceFromHit(${customCall})`
-        : `sceneDistance(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness)`;
+        : `sceneDistance(${customCall}, ${childResult.hitName}.smoothness)`;
   lines.push(`  let ${hitName} = ${hitExpression};`);
 
   return {
@@ -474,7 +474,7 @@ function createPrimitiveHitExpression(
   // builtinは解析的gradientつきSceneEval、customのf32距離だけを返す形式はgradientなしSceneEvalへ包む。
   const createBuiltinHit = (distanceExpression: string, localGradExpression: string) => {
     if (mode === "distance") {
-      return `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w)`;
+      return `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.w)`;
     }
 
     const worldGradExpression = node.hasRotation
@@ -487,7 +487,7 @@ function createPrimitiveHitExpression(
   const createDefaultHit = (distanceExpression: string) =>
     mode === "eval"
       ? `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`
-      : `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w)`;
+      : `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.w)`;
 
   if (node.kind === "sphere") {
     return createBuiltinHit(

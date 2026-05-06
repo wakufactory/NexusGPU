@@ -5,19 +5,19 @@ fn sceneHitFromEval(value: SceneEval) -> SceneHit {
 }
 
 fn sceneHitFromDistance(value: SceneDistance, localPoint: vec3<f32>) -> SceneHit {
-  return SceneHit(value.distance, value.color, value.smoothness, localPoint);
+  return SceneHit(value.distance, vec3<f32>(0.0), value.smoothness, localPoint);
 }
 
-fn sceneDistance(distance: f32, color: vec3<f32>, smoothness: f32) -> SceneDistance {
-  return SceneDistance(distance, color, smoothness);
+fn sceneDistance(distance: f32, smoothness: f32) -> SceneDistance {
+  return SceneDistance(distance, smoothness);
 }
 
 fn sceneDistanceFromHit(value: SceneHit) -> SceneDistance {
-  return SceneDistance(value.distance, value.color, value.smoothness);
+  return SceneDistance(value.distance, value.smoothness);
 }
 
 fn sceneDistanceFromEval(value: SceneEval) -> SceneDistance {
-  return SceneDistance(value.distance, value.color, value.smoothness);
+  return SceneDistance(value.distance, value.smoothness);
 }
 
 fn sceneEvalFromHit(value: SceneHit) -> SceneEval {
@@ -65,9 +65,8 @@ fn unionDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> SceneDi
 
   let h = clamp(0.5 + 0.5 * (b.distance - a.distance) / effectiveSmoothness, 0.0, 1.0);
   let distance = mix(b.distance, a.distance, h) - effectiveSmoothness * h * (1.0 - h);
-  let color = mix(b.color, a.color, h);
 
-  return SceneDistance(distance, color, effectiveSmoothness);
+  return SceneDistance(distance, effectiveSmoothness);
 }
 
 fn intersectDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> SceneDistance {
@@ -83,9 +82,8 @@ fn intersectDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> Sce
 
   let h = clamp(0.5 + 0.5 * (a.distance - b.distance) / effectiveSmoothness, 0.0, 1.0);
   let distance = mix(b.distance, a.distance, h) + effectiveSmoothness * h * (1.0 - h);
-  let color = mix(b.color, a.color, h);
 
-  return SceneDistance(distance, color, effectiveSmoothness);
+  return SceneDistance(distance, effectiveSmoothness);
 }
 
 fn subtractDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> SceneDistance {
@@ -94,7 +92,7 @@ fn subtractDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> Scen
 
   if (effectiveSmoothness <= 0.0001) {
     if (invertedBDistance > a.distance) {
-      return SceneDistance(invertedBDistance, b.color, b.smoothness);
+      return SceneDistance(invertedBDistance, b.smoothness);
     }
 
     return a;
@@ -102,13 +100,12 @@ fn subtractDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> Scen
 
   let h = clamp(0.5 + 0.5 * (a.distance - invertedBDistance) / effectiveSmoothness, 0.0, 1.0);
   let distance = mix(invertedBDistance, a.distance, h) + effectiveSmoothness * h * (1.0 - h);
-  let color = mix(b.color, a.color, h);
 
-  return SceneDistance(distance, color, effectiveSmoothness);
+  return SceneDistance(distance, effectiveSmoothness);
 }
 
 fn notDistance(value: SceneDistance) -> SceneDistance {
-  return SceneDistance(-value.distance, value.color, value.smoothness);
+  return SceneDistance(-value.distance, value.smoothness);
 }
 
 fn unionHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
@@ -186,7 +183,7 @@ ${mapSceneBody}
 function createEmptyMapSceneBody() {
   return /* wgsl */ `
 fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {
-  return sceneDistance(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0);
+  return sceneDistance(camera.renderInfo.y, 0.0);
 }
 
 fn mapSceneEval(point: vec3<f32>) -> SceneEval {

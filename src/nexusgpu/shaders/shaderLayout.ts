@@ -35,15 +35,23 @@ struct SceneHit {
   localPoint: vec3<f32>,
 };
 
-// raymarch用の軽量な距離評価結果。localPointとgradientはhit後のSceneEvalでだけ回収する。
+// raymarch用の軽量な距離評価結果。色やlocalPointはhit後のSceneEvalでだけ回収する。
 struct SceneDistance {
   distance: f32,
-  color: vec3<f32>,
   smoothness: f32,
 };
 
 // renderer内部の評価結果。gradInfo.xyzはworld space gradient、gradInfo.wはgradientの信頼フラグ。
 struct SceneEval {
+  distance: f32,
+  color: vec3<f32>,
+  smoothness: f32,
+  localPoint: vec3<f32>,
+  gradInfo: vec4<f32>,
+};
+
+// raymarch後のsurface情報。distanceはray originからの深度を表す。
+struct RaymarchHit {
   distance: f32,
   color: vec3<f32>,
   smoothness: f32,

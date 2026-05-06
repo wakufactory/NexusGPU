@@ -2,8 +2,16 @@ export const lightingShader = /* wgsl */ `
 // 距離場の勾配から法線を近似する。epsilonはデバッグUIから調整できる。
 fn estimateNormal(point: vec3<f32>) -> vec3<f32> {
   let sceneEval = mapSceneEval(point);
-  if (sceneEval.gradInfo.w > 0.5 && length(sceneEval.gradInfo.xyz) > 0.000001) {
-    return normalize(sceneEval.gradInfo.xyz);
+  return estimateNormalFromGradInfo(point, sceneEval.gradInfo);
+}
+
+fn estimateNormalFromHit(hit: RaymarchHit, point: vec3<f32>) -> vec3<f32> {
+  return estimateNormalFromGradInfo(point, hit.gradInfo);
+}
+
+fn estimateNormalFromGradInfo(point: vec3<f32>, gradInfo: vec4<f32>) -> vec3<f32> {
+  if (gradInfo.w > 0.5 && length(gradInfo.xyz) > 0.000001) {
+    return normalize(gradInfo.xyz);
   }
 
   let e = camera.renderInfo.w;
