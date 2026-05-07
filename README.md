@@ -45,4 +45,3 @@ function AnimatedSphere() {
   return <SdfSphere position={position} radius={1} color={[0.05, 0.74, 0.7]} />;
 }
 ```
-

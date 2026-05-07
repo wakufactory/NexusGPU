@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
+    "build:scene": "tsc && vite build --mode single-scene --outDir dist-scene",
     "preview": "vite preview --host 0.0.0.0",
     "scene:create": "node scripts/create-scene.mjs"
   },

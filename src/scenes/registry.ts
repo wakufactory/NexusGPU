@@ -75,7 +75,11 @@ export const SCENES = sceneJsonConfigs
 
 export type SceneId = (typeof SCENES)[number]["id"];
 
-export const DEFAULT_SCENE_ID: SceneId = sceneJsonConfigs[0].id;
+if (SCENES.length === 0) {
+  throw new Error("No usable scenes were found.");
+}
+
+export const DEFAULT_SCENE_ID: SceneId = SCENES[0].id;
 
 export function getSceneDefinition(sceneId: SceneId): AnyNexusSceneDefinition {
   return SCENES.find((scene) => scene.id === sceneId) ?? SCENES[0];
