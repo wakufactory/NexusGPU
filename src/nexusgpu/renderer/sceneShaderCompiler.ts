@@ -248,6 +248,7 @@ function compileExpandedSceneNode(
   customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
   pointExpression: string,
   mode: SceneCompileMode,
+  useDynamicGroupSmoothness = true,
 ): ExpandedSceneCompileResult {
   if (node.type === "primitive") {
     const objectIndex = state.objectIndex;
@@ -286,18 +287,28 @@ function compileExpandedSceneNode(
     );
   }
 
+  const groupObjectIndex = state.objectIndex;
+  const groupObjectName = useDynamicGroupSmoothness ? nextTempName("groupObject", state) : "";
+  if (useDynamicGroupSmoothness) {
+    state.objectIndex += 1;
+  }
   const children = node.children.map((child) =>
     compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, pointExpression, mode),
   );
   const hitName = nextTempName("groupHit", state);
-  const smoothness = formatWgslFloat(node.smoothness);
+  const smoothness = useDynamicGroupSmoothness
+    ? `${groupObjectName}.colorSmooth.w`
+    : formatWgslFloat(node.smoothness);
+  const groupObjectLine = useDynamicGroupSmoothness ? [`  let ${groupObjectName} = objects[${groupObjectIndex}u];`] : [];
 
   if (children.length === 0) {
     return {
-      code:
+      code: [
+        ...groupObjectLine,
         mode === "eval"
           ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
           : `  let ${hitName} = sceneDistance(camera.renderInfo.y, 0.0);`,
+      ].join("\n"),
       hitName,
       smoothnessExpression: smoothness,
     };
@@ -306,13 +317,17 @@ function compileExpandedSceneNode(
   if (node.op === "not") {
     const notFunction = mode === "eval" ? "notHit" : "notDistance";
     return {
-      code: [children[0].code, `  let ${hitName} = ${notFunction}(${children[0].hitName});`].join("\n"),
+      code: [
+        ...groupObjectLine,
+        children[0].code,
+        `  let ${hitName} = ${notFunction}(${children[0].hitName});`,
+      ].join("\n"),
       hitName,
       smoothnessExpression: smoothness,
     };
   }
 
-  const lines = children.map((child) => child.code);
+  const lines = [...groupObjectLine, ...children.map((child) => child.code)];
   lines.push(`  var ${hitName} = ${children[0].hitName};`);
 
   for (const child of children.slice(1)) {
@@ -394,6 +409,7 @@ function compileExpandedModifierNode(
     customModifierFunctionNames,
     childPointExpression,
     mode,
+    node.children.length === 1,
   );
   lines.push(childResult.code);
 
@@ -581,7 +597,7 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
       .join(",")})`;
   }
 
-  return `group:${node.op}:${formatWgslFloat(node.smoothness)}(${node.children
+  return `group:${node.op}(${node.children
     .map(createSceneNodeTopologySignature)
     .join(",")})`;
 }

@@ -412,7 +412,7 @@ export function BoxAndNotSphereScene() {
 </SdfGroup>
 ```
 
-現在の実装では、グループ構造はGPU上で命令列として解釈されず、レンダラがWGSLの`mapSceneDistance()` / `mapSceneEval()`へ展開します。そのため数十object程度のsceneでは軽く動きますが、`op`やグループ構成、グループの`smoothness`を頻繁に変更するとShader Module / Render Pipelineの再生成が発生します。毎フレーム動かす値は、primitiveの`position`、`rotation`、`radius`、`size`、`color`、`data0-2`などにするのが安全です。
+現在の実装では、グループ構造はGPU上で命令列として解釈されず、レンダラがWGSLの`mapSceneDistance()` / `mapSceneEval()`へ展開します。そのため数十object程度のsceneでは軽く動きますが、`op`やグループ構成を変更するとShader Module / Render Pipelineの再生成が発生します。グループの`smoothness`はStorage Buffer上の動的値として扱われるため、primitiveの`position`、`rotation`、`radius`、`size`、`color`、`data0-2`などと同じく、値だけの変更なら再生成は不要です。
 
 `SdfFunction`をグループに含める場合は、必要に応じて`bounds`を指定してください。現在はGPU側の枝刈りには使っていませんが、グループのbounding sphereメタデータとして保持されます。
 

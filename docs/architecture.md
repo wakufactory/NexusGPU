@@ -370,7 +370,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。グループ自体はStorage Bufferへは入りません。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`がシーン木をたどり、primitiveとmodifierの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。`SdfGroup`もboolean合成時の`smoothness`を動的に読むため、補助レコードとして同じbufferへ入ります。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`がシーン木をたどり、primitive、group、modifierの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
 
 例として、次のシーン木がある場合:
 
@@ -389,18 +389,20 @@ Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ24個の`f32
 ```wgsl
 fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {
   var best = sceneDistance(camera.renderInfo.y, 0.0);
-  let object0 = objects[0u];
-  let localPoint1 = rotateByQuaternion(point - object0.positionKind.xyz, vec4<f32>(-object0.rotation.xyz, object0.rotation.w));
-  let hit2 = sceneDistance(sdSphere(localPoint1, object0.data0.x), object0.colorSmooth.w);
-  let object3 = objects[1u];
-  let localPoint4 = rotateByQuaternion(point - object3.positionKind.xyz, vec4<f32>(-object3.rotation.xyz, object3.rotation.w));
-  let hit5 = sceneDistance(sdSphere(localPoint4, object3.data0.x), object3.colorSmooth.w);
-  var groupHit6 = unionDistance(hit2, hit5, 0.7);
-  let object7 = objects[2u];
-  let localPoint8 = rotateByQuaternion(point - object7.positionKind.xyz, vec4<f32>(-object7.rotation.xyz, object7.rotation.w));
-  let hit9 = sceneDistance(customSdfFunction0(localPoint8, object7.data0, object7.data1, object7.data2), object7.colorSmooth.w);
-  var groupHit10 = intersectDistance(groupHit6, hit9, 0.7);
-  best = unionDistance(best, groupHit10, 0.7);
+  let groupObject0 = objects[0u];
+  let groupObject1 = objects[1u];
+  let object2 = objects[2u];
+  let localPoint3 = rotateByQuaternion(point - object2.positionKind.xyz, vec4<f32>(-object2.rotation.xyz, object2.rotation.w));
+  let hit4 = sceneDistance(sdSphere(localPoint3, object2.data0.x), object2.colorSmooth.w);
+  let object5 = objects[3u];
+  let localPoint6 = rotateByQuaternion(point - object5.positionKind.xyz, vec4<f32>(-object5.rotation.xyz, object5.rotation.w));
+  let hit7 = sceneDistance(sdSphere(localPoint6, object5.data0.x), object5.colorSmooth.w);
+  var groupHit8 = unionDistance(hit4, hit7, groupObject1.colorSmooth.w);
+  let object9 = objects[4u];
+  let localPoint10 = rotateByQuaternion(point - object9.positionKind.xyz, vec4<f32>(-object9.rotation.xyz, object9.rotation.w));
+  let hit11 = sceneDistance(customSdfFunction0(localPoint10, object9.data0, object9.data1, object9.data2), object9.colorSmooth.w);
+  var groupHit12 = intersectDistance(groupHit8, hit11, groupObject0.colorSmooth.w);
+  best = unionDistance(best, groupHit12, groupObject0.colorSmooth.w);
   return best;
 }
 
@@ -628,6 +630,8 @@ data2        = [data[2].x, data[2].y, data[2].z, data[2].w]
 colorSmooth  = [color.r, color.g, color.b, smoothness]
 rotation     = [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
 ```
+
+`SdfGroup`の補助レコードでは`colorSmooth.w`にグループsmoothnessを入れ、他の値は評価には使いません。`SdfModifier`の補助レコードでは`data0-2`だけを使います。
 
 `WebGpuSdfRenderer.uploadObjects()`がこのレイアウトへ詰め替えます。`SdfFunction`もGPU側のレコード構造は変えず、`kind`だけを動的kind IDにして、`data0-2`をcustom SDF関数の引数として使います。
 
@@ -909,11 +913,11 @@ WebGpuSdfRenderer.updateFps()
 
 - 組み込みSDFプリミティブはsphere、box、cylinder、torus、ellipsoid
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
-- `SdfGroup`の構造、boolean演算、グループsmoothnessが変わると、展開済みscene mapが変わるためShader Module / Render Pipelineを再生成する
-- primitiveのposition、rotation、color、size、radius、dataなどの値だけが変わる場合は、原則としてStorage Buffer更新だけで済む
+- `SdfGroup`の構造やboolean演算が変わると、展開済みscene mapが変わるためShader Module / Render Pipelineを再生成する
+- primitiveのposition、rotation、color、size、radius、data、グループsmoothnessなどの値だけが変わる場合は、原則としてStorage Buffer更新だけで済む
 - ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と展開済みscene map内の直接呼び出しが増える
 - `SdfGroup`は現在、常にWGSLへ展開される。数十オブジェクト規模を想定しており、大量オブジェクトではshaderコードサイズやpipeline再生成コストが課題になる
-- オブジェクト数上限は`MAX_SDF_OBJECTS = 128`
+- Storage Bufferレコード数上限は`MAX_SDF_OBJECTS = 128`。primitiveだけでなく、groupとmodifierの補助レコードも含む
 - Storage Bufferは変更時に全体再アップロード
 - BVH、空間分割、boundsによるGPU枝刈りは未実装
 - Compute Shaderはまだ未使用
