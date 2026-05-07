@@ -296,6 +296,36 @@ export const CUSTOM_SDF_PRIMITIVE_KIND_START = 5;
 
 新しい組み込みSDFプリミティブを追加する場合は、まずこの表へ名前とIDを追加し、`CUSTOM_SDF_PRIMITIVE_KIND_START`を組み込みkind IDの最大値 + 1 に更新します。ユーザー定義の一時的なSDFは`SdfFunction`で扱い、専用kindとして固定登録しません。
 
+### 新しい組み込みSDFプリミティブの追加
+
+試作やscene固有の形状は、まず`<SdfFunction />`でWGSLを直接渡す方が変更範囲を小さくできます。複数sceneで再利用する、props APIとして公開する、解析的gradientを標準提供する、といった理由がある場合だけ組み込みprimitiveとして追加します。
+
+追加時の変更点:
+
+1. `src/nexusgpu/sdfKinds.ts`へprimitive名と固定kind IDを追加し、`CUSTOM_SDF_PRIMITIVE_KIND_START`を組み込みkind IDの最大値 + 1 に更新する
+2. `src/nexusgpu/types.ts`へ`SdfXxxProps`を追加する。追加パラメータは最終的に`SdfNode.data`の`data0`、`data1`、`data2`へ入るため、GPU側の`vec4<f32>`境界を意識して割り当てる
+3. `src/nexusgpu/primitives.tsx`へReact componentを追加する。propsを正規化し、`SdfNode`の`kind`、`position`、`rotation`、`color`、`data`、`smoothness`、`bounds`を作って`target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds })`で登録する。unmount時は`target.removeSceneNode(id)`で解除する
+4. `src/nexusgpu/shaders/shaderLibrary.ts`へWGSLのSDF距離関数と、可能なら解析的gradient関数を追加する
+5. `src/nexusgpu/shaders/sdfPrimitivesShader.ts`で追加したWGSLチャンクを`#include <sdf/...>`する
+6. `src/nexusgpu/renderer/sceneShaderCompiler.ts`の`createPrimitiveHitExpression()`へprimitive種別の分岐を追加し、distance pathとeval pathの式を生成する
+7. `src/nexusgpu/index.ts`からcomponentとprops型をexportする
+8. 新しいcomponentを使うsceneを作り、`npm run build`で型とbundleを確認する
+
+`createPrimitiveHitExpression()`では、組み込みprimitiveは通常`createBuiltinHit(distanceExpression, localGradExpression)`で返します。distance pathでは`distanceExpression`だけが`SceneDistance`へ入り、色やgradientは計算されません。eval pathでは`SceneEval`に色、smoothness、localPoint、world space gradientが入ります。
+
+例:
+
+```ts
+if (node.kind === "torus") {
+  return createBuiltinHit(
+    `sdTorus(${localPointName}, ${objectName}.data0.xy)`,
+    `sdTorusGrad(${localPointName}, ${objectName}.data0.xy)`,
+  );
+}
+```
+
+解析的gradientが未実装の段階では`sceneEvalNoGrad(...)`へ落とせますが、そのprimitiveが最終hitになると`estimateNormalFromHit()`は有限差分fallbackとして`mapSceneDistance()`を4回呼びます。標準primitiveとして追加する場合は、距離関数と同時に`sdXxxGrad()`も用意するのが基本です。
+
 ### SceneStore.ts
 
 React propsから生成されたシーン状態を保持するストアです。
@@ -756,6 +786,55 @@ sequenceDiagram
 描画はフルスクリーン三角形を1枚だけ描きます。実際の球や箱の形状は頂点として存在せず、Fragment Shaderが各ピクセルでレイを飛ばしてSDFを評価します。
 
 ## レイマーチングの流れ
+
+```mermaid
+sequenceDiagram
+  participant Fragment as fragmentMain
+  participant Raymarch as raymarch
+  participant Distance as mapSceneDistance
+  participant Eval as mapSceneEval
+  participant Material as shadeMaterial
+  participant Lighting as estimateNormalFromHit
+
+  Fragment->>Fragment: screenUvからrayOrigin / directionを生成
+  Fragment->>Raymarch: raymarch(rayOrigin, direction)
+  Raymarch->>Distance: mapSceneDistance(rayOrigin)
+  loop i < maxSteps && depth <= maxDistance
+    Raymarch->>Raymarch: point = origin + direction * depth
+    Raymarch->>Distance: mapSceneDistance(point)
+    alt abs(distance) < surfaceEpsilon
+      Raymarch->>Eval: mapSceneEval(point)
+      Eval-->>Raymarch: color / smoothness / localPoint / gradInfo
+      Raymarch-->>Fragment: RaymarchHit(depth, color, smoothness, localPoint, gradInfo)
+    else sign changed
+      Raymarch->>Distance: binary refine with mapSceneDistance(mid)
+      Raymarch->>Eval: mapSceneEval(refinedPoint)
+      Eval-->>Raymarch: refined surface data
+      Raymarch-->>Fragment: RaymarchHit(refinedDepth, color, smoothness, localPoint, gradInfo)
+    else still marching
+      Raymarch->>Raymarch: depth += max(abs(distance), surfaceEpsilon * 0.5)
+    end
+  end
+  alt hit.distance > 0.0
+    Fragment->>Material: shadeMaterial(hit, rayOrigin, direction)
+    Material->>Lighting: estimateNormalFromHit(hit, point)
+    alt hit.gradInfo is valid
+      Lighting-->>Material: normalize(hit.gradInfo.xyz)
+    else gradient fallback
+      Lighting->>Distance: mapSceneDistance(point + tetrahedral offsets)
+      Distance-->>Lighting: 4 distance samples
+      Lighting-->>Material: finite difference normal
+    end
+    opt shadows enabled
+      Material->>Raymarch: raymarch(shadowPoint, lightDirection)
+      Raymarch->>Distance: shadow ray uses distance-only path
+      Raymarch-->>Material: shadow hit / miss
+    end
+    Material-->>Fragment: shaded color
+  else miss
+    Fragment->>Fragment: background(direction)
+  end
+```
 
 1. `fragmentMain()`がピクセル座標からカメラレイを作る
 2. `raymarch()`がレイ上の現在位置を計算する
