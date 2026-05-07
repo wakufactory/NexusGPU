@@ -133,7 +133,7 @@ fn rotateByQuaternion(point: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
 }
 `,
   "noise/simplex": /* wgsl */ `
-// 3D simplex noise。戻り値はおおむね[-1, 1]。
+// 3D/4D simplex noise。戻り値はおおむね[-1, 1]。
 fn simplexMod289Vec3(x: vec3<f32>) -> vec3<f32> {
   return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
@@ -148,6 +148,15 @@ fn simplexPermute(x: vec4<f32>) -> vec4<f32> {
 
 fn simplexTaylorInvSqrt(r: vec4<f32>) -> vec4<f32> {
   return vec4<f32>(1.79284291400159) - 0.85373472095314 * r;
+}
+
+fn simplexGrad4(j: f32, ip: vec4<f32>) -> vec4<f32> {
+  let ones = vec4<f32>(1.0, 1.0, 1.0, -1.0);
+  let pxyz = floor(fract(vec3<f32>(j) * ip.xyz) * 7.0) * ip.z - vec3<f32>(1.0);
+  let pw = 1.5 - dot(abs(pxyz), ones.xyz);
+  let p = vec4<f32>(pxyz, pw);
+  let s = select(vec4<f32>(0.0), vec4<f32>(1.0), p < vec4<f32>(0.0));
+  return vec4<f32>(pxyz + (s.xyz * 2.0 - vec3<f32>(1.0)) * vec3<f32>(s.w), pw);
 }
 
 fn simplexNoise3d(point: vec3<f32>) -> f32 {
@@ -208,6 +217,68 @@ fn simplexNoise3d(point: vec3<f32>) -> f32 {
   var m = max(vec4<f32>(0.6) - vec4<f32>(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), vec4<f32>(0.0));
   m *= m;
   return 42.0 * dot(m * m, vec4<f32>(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+fn simplexNoise4d(point: vec4<f32>) -> f32 {
+  let c = vec2<f32>(0.1381966011250105, 0.30901699437494745);
+
+  var i = floor(point + dot(point, c.yyyy));
+  let x0 = point - i + dot(i, c.xxxx);
+
+  let isX = step(x0.yzw, x0.xxx);
+  let isYZ = step(x0.zww, x0.yyz);
+
+  var i0 = vec4<f32>(isX.x + isX.y + isX.z, 1.0 - isX.x, 1.0 - isX.y, 1.0 - isX.z);
+  i0 = vec4<f32>(
+    i0.x,
+    i0.y + isYZ.x + isYZ.y,
+    i0.z + (1.0 - isYZ.x) + isYZ.z,
+    i0.w + (1.0 - isYZ.y) + (1.0 - isYZ.z)
+  );
+
+  let i3 = clamp(i0, vec4<f32>(0.0), vec4<f32>(1.0));
+  let i2 = clamp(i0 - vec4<f32>(1.0), vec4<f32>(0.0), vec4<f32>(1.0));
+  let i1 = clamp(i0 - vec4<f32>(2.0), vec4<f32>(0.0), vec4<f32>(1.0));
+
+  let x1 = x0 - i1 + c.xxxx;
+  let x2 = x0 - i2 + 2.0 * c.xxxx;
+  let x3 = x0 - i3 + 3.0 * c.xxxx;
+  let x4 = x0 - vec4<f32>(1.0) + 4.0 * c.xxxx;
+
+  i = simplexMod289Vec4(i);
+  let j0 = simplexPermute(simplexPermute(simplexPermute(simplexPermute(vec4<f32>(i.w)) + vec4<f32>(i.z)) + vec4<f32>(i.y)) + vec4<f32>(i.x)).x;
+  let j1 = simplexPermute(
+    simplexPermute(
+      simplexPermute(
+        simplexPermute(vec4<f32>(i.w) + vec4<f32>(i1.w, i2.w, i3.w, 1.0)) + vec4<f32>(i.z) + vec4<f32>(i1.z, i2.z, i3.z, 1.0)
+      ) + vec4<f32>(i.y) + vec4<f32>(i1.y, i2.y, i3.y, 1.0)
+    ) + vec4<f32>(i.x) + vec4<f32>(i1.x, i2.x, i3.x, 1.0)
+  );
+
+  let ip = vec4<f32>(1.0 / 294.0, 1.0 / 49.0, 1.0 / 7.0, 0.0);
+
+  var p0 = simplexGrad4(j0, ip);
+  var p1 = simplexGrad4(j1.x, ip);
+  var p2 = simplexGrad4(j1.y, ip);
+  var p3 = simplexGrad4(j1.z, ip);
+  var p4 = simplexGrad4(j1.w, ip);
+
+  let norm0 = simplexTaylorInvSqrt(vec4<f32>(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+  p0 *= norm0.x;
+  p1 *= norm0.y;
+  p2 *= norm0.z;
+  p3 *= norm0.w;
+  p4 *= simplexTaylorInvSqrt(vec4<f32>(dot(p4, p4))).x;
+
+  var m0 = max(vec3<f32>(0.6) - vec3<f32>(dot(x0, x0), dot(x1, x1), dot(x2, x2)), vec3<f32>(0.0));
+  var m1 = max(vec2<f32>(0.6) - vec2<f32>(dot(x3, x3), dot(x4, x4)), vec2<f32>(0.0));
+  m0 *= m0;
+  m1 *= m1;
+
+  return 49.0 * (
+    dot(m0 * m0, vec3<f32>(dot(p0, x0), dot(p1, x1), dot(p2, x2))) +
+    dot(m1 * m1, vec2<f32>(dot(p3, x3), dot(p4, x4)))
+  );
 }
 
 fn simplexNoise(point: vec3<f32>) -> f32 {
