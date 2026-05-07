@@ -136,8 +136,11 @@ function saveActiveSceneId(sceneId: SceneId) {
   }
 }
 
-function getInitialRenderSettings() {
-  return mergeStoredObject(INITIAL_RENDER_SETTINGS, readStorageJson(RENDER_SETTINGS_STORAGE_KEY));
+function getInitialRenderSettings(sceneId: SceneId) {
+  const storedSettings = readStorageJson(RENDER_SETTINGS_STORAGE_KEY);
+  const scene = getSceneDefinition(sceneId);
+  const baseSettings = mergeStoredObject(INITIAL_RENDER_SETTINGS, storedSettings);
+  return mergeStoredObject(baseSettings, scene.initialRenderSettings);
 }
 
 function saveRenderSettings(settings: typeof INITIAL_RENDER_SETTINGS) {
@@ -162,9 +165,9 @@ function saveSceneParameters(sceneId: SceneId, parameters: object) {
 export function App() {
   const { shellRef, isFullscreen, fullscreenStyle, toggleFullscreen } = useFullscreenViewport();
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
-  const [renderSettings, setRenderSettings] = useState(getInitialRenderSettings);
-  const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [activeSceneId, setActiveSceneId] = useState<SceneId>(getInitialActiveSceneId);
+  const [renderSettings, setRenderSettings] = useState(() => getInitialRenderSettings(activeSceneId));
+  const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [renderStats, setRenderStats] = useState<NexusRenderStats | null>(null);
   const activeScene = getSceneDefinition(activeSceneId);
   const [sceneParameters, setSceneParameters] = useState<object>(() =>
@@ -208,6 +211,7 @@ export function App() {
 
   const changeScene = (sceneId: SceneId) => {
     setActiveSceneId(sceneId);
+    setRenderSettings(getInitialRenderSettings(sceneId));
     setSceneParameters(getStoredSceneParameters(sceneId));
     saveActiveSceneId(sceneId);
   };

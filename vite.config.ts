@@ -118,11 +118,14 @@ function sceneRegistryPlugin(mode: string): Plugin {
         }
 
         const initialParameters = sceneModule.initialParameters ?? {};
+        const initialRenderSettingsKey = "initial" + "RenderSettings";
+        const initialRenderSettings = sceneModule[initialRenderSettingsKey];
         const scene = {
           id: ${jsonString(scene.id)},
           title: ${jsonString(scene.title)},
           description: ${jsonString(scene.description)},
           initialParameters,
+          initialRenderSettings,
           parameterControls: resolveParameterControls(initialParameters),
           Component: sceneModule.Scene,
         };
