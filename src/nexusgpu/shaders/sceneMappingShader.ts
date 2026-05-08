@@ -122,7 +122,7 @@ fn unionHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
   let h = clamp(0.5 + 0.5 * (b.distance - a.distance) / effectiveSmoothness, 0.0, 1.0);
   let distance = mix(b.distance, a.distance, h) - effectiveSmoothness * h * (1.0 - h);
   let color = mix(b.color, a.color, h);
-  let localPoint = mix(b.localPoint, a.localPoint, h);
+  let localPoint = select(b.localPoint, a.localPoint, a.distance <= b.distance);
   let grad = mix(b.gradInfo.xyz, a.gradInfo.xyz, h);
   let hasGrad = b.gradInfo.w * a.gradInfo.w;
 
@@ -143,7 +143,7 @@ fn intersectHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
   let h = clamp(0.5 + 0.5 * (a.distance - b.distance) / effectiveSmoothness, 0.0, 1.0);
   let distance = mix(b.distance, a.distance, h) + effectiveSmoothness * h * (1.0 - h);
   let color = mix(b.color, a.color, h);
-  let localPoint = mix(b.localPoint, a.localPoint, h);
+  let localPoint = select(b.localPoint, a.localPoint, a.distance >= b.distance);
   let grad = mix(b.gradInfo.xyz, a.gradInfo.xyz, h);
   let hasGrad = b.gradInfo.w * a.gradInfo.w;
 
@@ -165,7 +165,7 @@ fn subtractHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
   let h = clamp(0.5 + 0.5 * (a.distance - invertedBDistance) / effectiveSmoothness, 0.0, 1.0);
   let distance = mix(invertedBDistance, a.distance, h) + effectiveSmoothness * h * (1.0 - h);
   let color = mix(b.color, a.color, h);
-  let localPoint = mix(b.localPoint, a.localPoint, h);
+  let localPoint = select(b.localPoint, a.localPoint, a.distance >= invertedBDistance);
   let grad = mix(-b.gradInfo.xyz, a.gradInfo.xyz, h);
   let hasGrad = b.gradInfo.w * a.gradInfo.w;
 
