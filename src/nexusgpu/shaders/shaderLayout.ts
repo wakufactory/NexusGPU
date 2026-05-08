@@ -61,4 +61,12 @@ struct RaymarchHit {
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<storage, read> objects: array<SdfObject, MAX_OBJECTS>;
+@group(0) @binding(2) var sampler0: sampler;
+@group(0) @binding(3) var sampler1: sampler;
+@group(0) @binding(4) var sampler2: sampler;
+@group(0) @binding(5) var sampler3: sampler;
+@group(0) @binding(6) var texture0: texture_2d<f32>;
+@group(0) @binding(7) var texture1: texture_2d<f32>;
+@group(0) @binding(8) var texture2: texture_2d<f32>;
+@group(0) @binding(9) var texture3: texture_2d<f32>;
 `;

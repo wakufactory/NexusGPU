@@ -9,10 +9,17 @@ import {
   OBJECT_BUFFER_SIZE,
   OBJECT_STRIDE_FLOATS,
 } from "./renderer/sceneBuffers";
+import {
+  MAX_SCENE_TEXTURES,
+  SCENE_SAMPLER_BINDING_START,
+  SCENE_TEXTURE_BINDING_START,
+  SceneTextureBindings,
+} from "./renderer/sceneTextures";
 import type {
   NexusMaterialShader,
   NexusRenderSettings,
   NexusRenderStats,
+  NexusTextureSource,
   SceneSnapshot,
   SdfNode,
   SdfSceneNode,
@@ -51,6 +58,7 @@ export class WebGpuSdfRenderer {
   private readonly sceneBindGroupLayout: GPUBindGroupLayout;
   private readonly pipelineLayout: GPUPipelineLayout;
   private readonly resizeObserver: ResizeObserver;
+  private readonly sceneTextures: SceneTextureBindings;
   private readonly objectData = new Float32Array(MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS);
   private readonly cameraData = new Float32Array(CAMERA_FLOATS);
   private pipeline: GPURenderPipeline;
@@ -102,6 +110,8 @@ export class WebGpuSdfRenderer {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
+    this.sceneTextures = new SceneTextureBindings(device);
+
     this.sceneBindGroupLayout = device.createBindGroupLayout({
       label: "NexusGPU Scene Bind Group Layout",
       entries: [
@@ -121,6 +131,19 @@ export class WebGpuSdfRenderer {
             minBindingSize: OBJECT_BUFFER_SIZE,
           },
         },
+        ...Array.from({ length: MAX_SCENE_TEXTURES }, (_value, index) => ({
+          binding: SCENE_SAMPLER_BINDING_START + index,
+          visibility: GPUShaderStage.FRAGMENT,
+          sampler: { type: "filtering" as GPUSamplerBindingType },
+        })),
+        ...Array.from({ length: MAX_SCENE_TEXTURES }, (_value, index) => ({
+          binding: SCENE_TEXTURE_BINDING_START + index,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: {
+            sampleType: "float" as GPUTextureSampleType,
+            viewDimension: "2d" as GPUTextureViewDimension,
+          },
+        })),
       ],
     });
     this.pipelineLayout = device.createPipelineLayout({
@@ -229,6 +252,16 @@ export class WebGpuSdfRenderer {
     this.resizeObserver.disconnect();
     this.cameraBuffer.destroy();
     this.objectBuffer.destroy();
+    this.sceneTextures.destroy();
+  }
+
+  setTextures(textures: readonly NexusTextureSource[] | undefined) {
+    this.sceneTextures.setTextures(textures, () => {
+      this.bindGroup = this.createSceneBindGroup();
+      if (!this.renderingEnabled) {
+        this.scheduleRenderOnce();
+      }
+    });
   }
 
   /** CSSサイズ、devicePixelRatio、解像度スケールから実際の描画ピクセル数を決める。 */
@@ -434,13 +467,26 @@ export class WebGpuSdfRenderer {
     const bindGroup = this.device.createBindGroup({
       label: "NexusGPU Scene Bind Group",
       layout: this.sceneBindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.cameraBuffer } },
-        { binding: 1, resource: { buffer: this.objectBuffer } },
-      ],
+      entries: this.createSceneBindGroupEntries(),
     });
 
     return { pipeline, bindGroup };
+  }
+
+  private createSceneBindGroup() {
+    return this.device.createBindGroup({
+      label: "NexusGPU Scene Bind Group",
+      layout: this.sceneBindGroupLayout,
+      entries: this.createSceneBindGroupEntries(),
+    });
+  }
+
+  private createSceneBindGroupEntries(): GPUBindGroupEntry[] {
+    return [
+      { binding: 0, resource: { buffer: this.cameraBuffer } },
+      { binding: 1, resource: { buffer: this.objectBuffer } },
+      ...this.sceneTextures.createBindGroupEntries(),
+    ];
   }
 
   /** 組み込みprimitiveは固定ID、SdfFunctionは関数文字列ごとに割り当てた動的IDを返す。 */

@@ -484,6 +484,47 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 `background`は未ヒット時の背景色です。`yPositive`がレイ方向のY+側、`yNegative`がY-側の色で、レンダラはこの2色を`direction.y`に応じてグラデーションします。色はprimitiveの`color`と同じRGBの`[r, g, b]`で、各値はおおむね`0.0`から`1.0`で指定します。
 
+## Textureを使う
+
+sceneからWGSLへ画像を渡したい場合は、`NexusCanvas`の`textures`へ最大4枚まで指定します。シェーダ側では固定名の`texture0`、`texture1`、`texture2`、`texture3`と、対応する`sampler0`、`sampler1`、`sampler2`、`sampler3`を参照できます。
+
+`public`フォルダ内の画像は、実行時の公開パスで指定します。たとえば`public/tex1024.png`は`"/tex1024.png"`です。外部URLを使う場合は、必要に応じて`crossOrigin: "anonymous"`を指定します。ただし配信元がCORSを許可していない画像はブラウザ側で読み込めません。
+
+```tsx
+<NexusCanvas
+  {...canvasProps}
+  camera={{ position: [0, 2.8, 5.2], target: [0, 0, 0], fov: 48 }}
+  textures={[
+    {
+      src: "/tex1024.png",
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+      magFilter: "linear",
+      minFilter: "linear",
+    },
+    {
+      src: "https://example.com/mask.png",
+      crossOrigin: "anonymous",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
+      magFilter: "nearest",
+      minFilter: "nearest",
+    },
+  ]}
+>
+  <SceneContent parameters={parameters} />
+</NexusCanvas>
+```
+
+material shaderや`SdfFunction`内のWGSLでは、通常のWGSL texture samplingとして使います。
+
+```wgsl
+let uv = fract(hit.localPoint.xz * 0.25);
+let albedo = textureSample(texture0, sampler0, uv).rgb;
+```
+
+samplerはtextureごとに独立しています。`texture0`をlinear repeat、`texture1`をnearest clampにするような指定ができます。未指定のslotや読み込みに失敗したslotは白1pxのfallback textureになるため、`texture0-3`は常に参照可能です。
+
 作成したsceneをアプリの切り替え対象にするには、`src/scenes/scenes.json`へ追加します。
 
 ```json

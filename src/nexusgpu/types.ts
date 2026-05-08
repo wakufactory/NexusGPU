@@ -37,6 +37,26 @@ export type NexusLighting = {
 /** sceneごとに差し替えるmaterial WGSL。shadeMaterial(hit: RaymarchHit, ...)関数全体を定義する。 */
 export type NexusMaterialShader = string;
 
+export type NexusTextureCrossOrigin = "" | "anonymous" | "use-credentials";
+
+export type NexusTextureSource =
+  | string
+  | ({
+      src: string;
+      crossOrigin?: NexusTextureCrossOrigin;
+    } & Pick<
+      GPUSamplerDescriptor,
+      | "addressModeU"
+      | "addressModeV"
+      | "addressModeW"
+      | "magFilter"
+      | "minFilter"
+      | "mipmapFilter"
+      | "lodMinClamp"
+      | "lodMaxClamp"
+      | "maxAnisotropy"
+    >);
+
 /** 未ヒット時に表示する背景色。Y軸方向の上下2色を補間する。 */
 export type NexusBackground = {
   yPositive?: Vec3;
@@ -155,6 +175,7 @@ export type NexusCanvasProps = {
   lighting?: NexusLighting;
   background?: NexusBackground;
   materialShader?: NexusMaterialShader;
+  textures?: readonly NexusTextureSource[];
   orbitControls?: boolean;
   renderingEnabled?: boolean;
   renderSettings?: NexusRenderSettings;

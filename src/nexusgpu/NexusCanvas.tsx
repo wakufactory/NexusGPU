@@ -15,6 +15,7 @@ export function NexusCanvas({
   lighting,
   background,
   materialShader,
+  textures,
   orbitControls = false,
   renderingEnabled = true,
   renderSettings,
@@ -26,6 +27,7 @@ export function NexusCanvas({
   const elapsedRef = useRef(0);
   const renderSettingsRef = useRef(renderSettings);
   const materialShaderRef = useRef(materialShader);
+  const texturesRef = useRef(textures);
   const renderingEnabledRef = useRef(renderingEnabled);
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
@@ -76,6 +78,11 @@ export function NexusCanvas({
     rendererRef.current?.setMaterialShader(materialShader);
   }, [materialShader]);
 
+  useEffect(() => {
+    texturesRef.current = textures;
+    rendererRef.current?.setTextures(textures);
+  }, [textures]);
+
   // 子コンポーネント向けのフレームループ。useFrameでSDF propsを動かせるようにする。
   useEffect(() => {
     if (!renderingEnabled) {
@@ -121,6 +128,7 @@ export function NexusCanvas({
         renderer.setRenderSettings(renderSettingsRef.current);
         renderer.setRenderingEnabled(renderingEnabledRef.current);
         renderer.setMaterialShader(materialShaderRef.current);
+        renderer.setTextures(texturesRef.current);
         unsubscribe = store.subscribe((snapshot: SceneSnapshot) => {
           renderer.setScene(snapshot);
         });

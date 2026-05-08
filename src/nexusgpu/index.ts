@@ -25,6 +25,8 @@ export type {
   NexusMaterialShader,
   NexusRenderSettings,
   Quaternion,
+  NexusTextureCrossOrigin,
+  NexusTextureSource,
   SdfBooleanOperation,
   SdfBoundingSphere,
   SdfBoxProps,
