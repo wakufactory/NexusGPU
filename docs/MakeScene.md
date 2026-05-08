@@ -516,11 +516,11 @@ sceneからWGSLへ画像を渡したい場合は、`NexusCanvas`の`textures`へ
 </NexusCanvas>
 ```
 
-material shaderや`SdfFunction`内のWGSLでは、通常のWGSL texture samplingとして使います。
+material shaderや`SdfFunction`内のWGSLでは、固定LODの`textureSampleLevel()`でsampleします。`textureSample()`は暗黙のmipmap level計算に画面上の微分を使うため、raymarchやhit分岐の中ではWGSLのuniform control flow制約に引っかかります。
 
 ```wgsl
 let uv = fract(hit.localPoint.xz * 0.25);
-let albedo = textureSample(texture0, sampler0, uv).rgb;
+let albedo = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;
 ```
 
 samplerはtextureごとに独立しています。`texture0`をlinear repeat、`texture1`をnearest clampにするような指定ができます。未指定のslotや読み込みに失敗したslotは白1pxのfallback textureになるため、`texture0-3`は常に参照可能です。
