@@ -179,7 +179,7 @@ async function loadTexture(
     label: `NexusGPU Texture ${src}`,
     size: [bitmap.width, bitmap.height, 1],
     format: "rgba8unorm",
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
   });
 
   device.queue.copyExternalImageToTexture(
@@ -197,7 +197,7 @@ function createFallbackTexture(device: GPUDevice) {
     label: "NexusGPU Fallback Texture",
     size: [1, 1, 1],
     format: "rgba8unorm",
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
   });
 
   device.queue.writeTexture(
