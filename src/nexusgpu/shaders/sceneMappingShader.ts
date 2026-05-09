@@ -21,7 +21,27 @@ fn sceneDistanceFromEval(value: SceneEval) -> SceneDistance {
 }
 
 fn sceneEvalFromHit(value: SceneHit) -> SceneEval {
-  return SceneEval(value.distance, value.color, value.smoothness, value.localPoint, vec4<f32>(0.0, 0.0, 0.0, 0.0));
+  return SceneEval(
+    value.distance,
+    value.color,
+    value.smoothness,
+    value.localPoint,
+    vec4<f32>(0.0, 0.0, 0.0, 0.0),
+    0.0,
+    vec4<f32>(0.0)
+  );
+}
+
+fn sceneEvalFromHitWithMaterial(value: SceneHit, materialId: f32, materialUniform: vec4<f32>) -> SceneEval {
+  return SceneEval(
+    value.distance,
+    value.color,
+    value.smoothness,
+    value.localPoint,
+    vec4<f32>(0.0, 0.0, 0.0, 0.0),
+    materialId,
+    materialUniform
+  );
 }
 
 fn sceneEvalWithGrad(
@@ -29,17 +49,34 @@ fn sceneEvalWithGrad(
   color: vec3<f32>,
   smoothness: f32,
   localPoint: vec3<f32>,
-  grad: vec3<f32>
+  grad: vec3<f32>,
+  materialId: f32,
+  materialUniform: vec4<f32>
 ) -> SceneEval {
-  return SceneEval(distance, color, smoothness, localPoint, vec4<f32>(grad, 1.0));
+  return SceneEval(distance, color, smoothness, localPoint, vec4<f32>(grad, 1.0), materialId, materialUniform);
 }
 
-fn sceneEvalNoGrad(distance: f32, color: vec3<f32>, smoothness: f32, localPoint: vec3<f32>) -> SceneEval {
-  return SceneEval(distance, color, smoothness, localPoint, vec4<f32>(0.0, 0.0, 0.0, 0.0));
+fn sceneEvalNoGrad(
+  distance: f32,
+  color: vec3<f32>,
+  smoothness: f32,
+  localPoint: vec3<f32>,
+  materialId: f32,
+  materialUniform: vec4<f32>
+) -> SceneEval {
+  return SceneEval(distance, color, smoothness, localPoint, vec4<f32>(0.0, 0.0, 0.0, 0.0), materialId, materialUniform);
 }
 
 fn invalidateSceneEvalGrad(value: SceneEval) -> SceneEval {
-  return SceneEval(value.distance, value.color, value.smoothness, value.localPoint, vec4<f32>(0.0, 0.0, 0.0, 0.0));
+  return SceneEval(
+    value.distance,
+    value.color,
+    value.smoothness,
+    value.localPoint,
+    vec4<f32>(0.0, 0.0, 0.0, 0.0),
+    value.materialId,
+    value.materialUniform
+  );
 }
 
 fn rotateSceneEvalGrad(value: SceneEval, rotation: vec4<f32>) -> SceneEval {
@@ -48,8 +85,22 @@ fn rotateSceneEvalGrad(value: SceneEval, rotation: vec4<f32>) -> SceneEval {
     value.color,
     value.smoothness,
     value.localPoint,
-    vec4<f32>(rotateByQuaternion(value.gradInfo.xyz, rotation), value.gradInfo.w)
+    vec4<f32>(rotateByQuaternion(value.gradInfo.xyz, rotation), value.gradInfo.w),
+    value.materialId,
+    value.materialUniform
   );
+}
+
+fn sceneEvalWithMaterial(value: SceneEval, materialId: f32, materialUniform: vec4<f32>) -> SceneEval {
+  return SceneEval(value.distance, value.color, value.smoothness, value.localPoint, value.gradInfo, materialId, materialUniform);
+}
+
+fn chooseMaterialId(a: SceneEval, b: SceneEval, h: f32) -> f32 {
+  return select(a.materialId, b.materialId, h < 0.5);
+}
+
+fn chooseMaterialUniform(a: SceneEval, b: SceneEval, h: f32) -> vec4<f32> {
+  return select(a.materialUniform, b.materialUniform, vec4<bool>(h < 0.5));
 }
 
 fn unionDistance(a: SceneDistance, b: SceneDistance, smoothness: f32) -> SceneDistance {
@@ -126,7 +177,15 @@ fn unionHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
   let grad = mix(b.gradInfo.xyz, a.gradInfo.xyz, h);
   let hasGrad = b.gradInfo.w * a.gradInfo.w;
 
-  return SceneEval(distance, color, effectiveSmoothness, localPoint, vec4<f32>(grad, hasGrad));
+  return SceneEval(
+    distance,
+    color,
+    effectiveSmoothness,
+    localPoint,
+    vec4<f32>(grad, hasGrad),
+    chooseMaterialId(a, b, h),
+    chooseMaterialUniform(a, b, h)
+  );
 }
 
 fn intersectHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
@@ -147,7 +206,15 @@ fn intersectHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
   let grad = mix(b.gradInfo.xyz, a.gradInfo.xyz, h);
   let hasGrad = b.gradInfo.w * a.gradInfo.w;
 
-  return SceneEval(distance, color, effectiveSmoothness, localPoint, vec4<f32>(grad, hasGrad));
+  return SceneEval(
+    distance,
+    color,
+    effectiveSmoothness,
+    localPoint,
+    vec4<f32>(grad, hasGrad),
+    chooseMaterialId(a, b, h),
+    chooseMaterialUniform(a, b, h)
+  );
 }
 
 fn subtractHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
@@ -156,7 +223,15 @@ fn subtractHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
 
   if (effectiveSmoothness <= 0.0001) {
     if (invertedBDistance > a.distance) {
-      return SceneEval(invertedBDistance, b.color, b.smoothness, b.localPoint, vec4<f32>(-b.gradInfo.xyz, b.gradInfo.w));
+      return SceneEval(
+        invertedBDistance,
+        b.color,
+        b.smoothness,
+        b.localPoint,
+        vec4<f32>(-b.gradInfo.xyz, b.gradInfo.w),
+        b.materialId,
+        b.materialUniform
+      );
     }
 
     return a;
@@ -169,11 +244,27 @@ fn subtractHit(a: SceneEval, b: SceneEval, smoothness: f32) -> SceneEval {
   let grad = mix(-b.gradInfo.xyz, a.gradInfo.xyz, h);
   let hasGrad = b.gradInfo.w * a.gradInfo.w;
 
-  return SceneEval(distance, color, effectiveSmoothness, localPoint, vec4<f32>(grad, hasGrad));
+  return SceneEval(
+    distance,
+    color,
+    effectiveSmoothness,
+    localPoint,
+    vec4<f32>(grad, hasGrad),
+    chooseMaterialId(a, b, h),
+    chooseMaterialUniform(a, b, h)
+  );
 }
 
 fn notHit(value: SceneEval) -> SceneEval {
-  return SceneEval(-value.distance, value.color, value.smoothness, value.localPoint, vec4<f32>(-value.gradInfo.xyz, value.gradInfo.w));
+  return SceneEval(
+    -value.distance,
+    value.color,
+    value.smoothness,
+    value.localPoint,
+    vec4<f32>(-value.gradInfo.xyz, value.gradInfo.w),
+    value.materialId,
+    value.materialUniform
+  );
 }
 
 ${mapSceneBody}
@@ -187,7 +278,7 @@ fn mapSceneDistance(point: vec3<f32>) -> SceneDistance {
 }
 
 fn mapSceneEval(point: vec3<f32>) -> SceneEval {
-  return sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);
+  return sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point, 0.0, vec4<f32>(0.0));
 }
 
 fn mapScene(point: vec3<f32>) -> SceneHit {

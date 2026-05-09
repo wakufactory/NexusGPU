@@ -29,7 +29,15 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
 
       let evalHit = mapSceneEval(point);
       color = evalHit.color;
-      return RaymarchHit(depth, color, evalHit.smoothness, evalHit.localPoint, evalHit.gradInfo);
+      return RaymarchHit(
+        depth,
+        color,
+        evalHit.smoothness,
+        evalHit.localPoint,
+        evalHit.gradInfo,
+        evalHit.materialId,
+        evalHit.materialUniform
+      );
     }
 
     // 符号が変わったら直前区間を戻ってゼロ交差を探す。
@@ -55,7 +63,15 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
 
         let refinedEval = mapSceneEval(origin + direction * high);
         color = refinedEval.color;
-        return RaymarchHit(high, color, refinedEval.smoothness, refinedEval.localPoint, refinedEval.gradInfo);
+        return RaymarchHit(
+          high,
+          color,
+          refinedEval.smoothness,
+          refinedEval.localPoint,
+          refinedEval.gradInfo,
+          refinedEval.materialId,
+          refinedEval.materialUniform
+        );
       }
     }
 
@@ -74,6 +90,6 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
     }
   }
 
-  return RaymarchHit(-1.0, color, 0.0, vec3<f32>(0.0), vec4<f32>(0.0));
+  return RaymarchHit(-1.0, color, 0.0, vec3<f32>(0.0), vec4<f32>(0.0), 0.0, vec4<f32>(0.0));
 }
 `;

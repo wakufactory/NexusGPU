@@ -34,8 +34,14 @@ export type NexusLighting = {
   direction?: Vec3;
 };
 
-/** sceneごとに差し替えるmaterial WGSL。shadeMaterial(hit: RaymarchHit, ...)関数全体を定義する。 */
-export type NexusMaterialShader = string;
+export type NexusMaterialPreset = "default" | "normal" | "texture0Color" | "texture0Matcap";
+
+export type NexusMaterialRef =
+  | NexusMaterialPreset
+  | {
+      wgsl: string;
+      key?: string;
+    };
 
 export type NexusTextureCrossOrigin = "" | "anonymous" | "use-credentials";
 
@@ -109,6 +115,8 @@ export type SdfPrimitiveProps = {
   rotation?: Quaternion;
   color?: Vec3;
   smoothness?: number;
+  material?: NexusMaterialRef;
+  materialUniform?: Vec4;
 };
 
 /** 球プリミティブのprops。radiusはSDFの距離関数へ直接渡される。 */
@@ -151,6 +159,8 @@ export type SdfFunctionProps = SdfPrimitiveProps & {
 export type SdfGroupProps = {
   op?: SdfBooleanOperation;
   smoothness?: number;
+  material?: NexusMaterialRef;
+  materialUniform?: Vec4;
   children?: ReactNode;
 };
 
@@ -174,7 +184,6 @@ export type NexusCanvasProps = {
   camera?: NexusCamera;
   lighting?: NexusLighting;
   background?: NexusBackground;
-  materialShader?: NexusMaterialShader;
   textures?: readonly NexusTextureSource[];
   orbitControls?: boolean;
   renderingEnabled?: boolean;
@@ -193,6 +202,8 @@ export type SdfNode = {
   color: Vec3;
   data: SdfData;
   smoothness: number;
+  material?: NexusMaterialRef;
+  materialUniform: Vec4;
   bounds: SdfBoundingSphere;
   sdfFunction?: string;
 };
@@ -207,6 +218,8 @@ export type SdfGroupSceneNode = {
   type: "group";
   op: SdfBooleanOperation;
   smoothness: number;
+  material?: NexusMaterialRef;
+  materialUniform: Vec4;
   children: readonly SdfSceneNode[];
   bounds: SdfBoundingSphere;
 };

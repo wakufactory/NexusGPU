@@ -25,6 +25,8 @@ struct SdfObject {
   data2: vec4<f32>,
   colorSmooth: vec4<f32>,
   rotation: vec4<f32>,
+  materialInfo: vec4<f32>,
+  materialUniform: vec4<f32>,
 };
 
 // 距離場を評価した公開結果。smoothnessはこのhitがsmooth unionに参加できる幅。
@@ -48,6 +50,8 @@ struct SceneEval {
   smoothness: f32,
   localPoint: vec3<f32>,
   gradInfo: vec4<f32>,
+  materialId: f32,
+  materialUniform: vec4<f32>,
 };
 
 // raymarch後のsurface情報。distanceはray originからの深度を表す。
@@ -57,6 +61,19 @@ struct RaymarchHit {
   smoothness: f32,
   localPoint: vec3<f32>,
   gradInfo: vec4<f32>,
+  materialId: f32,
+  materialUniform: vec4<f32>,
+};
+
+struct MaterialInput {
+  color: vec3<f32>,
+  normal: vec3<f32>,
+  cam: vec3<f32>,
+  localPoint: vec3<f32>,
+  worldPoint: vec3<f32>,
+  rayDirection: vec3<f32>,
+  distance: f32,
+  materialUniform: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;

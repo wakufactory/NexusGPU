@@ -1,6 +1,12 @@
 import { CUSTOM_SDF_PRIMITIVE_KIND_START } from "../sdfKinds";
 import type { CustomSdfFunctionShader } from "../shaders";
-import type { NexusMaterialShader, SceneSnapshot } from "../types";
+import type { SceneSnapshot } from "../types";
+import {
+  createMaterialShaderPlan,
+  DEFAULT_MATERIAL_ID,
+  getBuiltinMaterialId,
+  getCustomMaterialKey,
+} from "./materialShaderCompiler";
 import {
   collectSdfFunctionSources,
   createCustomSdfFunctionSource,
@@ -20,16 +26,16 @@ export type SceneShaderPlan = {
   customShaders: readonly CustomSdfFunctionShader[];
   mapSceneBody: string;
   customSdfKindIds: ReadonlyMap<string, number>;
+  customMaterialIds: ReadonlyMap<string, number>;
+  materialSection: string;
   profile: SceneCompileProfile;
 };
 
 /** SceneSnapshotから、WebGPU pipeline作成に必要なshader可変部分をまとめて作る。 */
-export function createSceneShaderPlan(
-  snapshot: SceneSnapshot,
-  materialShader: NexusMaterialShader | undefined,
-): SceneShaderPlan {
+export function createSceneShaderPlan(snapshot: SceneSnapshot): SceneShaderPlan {
   const sdfFunctions = unique(collectSdfFunctionSources(snapshot.sceneNodes));
   const modifierFunctions = uniqueModifierFunctionSources(snapshot.sceneNodes);
+  const materialPlan = createMaterialShaderPlan(snapshot.sceneNodes);
 
   // 同じWGSL文字列は1つのcustom関数として共有し、scene内ではkind IDと関数名で参照する。
   const customSdfFunctions = sdfFunctions.map((sdfFunction, index) => {
@@ -96,7 +102,7 @@ export function createSceneShaderPlan(
     customModifierFunctionNames,
   );
   const signature = [
-    materialShader ?? "",
+    materialPlan.signature,
     sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
     modifierFunctions
       .map((modifierFunction) => `${modifierFunction.mode}:${modifierFunction.source}`)
@@ -109,6 +115,20 @@ export function createSceneShaderPlan(
     customShaders,
     mapSceneBody,
     customSdfKindIds,
+    customMaterialIds: materialPlan.customMaterialIds,
+    materialSection: materialPlan.shader,
     profile: createSceneCompileProfile(snapshot.sceneNodes, customSdfFunctionNames),
   };
+}
+
+export function getMaterialIdFromPlan(
+  material: import("../types").NexusMaterialRef | undefined,
+  customMaterialIds: ReadonlyMap<string, number>,
+) {
+  const builtinId = getBuiltinMaterialId(material);
+  if (builtinId !== null) {
+    return builtinId;
+  }
+
+  return material ? (customMaterialIds.get(getCustomMaterialKey(material)) ?? DEFAULT_MATERIAL_ID) : DEFAULT_MATERIAL_ID;
 }

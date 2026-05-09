@@ -14,7 +14,6 @@ export function NexusCanvas({
   camera,
   lighting,
   background,
-  materialShader,
   textures,
   orbitControls = false,
   renderingEnabled = true,
@@ -26,7 +25,6 @@ export function NexusCanvas({
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
   const elapsedRef = useRef(0);
   const renderSettingsRef = useRef(renderSettings);
-  const materialShaderRef = useRef(materialShader);
   const texturesRef = useRef(textures);
   const renderingEnabledRef = useRef(renderingEnabled);
   const [error, setError] = useState<string | null>(null);
@@ -72,11 +70,6 @@ export function NexusCanvas({
     renderingEnabledRef.current = renderingEnabled;
     rendererRef.current?.setRenderingEnabled(renderingEnabled);
   }, [renderingEnabled]);
-
-  useEffect(() => {
-    materialShaderRef.current = materialShader;
-    rendererRef.current?.setMaterialShader(materialShader);
-  }, [materialShader]);
 
   useEffect(() => {
     texturesRef.current = textures;
@@ -127,7 +120,6 @@ export function NexusCanvas({
         rendererRef.current = renderer;
         renderer.setRenderSettings(renderSettingsRef.current);
         renderer.setRenderingEnabled(renderingEnabledRef.current);
-        renderer.setMaterialShader(materialShaderRef.current);
         renderer.setTextures(texturesRef.current);
         unsubscribe = store.subscribe((snapshot: SceneSnapshot) => {
           renderer.setScene(snapshot);

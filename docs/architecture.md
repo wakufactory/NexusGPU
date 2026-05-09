@@ -60,7 +60,7 @@ src/
       sceneMappingShader.ts  SDF評価関数と展開済みscene mapの生成
       raymarchShader.ts      レイマーチング本体
       lightingShader.ts      法線推定と背景色
-      defaultMaterialShader.ts hit結果から最終的な材質色を計算
+      materialShaderCompiler.ts primitive/groupごとのmaterial preset / custom WGSLを生成
       fragmentShader.ts      カメラレイ生成、ライティング、最終色
 ```
 
@@ -467,7 +467,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
   -> sceneMappingShader
   -> raymarchShader
   -> lightingShader
-  -> defaultMaterialShader
+  -> generated material shader
   -> fragmentShader
 ```
 
@@ -480,12 +480,12 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `sceneMappingShader.ts`: boolean合成用の補助関数と、展開済み`mapSceneDistance()` / `mapSceneEval()`を含むシーン評価コードを生成する
 - `raymarchShader.ts`: `mapSceneDistance()`でレイを進め、hit確定時だけ`mapSceneEval()`を呼び、`RaymarchHit`を返す`raymarch`を定義する
 - `lightingShader.ts`: `estimateNormal`、`estimateNormalFromHit`、未ヒット時の`background`を定義する
-- `defaultMaterialShader.ts`: `RaymarchHit`の位置、色、gradient情報、ライト、影から材質色を計算する`shadeMaterial`を定義する
+- `renderer/materialShaderCompiler.ts`: primitive/groupごとのmaterial presetとcustom WGSLを集め、`shadeMaterial`とdispatcherを生成する
 - `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す
 
-sceneごとに`materialShader`を差し替える場合は、`fn shadeMaterial(hit: RaymarchHit, rayOrigin: vec3<f32>, direction: vec3<f32>) -> vec3<f32>`を定義します。`RaymarchHit.distance`はSDF距離ではなくray originからの深度で、`gradInfo`にはhit確定時の`mapSceneEval()`で回収したworld space gradientと有効フラグが入ります。
+primitiveまたはgroupごとにmaterialを差し替える場合は、`material="normal"`のようなpreset、または`material={{ wgsl }}`で`fn anyName(input: MaterialInput) -> vec3<f32>`を定義します。`MaterialInput`には`color`、`normal`、`cam`、`localPoint`、`worldPoint`、`rayDirection`、`distance`、`materialUniform`が入ります。
 
-scene textureを使うmaterial shaderやcustom WGSLでは、`shaderLayout.ts`で定義された固定名を参照できます。`sampler0-3`はtextureごとのfilter / address modeを持ち、`texture0-3`は画像データ本体です。たとえば`let albedo = textureSample(texture0, sampler0, uv).rgb;`のように使います。未指定slotや読み込みに失敗したslotはfallbackの白1px textureを指すため、常に4slotすべてを参照できます。
+scene textureを使うcustom WGSLでは、`shaderLayout.ts`で定義された固定名を参照できます。`sampler0-3`はtextureごとのfilter / address modeを持ち、`texture0-3`は画像データ本体です。たとえばfragment shader内では`let albedo = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;`のように使います。未指定slotや読み込みに失敗したslotはfallbackの白1px textureを指すため、常に4slotすべてを参照できます。
 
 シェーダ内の主な関数:
 

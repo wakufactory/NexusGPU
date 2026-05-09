@@ -85,7 +85,7 @@ export function createExpandedMapSceneBody(
   chunks.push("}");
   chunks.push("");
   chunks.push("fn mapSceneEval(point: vec3<f32>) -> SceneEval {");
-  chunks.push("  var best = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);");
+  chunks.push("  var best = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point, 0.0, vec4<f32>(0.0));");
 
   for (const node of sceneNodes) {
     const result = compileExpandedSceneNode(
@@ -118,7 +118,7 @@ export function createEmptyMapSceneBody() {
     "}",
     "",
     "fn mapSceneEval(point: vec3<f32>) -> SceneEval {",
-    "  return sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point);",
+    "  return sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, point, 0.0, vec4<f32>(0.0));",
     "}",
     "",
     "fn mapScene(point: vec3<f32>) -> SceneHit {",
@@ -302,27 +302,32 @@ function compileExpandedSceneNode(
   const groupObjectLine = useDynamicGroupSmoothness ? [`  let ${groupObjectName} = objects[${groupObjectIndex}u];`] : [];
 
   if (children.length === 0) {
+    const emptyHitName = hitName;
+    const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
     return {
       code: [
         ...groupObjectLine,
         mode === "eval"
-          ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
+          ? `  let ${emptyHitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression}, 0.0, vec4<f32>(0.0));`
           : `  let ${hitName} = sceneDistance(camera.renderInfo.y, 0.0);`,
+        ...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, emptyHitName, groupObjectName),
       ].join("\n"),
-      hitName,
+      hitName: materialHitName || emptyHitName,
       smoothnessExpression: smoothness,
     };
   }
 
   if (node.op === "not") {
     const notFunction = mode === "eval" ? "notHit" : "notDistance";
+    const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
     return {
       code: [
         ...groupObjectLine,
         children[0].code,
         `  let ${hitName} = ${notFunction}(${children[0].hitName});`,
+        ...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, hitName, groupObjectName),
       ].join("\n"),
-      hitName,
+      hitName: materialHitName || hitName,
       smoothnessExpression: smoothness,
     };
   }
@@ -340,9 +345,12 @@ function compileExpandedSceneNode(
     }
   }
 
+  const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
+  lines.push(...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, hitName, groupObjectName));
+
   return {
     code: lines.join("\n"),
-    hitName,
+    hitName: materialHitName || hitName,
     smoothnessExpression: smoothness,
   };
 }
@@ -366,7 +374,7 @@ function compileExpandedModifierNode(
     return {
       code:
         mode === "eval"
-          ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression});`
+          ? `  let ${hitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression}, 0.0, vec4<f32>(0.0));`
           : `  let ${hitName} = sceneDistance(camera.renderInfo.y, 0.0);`,
       hitName,
       smoothnessExpression: `${hitName}.smoothness`,
@@ -444,8 +452,8 @@ function compileExpandedModifierNode(
   const hitExpression =
     mode === "eval"
       ? postCallSpec.returnsSceneHit
-        ? `sceneEvalFromHit(${customCall})`
-        : `sceneEvalNoGrad(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint)`
+        ? `sceneEvalFromHitWithMaterial(${customCall}, ${childResult.hitName}.materialId, ${childResult.hitName}.materialUniform)`
+        : `sceneEvalNoGrad(${customCall}, ${childResult.hitName}.color, ${childResult.hitName}.smoothness, ${childResult.hitName}.localPoint, ${childResult.hitName}.materialId, ${childResult.hitName}.materialUniform)`
       : postCallSpec.returnsSceneHit
         ? `sceneDistanceFromHit(${customCall})`
         : `sceneDistance(${customCall}, ${childResult.hitName}.smoothness)`;
@@ -463,6 +471,7 @@ function createImplicitUnionGroup(children: readonly SdfSceneNode[]): SdfSceneNo
     type: "group",
     op: "or",
     smoothness: 0,
+    materialUniform: [0, 0, 0, 0],
     children,
     bounds: { center: [0, 0, 0], radius: -1 },
   };
@@ -497,12 +506,12 @@ function createPrimitiveHitExpression(
       ? `rotateByQuaternion(${localGradExpression}, ${objectName}.rotation)`
       : localGradExpression;
 
-    return `sceneEvalWithGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName}, ${worldGradExpression})`;
+    return `sceneEvalWithGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName}, ${worldGradExpression}, ${objectName}.materialInfo.x, ${objectName}.materialUniform)`;
   };
 
   const createDefaultHit = (distanceExpression: string) =>
     mode === "eval"
-      ? `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName})`
+      ? `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName}, ${objectName}.materialInfo.x, ${objectName}.materialUniform)`
       : `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.w)`;
 
   if (node.kind === "sphere") {
@@ -570,7 +579,9 @@ function createPrimitiveHitExpression(
 
   // SceneHit形式はWGSL関数内で色とsmoothnessを決めるため、gradientなしのSceneEvalへ変換する。
   if (callSpec.returnsSceneHit) {
-    return mode === "eval" ? `sceneEvalFromHit(${customCall})` : `sceneDistanceFromHit(${customCall})`;
+    return mode === "eval"
+      ? `sceneEvalFromHitWithMaterial(${customCall}, ${objectName}.materialInfo.x, ${objectName}.materialUniform)`
+      : `sceneDistanceFromHit(${customCall})`;
   }
 
   return createDefaultHit(customCall);
@@ -607,6 +618,25 @@ function nextTempName(prefix: string, state: ExpandedSceneCompileState) {
   const name = `${prefix}${state.tempIndex}`;
   state.tempIndex += 1;
   return name;
+}
+
+function nextGroupMaterialHitName(shouldOverride: boolean, state: ExpandedSceneCompileState) {
+  return shouldOverride ? nextTempName("materialHit", state) : "";
+}
+
+function createGroupMaterialOverrideLines(
+  shouldOverride: boolean,
+  targetHitName: string,
+  sourceHitName: string,
+  groupObjectName: string,
+) {
+  if (!shouldOverride) {
+    return [];
+  }
+
+  return [
+    `  let ${targetHitName} = sceneEvalWithMaterial(${sourceHitName}, ${groupObjectName}.materialInfo.x, ${groupObjectName}.materialUniform);`,
+  ];
 }
 
 /** JSのnumberをWGSLのf32リテラルとして安全に埋め込む。 */

@@ -1,7 +1,7 @@
 import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
 import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-import { createSceneShaderPlan } from "./renderer/scenePipelineCompiler";
+import { createSceneShaderPlan, getMaterialIdFromPlan } from "./renderer/scenePipelineCompiler";
 import { createEmptyMapSceneBody, type SceneCompileProfile } from "./renderer/sceneShaderCompiler";
 import {
   compileSceneObjectRecords,
@@ -15,8 +15,8 @@ import {
   SCENE_TEXTURE_BINDING_START,
   SceneTextureBindings,
 } from "./renderer/sceneTextures";
+import { createMaterialShaderPlan } from "./renderer/materialShaderCompiler";
 import type {
-  NexusMaterialShader,
   NexusRenderSettings,
   NexusRenderStats,
   NexusTextureSource,
@@ -64,8 +64,8 @@ export class WebGpuSdfRenderer {
   private pipeline: GPURenderPipeline;
   private bindGroup: GPUBindGroup;
   private shaderSignature = "";
-  private materialShader: NexusMaterialShader | undefined;
   private customSdfKindIds = new Map<string, number>();
+  private customMaterialIds = new Map<string, number>();
   private snapshot: SceneSnapshot | null = null;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
   private renderStats: NexusRenderStats = {
@@ -151,7 +151,7 @@ export class WebGpuSdfRenderer {
       bindGroupLayouts: [this.sceneBindGroupLayout],
     });
 
-    const pipelineState = this.createPipeline([], createEmptyMapSceneBody());
+    const pipelineState = this.createPipeline([], createEmptyMapSceneBody(), createMaterialShaderPlan([]).shader);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
 
@@ -197,24 +197,6 @@ export class WebGpuSdfRenderer {
   setRenderSettings(settings: NexusRenderSettings | undefined) {
     this.renderSettings = normalizeRenderSettings(settings);
     this.resize();
-
-    if (!this.renderingEnabled) {
-      this.scheduleRenderOnce();
-    }
-  }
-
-  /** scene固有のmaterial shaderを差し替え、必要ならpipelineを作り直す。 */
-  setMaterialShader(materialShader: NexusMaterialShader | undefined) {
-    if (this.materialShader === materialShader) {
-      return;
-    }
-
-    this.materialShader = materialShader;
-    this.shaderSignature = "";
-
-    if (this.snapshot) {
-      this.configureScenePipeline(this.snapshot);
-    }
 
     if (!this.renderingEnabled) {
       this.scheduleRenderOnce();
@@ -323,7 +305,11 @@ export class WebGpuSdfRenderer {
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
   private uploadObjects(snapshot: SceneSnapshot) {
-    const records = compileSceneObjectRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
+    const records = compileSceneObjectRecords(
+      snapshot.sceneNodes,
+      (node) => this.getSdfKindId(node),
+      (node) => getMaterialIdFromPlan(node.material, this.customMaterialIds),
+    ).slice(0, MAX_SDF_OBJECTS);
     this.objectData.fill(0);
 
     records.forEach((record, index) => {
@@ -339,7 +325,7 @@ export class WebGpuSdfRenderer {
 
   /** SdfFunctionとscene tree構造をshaderへ展開し、必要なときだけpipelineを作り直す。 */
   private configureScenePipeline(snapshot: SceneSnapshot) {
-    const shaderPlan = createSceneShaderPlan(snapshot, this.materialShader);
+    const shaderPlan = createSceneShaderPlan(snapshot);
 
     if (shaderPlan.signature === this.shaderSignature) {
       return;
@@ -347,10 +333,11 @@ export class WebGpuSdfRenderer {
 
     this.shaderSignature = shaderPlan.signature;
     this.customSdfKindIds = new Map(shaderPlan.customSdfKindIds);
+    this.customMaterialIds = new Map(shaderPlan.customMaterialIds);
     if (LOG_SCENE_COMPILE_PROFILE) {
       this.logSceneCompileProfile(shaderPlan.profile, snapshot);
     }
-    const pipelineState = this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody);
+    const pipelineState = this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody, shaderPlan.materialSection);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
   }
@@ -434,8 +421,12 @@ export class WebGpuSdfRenderer {
   }
 
   /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */
-  private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
-    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody, this.materialShader);
+  private createPipeline(
+    customSdfFunctions: readonly CustomSdfFunctionShader[],
+    mapSceneBody: string,
+    materialSection: string,
+  ) {
+    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody, materialSection);
 
     if (LOG_GENERATED_SHADER_SOURCE) {
       console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
