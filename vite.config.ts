@@ -1,6 +1,6 @@
 import { transform } from "esbuild";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createReadStream, readdirSync, readFileSync, statSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
 function normalizePath(id: string): string {
@@ -31,6 +31,75 @@ function minifyNonSceneChunks(): Plugin {
 
         asset.code = result.code;
       }
+    },
+  };
+}
+
+function publicAssetsPlugin(): Plugin {
+  const publicDir = resolve("public");
+  let isBuild = false;
+
+  function collectPublicFiles(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const filePath = resolve(dir, entry.name);
+      return entry.isDirectory() ? collectPublicFiles(filePath) : [filePath];
+    });
+  }
+
+  function getPublicFile(relativePath: string): string | undefined {
+    const filePath = resolve(publicDir, relativePath);
+    const publicRelativePath = relative(publicDir, filePath);
+
+    if (publicRelativePath.startsWith("..")) {
+      return undefined;
+    }
+
+    try {
+      return statSync(filePath).isFile() ? filePath : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  return {
+    name: "nexusgpu-public-assets",
+    configResolved(config) {
+      isBuild = config.command === "build";
+    },
+    buildStart() {
+      if (!isBuild) {
+        return;
+      }
+
+      for (const filePath of collectPublicFiles(publicDir)) {
+        const fileName = relative(publicDir, filePath).replaceAll("\\", "/");
+        this.emitFile({
+          type: "asset",
+          fileName: `assets/${fileName}`,
+          source: readFileSync(filePath),
+        });
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const requestUrl = request.url ?? "/";
+        const pathname = new URL(requestUrl, "http://localhost").pathname;
+
+        if (!pathname.startsWith("/assets/")) {
+          next();
+          return;
+        }
+
+        const relativePath = decodeURIComponent(pathname.slice("/assets/".length));
+        const filePath = getPublicFile(relativePath);
+
+        if (!filePath) {
+          next();
+          return;
+        }
+
+        createReadStream(filePath).pipe(response);
+      });
     },
   };
 }
@@ -150,6 +219,7 @@ function sceneRegistryPlugin(mode: string): Plugin {
 
 export default defineConfig(({ mode }) => ({
   base: "./",
+  publicDir: false,
   build: {
     minify: false,
     cssMinify: true,
@@ -173,5 +243,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [sceneRegistryPlugin(mode), minifyNonSceneChunks()],
+  plugins: [sceneRegistryPlugin(mode), publicAssetsPlugin(), minifyNonSceneChunks()],
 }));

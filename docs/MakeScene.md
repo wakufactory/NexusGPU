@@ -488,7 +488,7 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 sceneからWGSLへ画像を渡したい場合は、`NexusCanvas`の`textures`へ最大4枚まで指定します。シェーダ側では固定名の`texture0`、`texture1`、`texture2`、`texture3`と、対応する`sampler0`、`sampler1`、`sampler2`、`sampler3`を参照できます。
 
-`public`フォルダ内の画像は、実行時の公開パスで指定します。たとえば`public/tex1024.png`は`"/tex1024.png"`です。外部URLを使う場合は、必要に応じて`crossOrigin: "anonymous"`を指定します。ただし配信元がCORSを許可していない画像はブラウザ側で読み込めません。
+`public`フォルダ内の画像は、ビルド時に`assets`配下へ配置されます。たとえば`public/tex1024.png`は`${import.meta.env.BASE_URL}assets/tex1024.png`です。外部URLを使う場合は、必要に応じて`crossOrigin: "anonymous"`を指定します。ただし配信元がCORSを許可していない画像はブラウザ側で読み込めません。
 
 ```tsx
 <NexusCanvas
@@ -496,7 +496,7 @@ sceneからWGSLへ画像を渡したい場合は、`NexusCanvas`の`textures`へ
   camera={{ position: [0, 2.8, 5.2], target: [0, 0, 0], fov: 48 }}
   textures={[
     {
-      src: "/tex1024.png",
+      src: `${import.meta.env.BASE_URL}assets/tex1024.png`,
       addressModeU: "repeat",
       addressModeV: "repeat",
       magFilter: "linear",
