@@ -97,6 +97,175 @@ primitive固有props:
 - `SdfModifier.data0`, `data1`, `data2`: modifier関数へ渡す`vec4<f32>`相当の追加データ
 - `SdfModifier.bounds`: modifier nodeに保持する`{ radius, center }`。現状はGPU枝刈りには使わない
 
+## SdfGroupでSDFを組み合わせる
+
+`SdfGroup`を使うと、子SDFを1つのCSG/boolean演算としてまとめられます。通常のなめらかな合成は`op="or"`です。
+
+```tsx
+import { SdfGroup, SdfSphere } from "../nexusgpu";
+
+export function SmoothUnionScene() {
+  return (
+    <SdfGroup op="or" smoothness={0.25}>
+      <SdfSphere position={[-0.35, 0, 0]} radius={0.7} color={[0.05, 0.74, 0.7]} />
+      <SdfSphere position={[0.35, 0, 0]} radius={0.7} color={[0.9, 0.18, 0.38]} />
+    </SdfGroup>
+  );
+}
+```
+
+`op`の意味は次の通りです。
+
+| op | 意味 | SDF式のイメージ |
+| --- | --- | --- |
+| `"or"` | 和集合。どちらかの内側 | `min(a, b)` / smooth union |
+| `"and"` | 積集合。両方の内側 | `max(a, b)` |
+| `"subtract"` | 1つ目の子から後続の子を差し引く | `max(a, -b)` |
+| `"not"` | 内外を反転 | `-a` |
+
+球で箱をくり抜く場合は、`SdfSubtract`を使うのが一番読みやすいです。
+
+```tsx
+import { SdfBox, SdfSphere, SdfSubtract } from "../nexusgpu";
+
+export function CutBoxScene() {
+  return (
+    <SdfSubtract>
+      <SdfBox position={[0, 0, 0]} size={[2, 2, 2]} color={[0.95, 0.55, 0.18]} />
+      <SdfSphere position={[0.45, 0.2, 0]} radius={0.75} />
+    </SdfSubtract>
+  );
+}
+```
+
+`SdfNot`を明示的に使う場合は、`and`と組み合わせるのが基本です。`not`単体は「形状の外側すべて」を表すため、無限に広がる反転空間になります。
+
+```tsx
+import { SdfBox, SdfGroup, SdfNot, SdfSphere } from "../nexusgpu";
+
+export function BoxAndNotSphereScene() {
+  return (
+    <SdfGroup op="and">
+      <SdfBox position={[0, 0, 0]} size={[2, 2, 2]} color={[0.95, 0.55, 0.18]} />
+      <SdfNot>
+        <SdfSphere position={[0.45, 0.2, 0]} radius={0.75} />
+      </SdfNot>
+    </SdfGroup>
+  );
+}
+```
+
+グループはネストできます。
+
+```tsx
+<SdfGroup op="and">
+  <SdfGroup op="or" smoothness={0.2}>
+    <SdfSphere position={[-0.4, 0, 0]} radius={0.65} />
+    <SdfSphere position={[0.4, 0, 0]} radius={0.65} />
+  </SdfGroup>
+  <SdfBox position={[0, 0, 0]} size={[1.4, 1.0, 1.4]} />
+</SdfGroup>
+```
+
+現在の実装では、グループ構造はGPU上で命令列として解釈されず、レンダラがWGSLの`mapSceneDistance()` / `mapSceneEval()`へ展開します。そのため数十object程度のsceneでは軽く動きますが、`op`やグループ構成を変更するとShader Module / Render Pipelineの再生成が発生します。グループの`smoothness`はStorage Buffer上の動的値として扱われるため、primitiveの`position`、`rotation`、`radius`、`size`、`color`、`data0-2`などと同じく、値だけの変更なら再生成は不要です。
+
+`SdfFunction`をグループに含める場合は、必要に応じて`bounds`を指定してください。現在はGPU側の枝刈りには使っていませんが、グループのbounding sphereメタデータとして保持されます。
+
+```tsx
+<SdfFunction
+  sdfFunction="return length(point / data0.xyz) - 1.0;"
+  data0={[0.7, 0.5, 0.25, 0]}
+  bounds={{ radius: 0.8 }}
+/>
+```
+
+## Sceneの動的な値
+
+アニメーションやUI操作で値を変える場合も、考え方は通常のReactと同じです。`useFrame`やpanel入力からReact stateを更新し、そのstateをprimitiveのpropsへ渡します。GPU objectを直接変更する命令型APIとして扱う必要はありません。
+
+```tsx
+import { useState } from "react";
+import { SdfSphere, useFrame } from "../nexusgpu";
+import type { Vec3 } from "../nexusgpu";
+
+function FloatingSphere() {
+  const [position, setPosition] = useState<Vec3>([0, 0, 0]);
+
+  useFrame(({ elapsed }) => {
+    setPosition([0, Math.sin(elapsed * 1.5) * 0.35, 0]);
+  });
+
+  return <SdfSphere position={position} radius={0.7} color={[0.05, 0.74, 0.7]} />;
+}
+```
+
+scene固有パラメータをsidebarから変更したい場合は、sceneファイルで`defineSceneParameterControls`を使って`initialParameters`と`parameterControls`をexportします。`key`は初期値objectに存在するnumber型のプロパティを指定します。
+
+```ts
+export const { initialParameters, parameterControls } = defineSceneParameterControls(
+  { sphereSmoothness: 0.4 },
+  [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+);
+
+export type MySceneParameters = typeof initialParameters;
+```
+
+### useCamera / useLighting
+
+カメラやライトをscene内のcomponentから動かしたい場合は、`NexusCanvas`の内側で`useCamera()`や`useLighting()`を使います。どちらも`set()`だけを持つ小さなAPIを返し、`SceneStore`へ新しい設定を反映します。
+
+- `useCamera().set(camera)`: `position`、`target`、`fov`などを更新する
+- `useLighting().set(lighting)`: `direction`などを更新する
+
+`useFrame`と組み合わせると、時間に応じてカメラやライトを動かせます。
+
+```tsx
+import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
+
+function MovingViewContent() {
+  const camera = useCamera();
+  const lighting = useLighting();
+
+  useFrame(({ elapsed }) => {
+    camera.set({
+      position: [Math.sin(elapsed * 0.3) * 4, 1.4, Math.cos(elapsed * 0.3) * 4],
+      target: [0, 0, 0],
+      fov: 48,
+    });
+
+    lighting.set({
+      direction: [Math.sin(elapsed * 0.6), 0.8, Math.cos(elapsed * 0.6)],
+    });
+  });
+
+  return <SdfSphere radius={1} color={[0.05, 0.74, 0.7]} />;
+}
+```
+
+`useCamera()`や`useLighting()`は`NexusCanvas`の外では使えません。`Scene` component自体で`NexusCanvas`を返す場合は、その内側に`SceneContent`のような子componentを置き、そこでhookを呼びます。
+
+```tsx
+export function Scene({ canvasProps }: MySceneProps) {
+  return (
+    <NexusCanvas {...canvasProps} orbitControls={false}>
+      <MovingViewContent />
+    </NexusCanvas>
+  );
+}
+```
+
+継続的にカメラを動かすsceneでは、ユーザー操作用の`orbitControls`と制御が競合しやすくなります。スクリプトでカメラを制御するsceneでは、基本的に`orbitControls={false}`にします。
+
+`App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて書けます。
+
 ## SdfFunctionでWGSLを直接使う
 
 `SdfFunction`は、専用componentを追加せずにscene内でSDFを試すためのprimitiveです。`sdfFunction`にはWGSL文字列を渡します。関数body / 式として渡す場合、関数内で使える引数は次の6つです。
@@ -345,88 +514,6 @@ return hit.distance / max(stretch, 1.0);
 
 `SdfModifier.data0`、`data1`、`data2`はStorage Bufferへ入るため、値だけを変えた場合はShader Module / Render Pipelineを作り直しません。`preset`、`preModifierFunction`、`postModifierFunction`、children構造が変わった場合は、生成される`mapSceneDistance()` / `mapSceneEval()`やcustom WGSL関数が変わるためpipeline再生成が発生します。
 
-## SdfGroupでSDFを組み合わせる
-
-`SdfGroup`を使うと、子SDFを1つのCSG/boolean演算としてまとめられます。通常のなめらかな合成は`op="or"`です。
-
-```tsx
-import { SdfGroup, SdfSphere } from "../nexusgpu";
-
-export function SmoothUnionScene() {
-  return (
-    <SdfGroup op="or" smoothness={0.25}>
-      <SdfSphere position={[-0.35, 0, 0]} radius={0.7} color={[0.05, 0.74, 0.7]} />
-      <SdfSphere position={[0.35, 0, 0]} radius={0.7} color={[0.9, 0.18, 0.38]} />
-    </SdfGroup>
-  );
-}
-```
-
-`op`の意味は次の通りです。
-
-| op | 意味 | SDF式のイメージ |
-| --- | --- | --- |
-| `"or"` | 和集合。どちらかの内側 | `min(a, b)` / smooth union |
-| `"and"` | 積集合。両方の内側 | `max(a, b)` |
-| `"subtract"` | 1つ目の子から後続の子を差し引く | `max(a, -b)` |
-| `"not"` | 内外を反転 | `-a` |
-
-球で箱をくり抜く場合は、`SdfSubtract`を使うのが一番読みやすいです。
-
-```tsx
-import { SdfBox, SdfSphere, SdfSubtract } from "../nexusgpu";
-
-export function CutBoxScene() {
-  return (
-    <SdfSubtract>
-      <SdfBox position={[0, 0, 0]} size={[2, 2, 2]} color={[0.95, 0.55, 0.18]} />
-      <SdfSphere position={[0.45, 0.2, 0]} radius={0.75} />
-    </SdfSubtract>
-  );
-}
-```
-
-`SdfNot`を明示的に使う場合は、`and`と組み合わせるのが基本です。`not`単体は「形状の外側すべて」を表すため、無限に広がる反転空間になります。
-
-```tsx
-import { SdfBox, SdfGroup, SdfNot, SdfSphere } from "../nexusgpu";
-
-export function BoxAndNotSphereScene() {
-  return (
-    <SdfGroup op="and">
-      <SdfBox position={[0, 0, 0]} size={[2, 2, 2]} color={[0.95, 0.55, 0.18]} />
-      <SdfNot>
-        <SdfSphere position={[0.45, 0.2, 0]} radius={0.75} />
-      </SdfNot>
-    </SdfGroup>
-  );
-}
-```
-
-グループはネストできます。
-
-```tsx
-<SdfGroup op="and">
-  <SdfGroup op="or" smoothness={0.2}>
-    <SdfSphere position={[-0.4, 0, 0]} radius={0.65} />
-    <SdfSphere position={[0.4, 0, 0]} radius={0.65} />
-  </SdfGroup>
-  <SdfBox position={[0, 0, 0]} size={[1.4, 1.0, 1.4]} />
-</SdfGroup>
-```
-
-現在の実装では、グループ構造はGPU上で命令列として解釈されず、レンダラがWGSLの`mapSceneDistance()` / `mapSceneEval()`へ展開します。そのため数十object程度のsceneでは軽く動きますが、`op`やグループ構成を変更するとShader Module / Render Pipelineの再生成が発生します。グループの`smoothness`はStorage Buffer上の動的値として扱われるため、primitiveの`position`、`rotation`、`radius`、`size`、`color`、`data0-2`などと同じく、値だけの変更なら再生成は不要です。
-
-`SdfFunction`をグループに含める場合は、必要に応じて`bounds`を指定してください。現在はGPU側の枝刈りには使っていませんが、グループのbounding sphereメタデータとして保持されます。
-
-```tsx
-<SdfFunction
-  sdfFunction="return length(point / data0.xyz) - 1.0;"
-  data0={[0.7, 0.5, 0.25, 0]}
-  bounds={{ radius: 0.8 }}
-/>
-```
-
 ## Materialを使う
 
 materialはprimitiveまたは`SdfGroup`へ指定できます。primitiveに指定したmaterialはそのprimitiveがhitしたときに使われます。groupに指定したmaterialは、子SDFをboolean合成した後の結果全体に適用されます。groupの`material`を省略した場合は、hitした子のmaterialを引き継ぎます。
@@ -517,6 +604,47 @@ fn texturedMaterial(input: MaterialInput) -> vec3<f32> {
 
 materialのWGSL文字列、preset種別、scene tree構造が変わるとShader Module / Render Pipelineを再生成します。`materialUniform`の値だけを変える場合はStorage Buffer更新だけで済みます。アニメーションやUI sliderで頻繁に変える値は、WGSL文字列へ埋め込まず`materialUniform`で渡してください。
 
+## Textureを使う
+
+sceneからWGSLへ画像を渡したい場合は、`NexusCanvas`の`textures`へ最大4枚まで指定します。シェーダ側では固定名の`texture0`、`texture1`、`texture2`、`texture3`と、対応する`sampler0`、`sampler1`、`sampler2`、`sampler3`を参照できます。
+
+`public`フォルダ内の画像は、ビルド時に`assets`配下へ配置されます。たとえば`public/tex1024.png`は`${import.meta.env.BASE_URL}assets/tex1024.png`です。外部URLを使う場合は、必要に応じて`crossOrigin: "anonymous"`を指定します。ただし配信元がCORSを許可していない画像はブラウザ側で読み込めません。
+
+```tsx
+<NexusCanvas
+  {...canvasProps}
+  camera={{ position: [0, 2.8, 5.2], target: [0, 0, 0], fov: 48 }}
+  textures={[
+    {
+      src: `${import.meta.env.BASE_URL}assets/tex1024.png`,
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+      magFilter: "linear",
+      minFilter: "linear",
+    },
+    {
+      src: "https://example.com/mask.png",
+      crossOrigin: "anonymous",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
+      magFilter: "nearest",
+      minFilter: "nearest",
+    },
+  ]}
+>
+  <SceneContent parameters={parameters} />
+</NexusCanvas>
+```
+
+custom materialや`SdfFunction`内のWGSLでは、固定LODの`textureSampleLevel()`でsampleします。`textureSample()`は暗黙のmipmap level計算に画面上の微分を使うため、raymarchやhit分岐の中ではWGSLのuniform control flow制約に引っかかります。
+
+```wgsl
+let uv = fract(input.localPoint.xz * 0.25);
+let albedo = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;
+```
+
+samplerはtextureごとに独立しています。`texture0`をlinear repeat、`texture1`をnearest clampにするような指定ができます。未指定のslotや読み込みに失敗したslotは白1pxのfallback textureになるため、`texture0-3`は常に参照可能です。
+
 ## Sceneファイルの形
 
 sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
@@ -577,47 +705,6 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 `background`は未ヒット時の背景色です。`yPositive`がレイ方向のY+側、`yNegative`がY-側の色で、レンダラはこの2色を`direction.y`に応じてグラデーションします。色はprimitiveの`color`と同じRGBの`[r, g, b]`で、各値はおおむね`0.0`から`1.0`で指定します。
 
-## Textureを使う
-
-sceneからWGSLへ画像を渡したい場合は、`NexusCanvas`の`textures`へ最大4枚まで指定します。シェーダ側では固定名の`texture0`、`texture1`、`texture2`、`texture3`と、対応する`sampler0`、`sampler1`、`sampler2`、`sampler3`を参照できます。
-
-`public`フォルダ内の画像は、ビルド時に`assets`配下へ配置されます。たとえば`public/tex1024.png`は`${import.meta.env.BASE_URL}assets/tex1024.png`です。外部URLを使う場合は、必要に応じて`crossOrigin: "anonymous"`を指定します。ただし配信元がCORSを許可していない画像はブラウザ側で読み込めません。
-
-```tsx
-<NexusCanvas
-  {...canvasProps}
-  camera={{ position: [0, 2.8, 5.2], target: [0, 0, 0], fov: 48 }}
-  textures={[
-    {
-      src: `${import.meta.env.BASE_URL}assets/tex1024.png`,
-      addressModeU: "repeat",
-      addressModeV: "repeat",
-      magFilter: "linear",
-      minFilter: "linear",
-    },
-    {
-      src: "https://example.com/mask.png",
-      crossOrigin: "anonymous",
-      addressModeU: "clamp-to-edge",
-      addressModeV: "clamp-to-edge",
-      magFilter: "nearest",
-      minFilter: "nearest",
-    },
-  ]}
->
-  <SceneContent parameters={parameters} />
-</NexusCanvas>
-```
-
-custom materialや`SdfFunction`内のWGSLでは、固定LODの`textureSampleLevel()`でsampleします。`textureSample()`は暗黙のmipmap level計算に画面上の微分を使うため、raymarchやhit分岐の中ではWGSLのuniform control flow制約に引っかかります。
-
-```wgsl
-let uv = fract(input.localPoint.xz * 0.25);
-let albedo = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;
-```
-
-samplerはtextureごとに独立しています。`texture0`をlinear repeat、`texture1`をnearest clampにするような指定ができます。未指定のslotや読み込みに失敗したslotは白1pxのfallback textureになるため、`texture0-3`は常に参照可能です。
-
 作成したsceneをアプリの切り替え対象にするには、`src/scenes/scenes.json`へ追加します。
 
 ```json
@@ -633,94 +720,7 @@ samplerはtextureごとに独立しています。`texture0`をlinear repeat、`
 
 `App.tsx`は`SCENES`の選択中定義から`Component`、`initialParameters`、`parameterControls`を読みます。sceneを差し替えるために`App.tsx`のimportやJSXを書き換える必要はありません。
 
-## Sceneの動的な値
-
-アニメーションやUI操作で値を変える場合も、考え方は通常のReactと同じです。`useFrame`やpanel入力からReact stateを更新し、そのstateをprimitiveのpropsへ渡します。GPU objectを直接変更する命令型APIとして扱う必要はありません。
-
-```tsx
-import { useState } from "react";
-import { SdfSphere, useFrame } from "../nexusgpu";
-import type { Vec3 } from "../nexusgpu";
-
-function FloatingSphere() {
-  const [position, setPosition] = useState<Vec3>([0, 0, 0]);
-
-  useFrame(({ elapsed }) => {
-    setPosition([0, Math.sin(elapsed * 1.5) * 0.35, 0]);
-  });
-
-  return <SdfSphere position={position} radius={0.7} color={[0.05, 0.74, 0.7]} />;
-}
-```
-
-scene固有パラメータをsidebarから変更したい場合は、sceneファイルで`defineSceneParameterControls`を使って`initialParameters`と`parameterControls`をexportします。`key`は初期値objectに存在するnumber型のプロパティを指定します。
-
-```ts
-export const { initialParameters, parameterControls } = defineSceneParameterControls(
-  { sphereSmoothness: 0.4 },
-  [
-    {
-      key: "sphereSmoothness",
-      name: "Sphere smoothness",
-      min: 0,
-      max: 1.5,
-      step: 0.05,
-    },
-  ],
-);
-
-export type MySceneParameters = typeof initialParameters;
-```
-
-### useCamera / useLighting
-
-カメラやライトをscene内のcomponentから動かしたい場合は、`NexusCanvas`の内側で`useCamera()`や`useLighting()`を使います。どちらも`set()`だけを持つ小さなAPIを返し、`SceneStore`へ新しい設定を反映します。
-
-- `useCamera().set(camera)`: `position`、`target`、`fov`などを更新する
-- `useLighting().set(lighting)`: `direction`などを更新する
-
-`useFrame`と組み合わせると、時間に応じてカメラやライトを動かせます。
-
-```tsx
-import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
-
-function MovingViewContent() {
-  const camera = useCamera();
-  const lighting = useLighting();
-
-  useFrame(({ elapsed }) => {
-    camera.set({
-      position: [Math.sin(elapsed * 0.3) * 4, 1.4, Math.cos(elapsed * 0.3) * 4],
-      target: [0, 0, 0],
-      fov: 48,
-    });
-
-    lighting.set({
-      direction: [Math.sin(elapsed * 0.6), 0.8, Math.cos(elapsed * 0.6)],
-    });
-  });
-
-  return <SdfSphere radius={1} color={[0.05, 0.74, 0.7]} />;
-}
-```
-
-`useCamera()`や`useLighting()`は`NexusCanvas`の外では使えません。`Scene` component自体で`NexusCanvas`を返す場合は、その内側に`SceneContent`のような子componentを置き、そこでhookを呼びます。
-
-```tsx
-export function Scene({ canvasProps }: MySceneProps) {
-  return (
-    <NexusCanvas {...canvasProps} orbitControls={false}>
-      <MovingViewContent />
-    </NexusCanvas>
-  );
-}
-```
-
-継続的にカメラを動かすsceneでは、ユーザー操作用の`orbitControls`と制御が競合しやすくなります。スクリプトでカメラを制御するsceneでは、基本的に`orbitControls={false}`にします。
-
-`App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて書けます。
-
-## 追加手順のまとめ
+scene追加手順は次の通りです。
 
 1. `src/scenes/MyScene.tsx`に`Scene` componentを作る
 2. 必要なら同じファイルで`defineSceneParameterControls`を使い、`initialParameters`と`parameterControls`をexportする
@@ -736,4 +736,3 @@ export function Scene({ canvasProps }: MySceneProps) {
 - `SdfFunction`の関数文字列セットが変わるとShader Module / Render Pipelineを再生成する
 - ユニークな`SdfFunction`が増えるほど生成されるGPU側関数と展開済みscene map内の直接呼び出しが増える
 - `rotation`はquaternionで指定する
-- SDF primitiveはDOMを描画しないため、CSSでは見た目を変更できない
