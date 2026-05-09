@@ -3,6 +3,7 @@ export type ShaderChunkLibrary = Record<string, string>;
 const INCLUDE_PATTERN = /^[ \t]*#include\s+<([A-Za-z0-9_./-]+)>[ \t]*;?[ \t]*$/gm;
 
 export const shaderChunkLibrary = {
+  // Built-in sphere SDF and analytic gradient.
   "sdf/sphere": /* wgsl */ `
 // 球のSigned Distance Function。
 fn sdSphere(point: vec3<f32>, radius: f32) -> f32 {
@@ -18,6 +19,7 @@ fn sdSphereGrad(point: vec3<f32>) -> vec3<f32> {
   return point / pointLength;
 }
 `,
+  // Built-in axis-aligned box SDF and analytic gradient.
   "sdf/box": /* wgsl */ `
 // 箱のSigned Distance Function。boundsは中心から各面までの半径ベクトル。
 fn sdBox(point: vec3<f32>, bounds: vec3<f32>) -> f32 {
@@ -44,6 +46,7 @@ fn sdBoxGrad(point: vec3<f32>, bounds: vec3<f32>) -> vec3<f32> {
   return vec3<f32>(0.0, 0.0, sign(point.z));
 }
 `,
+  // Built-in Y-axis cylinder SDF and analytic gradient.
   "sdf/cylinder": /* wgsl */ `
 // Y軸方向の円柱のSigned Distance Function。dimensionsは(radius, halfHeight)。
 fn sdCylinder(point: vec3<f32>, dimensions: vec2<f32>) -> f32 {
@@ -67,6 +70,7 @@ fn sdCylinderGrad(point: vec3<f32>, dimensions: vec2<f32>) -> vec3<f32> {
   return vec3<f32>(0.0, sign(point.y), 0.0);
 }
 `,
+  // Built-in XZ-plane torus SDF and analytic gradient.
   "sdf/torus": /* wgsl */ `
 // XZ平面上のトーラスのSigned Distance Function。radiiは(majorRadius, minorRadius)。
 fn sdTorus(point: vec3<f32>, radii: vec2<f32>) -> f32 {
@@ -89,6 +93,7 @@ fn sdTorusGrad(point: vec3<f32>, radii: vec2<f32>) -> vec3<f32> {
   return normalize(grad);
 }
 `,
+  // Built-in ellipsoid SDF and analytic gradient.
   "sdf/ellipsoid": /* wgsl */ `
 // 楕円球のSigned Distance Function。radiiはX/Y/Z各軸の半径。
 fn sdEllipsoid(point: vec3<f32>, radii: vec3<f32>) -> f32 {
@@ -112,6 +117,7 @@ fn sdEllipsoidGrad(point: vec3<f32>, radii: vec3<f32>) -> vec3<f32> {
   return implicitGrad / gradLength;
 }
 `,
+  // Smooth minimum helper used by SDF and custom WGSL snippets.
   "sdf/smooth-min": /* wgsl */ `
 // 複数のSDFを滑らかに結合するためのsmooth min。
 fn smoothMin(a: f32, b: f32, k: f32) -> f32 {
@@ -123,6 +129,7 @@ fn smoothMin(a: f32, b: f32, k: f32) -> f32 {
   return mix(b, a, h) - k * h * (1.0 - h);
 }
 `,
+  // Quaternion vector rotation helper used for object transforms.
   "math/quaternion": /* wgsl */ `
 // quaternionで3Dベクトルを回転する。qは[x, y, z, w]の正規化済み値。
 fn rotateByQuaternion(point: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
@@ -132,6 +139,7 @@ fn rotateByQuaternion(point: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
   return point + ((uv * q.w) + uuv) * 2.0;
 }
 `,
+  // 3D/4D simplex noise helpers for SdfFunction and modifier snippets.
   "noise/simplex": /* wgsl */ `
 // 3D/4D simplex noise。戻り値はおおむね[-1, 1]。
 fn simplexMod289Vec3(x: vec3<f32>) -> vec3<f32> {
@@ -285,6 +293,52 @@ fn simplexNoise(point: vec3<f32>) -> f32 {
   return simplexNoise3d(point);
 }
 `,
+  // Default lit material with ambient, diffuse, optional shadow, and rim terms.
+  "material/default": /* wgsl */ `
+fn materialDefault(input: MaterialInput) -> vec3<f32> {
+  let lightDirection = normalize(camera.lightInfo.xyz);
+  let diffuse = max(dot(input.normal, lightDirection), 0.0);
+  let rim = 0.0 * pow(max(0.0, 1.0 - dot(input.normal, -input.rayDirection)), 3.0);
+  let ambient = 0.54 + 0.1 * input.normal.y;
+  let shadowsEnabled = camera.renderInfo.z > 0.5;
+  var shadow = 1.0;
+
+  if (shadowsEnabled) {
+    let shadowPoint = input.worldPoint + input.normal * 0.015;
+    let shadowHit = raymarch(shadowPoint, normalize(camera.lightInfo.xyz));
+    let shadowed = shadowHit.distance > 0.0 && shadowHit.distance < min(8.0, camera.renderInfo.y);
+    shadow = select(1.0, 0.38, shadowed);
+  }
+
+  return input.color * (ambient + diffuse * shadow) + rim * vec3<f32>(0.45, 0.75, 0.86);
+}
+`,
+  // Debug material that visualizes the world-space normal as RGB.
+  "material/normal": /* wgsl */ `
+fn materialNormal(input: MaterialInput) -> vec3<f32> {
+  return input.normal * 0.5 + vec3<f32>(0.5);
+}
+`,
+  // Texture color material that samples texture0 with localPoint.xz mapping.
+  "material/texture0-color": /* wgsl */ `
+fn materialTexture0Color(input: MaterialInput) -> vec3<f32> {
+  let scale = select(input.materialUniform.x, 1.0, abs(input.materialUniform.x) <= 0.0001);
+  let uv = fract(input.localPoint.xz * scale + input.materialUniform.yz);
+  let texel = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;
+  return texel * input.color;
+}
+`,
+  // Matcap material that samples texture0 from view-space normal coordinates.
+  "material/texture0-matcap": /* wgsl */ `
+fn materialTexture0Matcap(input: MaterialInput) -> vec3<f32> {
+  let viewRight = normalize(camera.right.xyz);
+  let viewUp = normalize(camera.up.xyz);
+  let uv = vec2<f32>(dot(input.normal, viewRight), dot(input.normal, viewUp)) * 0.5 + vec2<f32>(0.5);
+  let texel = textureSampleLevel(texture0, sampler0, clamp(uv, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).rgb;
+  return texel * input.color;
+}
+`,
+  // HSL to RGB conversion helper for color-driven custom WGSL.
   "color/hsl2rgb": /* wgsl */ `
 // hsl.xは色相[0, 1]、hsl.yは彩度[0, 1]、hsl.zは輝度[0, 1]。
 fn hsl2rgb(hsl: vec3<f32>) -> vec3<f32> {

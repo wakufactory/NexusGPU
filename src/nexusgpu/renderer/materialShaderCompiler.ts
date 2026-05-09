@@ -98,42 +98,10 @@ function createMaterialShader(customMaterials: readonly CustomMaterial[]) {
     .join("\n");
 
   return /* wgsl */ `
-fn materialDefault(input: MaterialInput) -> vec3<f32> {
-  let lightDirection = normalize(camera.lightInfo.xyz);
-  let diffuse = max(dot(input.normal, lightDirection), 0.0);
-  let rim = 0.0 * pow(max(0.0, 1.0 - dot(input.normal, -input.rayDirection)), 3.0);
-  let ambient = 0.54 + 0.1 * input.normal.y;
-  let shadowsEnabled = camera.renderInfo.z > 0.5;
-  var shadow = 1.0;
-
-  if (shadowsEnabled) {
-    let shadowPoint = input.worldPoint + input.normal * 0.015;
-    let shadowHit = raymarch(shadowPoint, normalize(camera.lightInfo.xyz));
-    let shadowed = shadowHit.distance > 0.0 && shadowHit.distance < min(8.0, camera.renderInfo.y);
-    shadow = select(1.0, 0.38, shadowed);
-  }
-
-  return input.color * (ambient + diffuse * shadow) + rim * vec3<f32>(0.45, 0.75, 0.86);
-}
-
-fn materialNormal(input: MaterialInput) -> vec3<f32> {
-  return input.normal * 0.5 + vec3<f32>(0.5);
-}
-
-fn materialTexture0Color(input: MaterialInput) -> vec3<f32> {
-  let scale = select(input.materialUniform.x, 1.0, abs(input.materialUniform.x) <= 0.0001);
-  let uv = fract(input.localPoint.xz * scale + input.materialUniform.yz);
-  let texel = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;
-  return texel * input.color;
-}
-
-fn materialTexture0Matcap(input: MaterialInput) -> vec3<f32> {
-  let viewRight = normalize(camera.right.xyz);
-  let viewUp = normalize(camera.up.xyz);
-  let uv = vec2<f32>(dot(input.normal, viewRight), dot(input.normal, viewUp)) * 0.5 + vec2<f32>(0.5);
-  let texel = textureSampleLevel(texture0, sampler0, clamp(uv, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).rgb;
-  return texel * input.color;
-}
+#include <material/default>
+#include <material/normal>
+#include <material/texture0-color>
+#include <material/texture0-matcap>
 
 ${customFunctions}
 
