@@ -1,10 +1,9 @@
 [
-   {
+  {
     "id": "noise0",
     "title": "noise 0",
     "description": "Scene copied from SDF Experiment Template.",
     "module": "./Noise0Scene.tsx"
-
   },
   {
     "id": "animated-sdf",
@@ -41,5 +40,11 @@
     "title": "SDF boid test",
     "description": "Scene for testing SDF boids ",
     "module": "./BoidsSpheresScene.tsx"
+  },
+  {
+    "id": "tex-test",
+    "title": "texture test",
+    "description": "Scene copied from SDF Experiment Template.",
+    "module": "./TexTestScene.tsx"
   }
 ]
