@@ -600,6 +600,9 @@ type SdfPrimitiveSceneNode = {
 type SdfGroupSceneNode = {
   type: "group";
   op: "or" | "and" | "subtract" | "not";
+  position: Vec3;
+  rotation: Quaternion;
+  hasRotation: boolean;
   smoothness: number;
   material?: NexusMaterialRef;
   materialUniform: Vec4;
@@ -665,7 +668,7 @@ materialInfo = [materialId, 0, 0, 0]
 materialUniform = [materialUniform.x, materialUniform.y, materialUniform.z, materialUniform.w]
 ```
 
-`SdfGroup`の補助レコードでは`colorSmooth.w`にグループsmoothness、`materialInfo.x`にgroup material ID、`materialUniform`にgroup material用の値を入れます。`SdfModifier`の補助レコードでは`data0-2`だけを使います。
+`SdfGroup`の補助レコードでは`positionKind.xyz`と`rotation`にgroup transform、`colorSmooth.w`にグループsmoothness、`materialInfo.x`にgroup material ID、`materialUniform`にgroup material用の値を入れます。`SdfModifier`の補助レコードでは`data0-2`だけを使います。
 
 `WebGpuSdfRenderer.uploadObjects()`がこのレイアウトへ詰め替えます。`SdfFunction`もGPU側のレコード構造は変えず、`kind`だけを動的kind IDにして、`data0-2`をcustom SDF関数の引数として使います。
 

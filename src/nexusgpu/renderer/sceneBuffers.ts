@@ -116,12 +116,12 @@ function createModifierRecord(data: SdfData): SdfRecord {
   ];
 }
 
-/** Groupはboolean合成時の動的smoothnessだけを同じSdfObjectレイアウトへ補助レコードとして詰める。 */
+/** Groupはtransform、動的smoothness、materialを同じSdfObjectレイアウトへ補助レコードとして詰める。 */
 function createGroupRecord(node: SdfGroupSceneNode, materialId: number): SdfRecord {
   return [
-    0,
-    0,
-    0,
+    node.position[0],
+    node.position[1],
+    node.position[2],
     0,
     0,
     0,
@@ -139,10 +139,10 @@ function createGroupRecord(node: SdfGroupSceneNode, materialId: number): SdfReco
     0,
     0,
     node.smoothness,
-    0,
-    0,
-    0,
-    1,
+    node.rotation[0],
+    node.rotation[1],
+    node.rotation[2],
+    node.rotation[3],
     materialId,
     0,
     0,

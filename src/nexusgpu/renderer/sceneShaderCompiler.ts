@@ -1,5 +1,5 @@
 import { SDF_PRIMITIVE_KIND_IDS } from "../sdfKinds";
-import type { SdfBooleanOperation, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
+import type { SdfBooleanOperation, SdfGroupSceneNode, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
 import {
   createSdfModifierFunctionKey,
   type CustomSdfFunctionNameMap,
@@ -292,23 +292,31 @@ function compileExpandedSceneNode(
   if (useDynamicGroupSmoothness) {
     state.objectIndex += 1;
   }
+  const groupLocalPointName = useDynamicGroupSmoothness ? nextTempName("groupLocalPoint", state) : "";
+  const childPointExpression = useDynamicGroupSmoothness ? groupLocalPointName : pointExpression;
   const children = node.children.map((child) =>
-    compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, pointExpression, mode),
+    compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, childPointExpression, mode),
   );
   const hitName = nextTempName("groupHit", state);
+  const transformedHitName = nextGroupTransformHitName(node.hasRotation && mode === "eval", state);
   const smoothness = useDynamicGroupSmoothness
     ? `${groupObjectName}.colorSmooth.w`
     : formatWgslFloat(node.smoothness);
-  const groupObjectLine = useDynamicGroupSmoothness ? [`  let ${groupObjectName} = objects[${groupObjectIndex}u];`] : [];
+  const groupTransformLines = useDynamicGroupSmoothness
+    ? [
+        `  let ${groupObjectName} = objects[${groupObjectIndex}u];`,
+        `  let ${groupLocalPointName} = ${createGroupLocalPointExpression(node, groupObjectName, pointExpression)};`,
+      ]
+    : [];
 
   if (children.length === 0) {
     const emptyHitName = hitName;
     const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
     return {
       code: [
-        ...groupObjectLine,
+        ...groupTransformLines,
         mode === "eval"
-          ? `  let ${emptyHitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${pointExpression}, 0.0, vec4<f32>(0.0));`
+          ? `  let ${emptyHitName} = sceneEvalNoGrad(camera.renderInfo.y, vec3<f32>(0.72, 0.82, 0.9), 0.0, ${childPointExpression}, 0.0, vec4<f32>(0.0));`
           : `  let ${hitName} = sceneDistance(camera.renderInfo.y, 0.0);`,
         ...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, emptyHitName, groupObjectName),
       ].join("\n"),
@@ -320,19 +328,21 @@ function compileExpandedSceneNode(
   if (node.op === "not") {
     const notFunction = mode === "eval" ? "notHit" : "notDistance";
     const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
+    const sourceHitName = transformedHitName || hitName;
     return {
       code: [
-        ...groupObjectLine,
+        ...groupTransformLines,
         children[0].code,
         `  let ${hitName} = ${notFunction}(${children[0].hitName});`,
-        ...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, hitName, groupObjectName),
+        ...createGroupTransformLines(transformedHitName, hitName, groupObjectName),
+        ...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, sourceHitName, groupObjectName),
       ].join("\n"),
-      hitName: materialHitName || hitName,
+      hitName: materialHitName || sourceHitName,
       smoothnessExpression: smoothness,
     };
   }
 
-  const lines = [...groupObjectLine, ...children.map((child) => child.code)];
+  const lines = [...groupTransformLines, ...children.map((child) => child.code)];
   lines.push(`  var ${hitName} = ${children[0].hitName};`);
 
   for (const child of children.slice(1)) {
@@ -346,11 +356,13 @@ function compileExpandedSceneNode(
   }
 
   const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
-  lines.push(...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, hitName, groupObjectName));
+  const sourceHitName = transformedHitName || hitName;
+  lines.push(...createGroupTransformLines(transformedHitName, hitName, groupObjectName));
+  lines.push(...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, sourceHitName, groupObjectName));
 
   return {
     code: lines.join("\n"),
-    hitName: materialHitName || hitName,
+    hitName: materialHitName || sourceHitName,
     smoothnessExpression: smoothness,
   };
 }
@@ -470,6 +482,9 @@ function createImplicitUnionGroup(children: readonly SdfSceneNode[]): SdfSceneNo
   return {
     type: "group",
     op: "or",
+    position: [0, 0, 0],
+    rotation: [0, 0, 0, 1],
+    hasRotation: false,
     smoothness: 0,
     materialUniform: [0, 0, 0, 0],
     children,
@@ -479,6 +494,17 @@ function createImplicitUnionGroup(children: readonly SdfSceneNode[]): SdfSceneNo
 
 /** rotation propが省略されていれば、WGSL上のquaternion計算を生成せず平行移動だけにする。 */
 function createLocalPointExpression(node: SdfNode, objectName: string, pointExpression: string) {
+  const translatedPoint = `${pointExpression} - ${objectName}.positionKind.xyz`;
+
+  if (!node.hasRotation) {
+    return translatedPoint;
+  }
+
+  return `rotateByQuaternion(${translatedPoint}, vec4<f32>(-${objectName}.rotation.xyz, ${objectName}.rotation.w))`;
+}
+
+/** groupもprimitiveと同じく、rotation propがある場合だけquaternion計算を生成する。 */
+function createGroupLocalPointExpression(node: SdfGroupSceneNode, objectName: string, pointExpression: string) {
   const translatedPoint = `${pointExpression} - ${objectName}.positionKind.xyz`;
 
   if (!node.hasRotation) {
@@ -608,7 +634,9 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
       .join(",")})`;
   }
 
-  return `group:${node.op}(${node.children
+  const rotationSignature = node.hasRotation ? "rotated" : "unrotated";
+
+  return `group:${node.op}:${rotationSignature}(${node.children
     .map(createSceneNodeTopologySignature)
     .join(",")})`;
 }
@@ -622,6 +650,18 @@ function nextTempName(prefix: string, state: ExpandedSceneCompileState) {
 
 function nextGroupMaterialHitName(shouldOverride: boolean, state: ExpandedSceneCompileState) {
   return shouldOverride ? nextTempName("materialHit", state) : "";
+}
+
+function nextGroupTransformHitName(shouldTransform: boolean, state: ExpandedSceneCompileState) {
+  return shouldTransform ? nextTempName("transformedGroupHit", state) : "";
+}
+
+function createGroupTransformLines(targetHitName: string, sourceHitName: string, groupObjectName: string) {
+  if (!targetHitName) {
+    return [];
+  }
+
+  return [`  let ${targetHitName} = rotateSceneEvalGrad(${sourceHitName}, ${groupObjectName}.rotation);`];
 }
 
 function createGroupMaterialOverrideLines(

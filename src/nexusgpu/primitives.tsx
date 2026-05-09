@@ -16,6 +16,7 @@ import type {
   SdfSceneNode,
   SdfSphereProps,
   SdfTorusProps,
+  Quaternion,
   Vec3,
   Vec4,
 } from "./types";
@@ -281,6 +282,8 @@ export function SdfFunction({
 /** 子SDFを1つのboolean演算単位にまとめ、boundsで評価スキップできるようにする。 */
 export function SdfGroup({
   op = "or",
+  position,
+  rotation,
   smoothness = 0,
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
@@ -301,16 +304,23 @@ export function SdfGroup({
       const groupNode: SdfSceneNode = {
         type: "group",
         op,
+        position: normalizeVec3(position, DEFAULT_POSITION),
+        rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+        hasRotation: rotation !== undefined,
         smoothness: normalizedSmoothness,
         material,
         materialUniform,
         children: childNodes,
-        bounds: createGroupBounds(op, childNodes, normalizedSmoothness),
+        bounds: createTransformedGroupBounds(
+          createGroupBounds(op, childNodes, normalizedSmoothness),
+          position,
+          rotation,
+        ),
       };
 
       target.upsertSceneNode(id, groupNode);
     });
-  }, [id, material, materialUniform, normalizedSmoothness, op, registry, target]);
+  }, [id, material, materialUniform, normalizedSmoothness, op, position, registry, rotation, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -552,6 +562,52 @@ function inflateBounds(bounds: SdfBoundingSphere, amount: number): SdfBoundingSp
     center: bounds.center,
     radius: bounds.radius < 0 ? bounds.radius : bounds.radius + Math.max(0, amount),
   };
+}
+
+function createTransformedGroupBounds(
+  bounds: SdfBoundingSphere,
+  position: Vec3 | undefined,
+  rotation: Quaternion | undefined,
+): SdfBoundingSphere {
+  if (bounds.radius < 0) {
+    return bounds;
+  }
+
+  const normalizedPosition = normalizeVec3(position, DEFAULT_POSITION);
+  const normalizedRotation = normalizeQuaternion(rotation, DEFAULT_ROTATION);
+  const rotatedCenter = rotation ? rotateVec3ByQuaternion(bounds.center, normalizedRotation) : bounds.center;
+
+  return {
+    center: [
+      rotatedCenter[0] + normalizedPosition[0],
+      rotatedCenter[1] + normalizedPosition[1],
+      rotatedCenter[2] + normalizedPosition[2],
+    ],
+    radius: bounds.radius,
+  };
+}
+
+function rotateVec3ByQuaternion(point: Vec3, rotation: Quaternion): Vec3 {
+  const qx = rotation[0];
+  const qy = rotation[1];
+  const qz = rotation[2];
+  const qw = rotation[3];
+  const uv: Vec3 = [
+    qy * point[2] - qz * point[1],
+    qz * point[0] - qx * point[2],
+    qx * point[1] - qy * point[0],
+  ];
+  const uuv: Vec3 = [
+    qy * uv[2] - qz * uv[1],
+    qz * uv[0] - qx * uv[2],
+    qx * uv[1] - qy * uv[0],
+  ];
+
+  return [
+    point[0] + (uv[0] * qw + uuv[0]) * 2,
+    point[1] + (uv[1] * qw + uuv[1]) * 2,
+    point[2] + (uv[2] * qw + uuv[2]) * 2,
+  ];
 }
 
 function createModifierBounds(

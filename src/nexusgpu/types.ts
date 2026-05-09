@@ -155,9 +155,11 @@ export type SdfFunctionProps = SdfPrimitiveProps & {
   bounds?: Partial<SdfBoundingSphere>;
 };
 
-/** グループコンポーネントのprops。transformはMVPでは子primitive側に持たせる。 */
+/** グループコンポーネントのprops。position/rotationは子SDF全体の評価空間を動かす。 */
 export type SdfGroupProps = {
   op?: SdfBooleanOperation;
+  position?: Vec3;
+  rotation?: Quaternion;
   smoothness?: number;
   material?: NexusMaterialRef;
   materialUniform?: Vec4;
@@ -217,6 +219,9 @@ export type SdfPrimitiveSceneNode = {
 export type SdfGroupSceneNode = {
   type: "group";
   op: SdfBooleanOperation;
+  position: Vec3;
+  rotation: Quaternion;
+  hasRotation: boolean;
   smoothness: number;
   material?: NexusMaterialRef;
   materialUniform: Vec4;
