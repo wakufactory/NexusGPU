@@ -1,9 +1,9 @@
 [
   {
-    "id": "noise0",
-    "title": "noise 0",
-    "description": "Scene copied from SDF Experiment Template.",
-    "module": "./Noise0Scene.tsx"
+    "id": "simple-scene",
+    "title": "Simple Scene",
+    "description": "A simple scene with basic SDF primitives.",
+    "module": "./SimpleScene.tsx"
   },
   {
     "id": "animated-sdf",
@@ -12,21 +12,15 @@
     "module": "./AnimatedSdfScene.tsx"
   },
   {
-    "id": "simple-scene",
-    "title": "Simple Scene",
-    "description": "A simple scene with basic SDF primitives.",
-    "module": "./SimpleScene.tsx"
-  },
-  {
     "id": "sdf-experiment",
     "title": "SDF Experiment Template",
     "description": "Template scene for editing and testing custom SdfFunction WGSL.",
     "module": "./SdfExperimentScene.tsx"
   },
   {
-    "id": "sdf-test",
-    "title": "SDF test",
-    "description": "Scene copied from SDF Experiment Template.",
+    "id": "sdf-function-test",
+    "title": "SDF function test",
+    "description": "Scene for testing SDF functions with a variety of primitives and operations.",
     "module": "./SdfTestScene.tsx"
   },
   {
@@ -36,15 +30,21 @@
     "module": "./SdfModifier.tsx"
   },
   {
-    "id": "sdf-boids",
-    "title": "SDF boid test",
-    "description": "Scene for testing SDF boids ",
-    "module": "./BoidsSpheresScene.tsx"
+    "id": "noise0",
+    "title": "noise 0",
+    "description": "Scene for testing noise function ",
+    "module": "./Noise0Scene.tsx"
   },
   {
     "id": "tex-test",
     "title": "texture test",
-    "description": "Scene copied from SDF Experiment Template.",
+    "description": "Scene for testing texture sampling in SDFs ",
     "module": "./TexTestScene.tsx"
+  },
+  {
+    "id": "sdf-boids",
+    "title": "SDF boid test",
+    "description": "Scene for testing SDF boids ",
+    "module": "./BoidsSpheresScene.tsx"
   }
 ]

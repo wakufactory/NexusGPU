@@ -1,5 +1,7 @@
-import { NexusCanvas, NexusTextureSource, SdfGroup, SdfSphere } from "../nexusgpu";
+import { NexusCanvas, NexusTextureSource, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
+import { useState } from "react";
 import { defineSceneParameterControls } from "./types";
+import {axisAngleToQuaternion } from "../nexusgpu/math";
 import type { NexusSceneCanvasProps } from "./types";
 
 type TexTestSceneProps = {
@@ -29,8 +31,8 @@ export const { initialParameters, parameterControls } = defineSceneParameterCont
       key: "experimentSpeed",
       name: "speed",
       min: 0,
-      max: 4,
-      step: 0.1,
+      max: 2,
+      step: 0.05,
     },
   ],
 );
@@ -54,8 +56,15 @@ fn texTestGroupMaterial(input: MaterialInput) -> vec3<f32> {
 `;
 
 function TexTestSceneContent({ parameters }: TexTestSceneContentProps) {
+  const [phase, setPhase] = useState(0);
+
+  useFrame(({ elapsed }) => {
+    setPhase(elapsed * parameters.experimentSpeed);
+  });
+
   return (
-    <SdfGroup op="or" smoothness={parameters.smooth} material={{ key: "tex-test-group", wgsl: GROUP_MATERIAL }}>
+    <SdfGroup op="or" rotation={axisAngleToQuaternion([0, 1,0], phase*parameters.experimentSpeed * Math.PI)}
+      smoothness={parameters.smooth} material={{ key: "tex-test-group", wgsl: GROUP_MATERIAL }}  >
     <SdfSphere position={[-0.5, 0, 0]} radius={0.5} color={[0.95, 0.55, 0.2]} smoothness={1.}/>
     <SdfSphere position={[0.5, 0, 0]} radius={0.5} color={[0.95, 0.55, 0.98]} smoothness={1.}/>
     </SdfGroup>
