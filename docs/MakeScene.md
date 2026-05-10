@@ -731,6 +731,37 @@ scene追加手順は次の通りです。
 3. `src/scenes/scenes.json`へscene定義を1件追加する
 4. `npm run build`で型とbundleを確認する
 
+## create-sceneスクリプトでsceneを追加する
+
+新しいsceneは手作業でファイルと`scenes.json`を追加する代わりに、`scripts/create-scene.mjs`から作成できます。
+
+```bash
+npm run scene:create -- <scene-id-or-name> [title]
+```
+
+例:
+
+```bash
+npm run scene:create -- crystal-field "Crystal Field"
+```
+
+このコマンドは、既定では`sdf-experiment`をコピー元にして次の2つを行います。
+
+1. `src/scenes/CrystalFieldScene.tsx`のようなsceneファイルを作成する
+2. `src/scenes/scenes.json`へscene定義を追加する
+
+コピー元sceneを指定したい場合は`--from`または`-f`を使います。指定値には`scenes.json`の`id`、`title`、`module`、ファイル名、component名ベースの名前を使えます。
+
+```bash
+npm run scene:create -- crystal-field "Crystal Field" --from simple-scene
+npm run scene:create -- crystal-field "Crystal Field" --from SimpleScene.tsx
+npm run scene:create -- crystal-field "Crystal Field" -f ./SimpleScene.tsx
+```
+
+コピー時には、コピー元ファイル名に含まれるscene名が新しいscene名へ置換されます。たとえば`SimpleScene.tsx`から`crystal-field`を作ると、`SimpleScene`という識別子は`CrystalFieldScene`へ置換されます。
+
+既に同じscene idやmodule pathが`scenes.json`にある場合、または同名ファイルが存在する場合は失敗します。作成後は生成されたsceneファイルを編集し、必要に応じて`description`やparameter controlsを調整してください。
+
 ## 制限
 
 - 現在のSDF object数上限は`MAX_SDF_OBJECTS = 128`
