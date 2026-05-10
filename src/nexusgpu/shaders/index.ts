@@ -1,5 +1,4 @@
 import { createShaderConstants } from "./shaderConstants";
-import { defaultMaterialShader } from "./defaultMaterialShader";
 import { fragmentShader } from "./fragmentShader";
 import { lightingShader } from "./lightingShader";
 import { raymarchShader } from "./raymarchShader";
@@ -21,17 +20,11 @@ const shaderSectionsBeforeMapping = [
   sdfPrimitivesShader,
 ];
 
-const shaderSectionsAfterMapping = [
-  raymarchShader,
-  lightingShader,
-  defaultMaterialShader,
-  fragmentShader,
-];
-
 export function assembleSdfShader(
   maxObjects: number,
   customSdfFunctions: readonly CustomSdfFunctionShader[] = [],
   mapSceneBody?: string,
+  materialSection?: string,
 ) {
   const customFunctionSources = customSdfFunctions.map(({ source }) => source).join("\n\n");
   const sceneMappingShader = createSceneMappingShader(mapSceneBody);
@@ -42,7 +35,10 @@ export function assembleSdfShader(
       ...shaderSectionsBeforeMapping,
       customFunctionSources,
       sceneMappingShader,
-      ...shaderSectionsAfterMapping,
+      raymarchShader,
+      lightingShader,
+      materialSection ?? "",
+      fragmentShader,
     ].join("\n\n"),
   );
 }

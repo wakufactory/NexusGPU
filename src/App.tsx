@@ -4,14 +4,15 @@ import { INITIAL_RENDER_SETTINGS } from "./app/renderSettings";
 import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
 import { SceneParametersPanel } from "./panels/SceneParametersPanel";
-import { DEFAULT_SCENE_ID, getSceneDefinition, SCENES } from "./scenes/registry";
+import { DEFAULT_SCENE_ID, getSceneDefinition, SCENES } from "virtual:nexusgpu-scene-registry";
 import type { NexusRenderSettings, NexusRenderStats } from "./nexusgpu";
 import type { AnyNexusSceneDefinition } from "./scenes/types";
-import type { SceneId } from "./scenes/registry";
+import type { SceneId } from "virtual:nexusgpu-scene-registry";
 
 const ACTIVE_SCENE_STORAGE_KEY = "nexusgpu.activeSceneId";
 const RENDER_SETTINGS_STORAGE_KEY = "nexusgpu.renderSettings";
 const SCENE_PARAMETERS_STORAGE_KEY = "nexusgpu.sceneParametersBySceneId";
+const IS_SINGLE_SCENE_BUILD = Boolean(import.meta.env.VITE_NEXUSGPU_SCENE_ID?.trim());
 
 type StoredSceneParameters = Record<string, Record<string, unknown>>;
 
@@ -58,11 +59,22 @@ function ActiveSceneParametersPanel<Parameters extends object>({
   const controls = scene.parameterControls ?? [];
 
   return (
-    <SceneParametersPanel
-      parameters={parameters}
-      controls={controls}
-      onChange={onChange}
-    />
+    <>
+      {IS_SINGLE_SCENE_BUILD && (
+        <section className="panel debug-panel">
+          <div className="panel-title">
+            <Layers3 size={18} />
+            <h2>{scene.title}</h2>
+          </div>
+          <p className="panel-description">{scene.description}</p>
+        </section>
+      )}
+      <SceneParametersPanel
+        parameters={parameters}
+        controls={controls}
+        onChange={onChange}
+      />
+    </>
   );
 }
 
@@ -124,8 +136,11 @@ function saveActiveSceneId(sceneId: SceneId) {
   }
 }
 
-function getInitialRenderSettings() {
-  return mergeStoredObject(INITIAL_RENDER_SETTINGS, readStorageJson(RENDER_SETTINGS_STORAGE_KEY));
+function getInitialRenderSettings(sceneId: SceneId) {
+  const storedSettings = readStorageJson(RENDER_SETTINGS_STORAGE_KEY);
+  const scene = getSceneDefinition(sceneId);
+  const baseSettings = mergeStoredObject(INITIAL_RENDER_SETTINGS, storedSettings);
+  return mergeStoredObject(baseSettings, scene.initialRenderSettings);
 }
 
 function saveRenderSettings(settings: typeof INITIAL_RENDER_SETTINGS) {
@@ -150,14 +165,20 @@ function saveSceneParameters(sceneId: SceneId, parameters: object) {
 export function App() {
   const { shellRef, isFullscreen, fullscreenStyle, toggleFullscreen } = useFullscreenViewport();
   // ここで持つstateはそのままNexusCanvasのrenderSettingsへ渡され、WebGPUのUniformへ反映される。
-  const [renderSettings, setRenderSettings] = useState(getInitialRenderSettings);
-  const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [activeSceneId, setActiveSceneId] = useState<SceneId>(getInitialActiveSceneId);
+  const [renderSettings, setRenderSettings] = useState(() => getInitialRenderSettings(activeSceneId));
+  const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [renderStats, setRenderStats] = useState<NexusRenderStats | null>(null);
   const activeScene = getSceneDefinition(activeSceneId);
   const [sceneParameters, setSceneParameters] = useState<object>(() =>
     getStoredSceneParameters(activeSceneId),
   );
+
+  useEffect(() => {
+    if (IS_SINGLE_SCENE_BUILD) {
+      document.title = "NexusGPU: " + activeScene.title;
+    }
+  }, [activeScene.title]);
 
   useEffect(() => {
     // スライダー操作中にlocalStorage書き込みが連発しないよう、少し遅らせて保存する。
@@ -190,6 +211,7 @@ export function App() {
 
   const changeScene = (sceneId: SceneId) => {
     setActiveSceneId(sceneId);
+    setRenderSettings(getInitialRenderSettings(sceneId));
     setSceneParameters(getStoredSceneParameters(sceneId));
     saveActiveSceneId(sceneId);
   };
@@ -226,26 +248,28 @@ export function App() {
       </section>
       <aside className="sidebar">
 
-        <section className="panel debug-panel">
-          <div className="panel-title">
-            <Layers3 size={18} />
-            <h2>Scene</h2>
-          </div>
-          <label className="select-row">
-            <span>Active scene</span>
-            <select
-              value={activeSceneId}
-              onChange={(event) => changeScene(event.target.value as SceneId)}
-            >
-              {SCENES.map((scene) => (
-                <option key={scene.id} value={scene.id}>
-                  {scene.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="panel-description">{activeScene.description}</p>
-        </section>
+        {!IS_SINGLE_SCENE_BUILD && (
+          <section className="panel debug-panel">
+            <div className="panel-title">
+              <Layers3 size={18} />
+              <h2>Scene</h2>
+            </div>
+            <label className="select-row">
+              <span>Active scene</span>
+              <select
+                value={activeSceneId}
+                onChange={(event) => changeScene(event.target.value as SceneId)}
+              >
+                {SCENES.map((scene) => (
+                  <option key={scene.id} value={scene.id}>
+                    {scene.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="panel-description">{activeScene.description}</p>
+          </section>
+        )}
         <ActiveSceneParametersPanel
           key={activeScene.id}
           scene={activeScene}

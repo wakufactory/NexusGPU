@@ -1,10 +1,12 @@
 import type { ComponentType } from "react";
 import sceneConfigs from "./scenes.json";
+import type { NexusRenderSettings } from "../nexusgpu";
 import type { AnyNexusSceneDefinition, NexusSceneCanvasProps, SceneSliderParameter } from "./types";
 
 type SceneModule = {
   Scene?: ComponentType<{ parameters: any; canvasProps: NexusSceneCanvasProps }>;
   initialParameters?: Record<string, unknown>;
+  initialRenderSettings?: NexusRenderSettings;
   parameterControls?: readonly SceneSliderParameter<Record<string, unknown>>[];
 };
 
@@ -14,6 +16,12 @@ type SceneJsonConfig = {
   description: string;
   module: string;
 };
+
+const sceneJsonConfigs = sceneConfigs as SceneJsonConfig[];
+
+if (sceneJsonConfigs.length === 0) {
+  throw new Error("scenes.json must contain at least one scene.");
+}
 
 // ビルド時点で存在するsceneファイルを自動収集し、JSONのmodule文字列から参照できるようにする。
 const sceneModules = import.meta.glob<SceneModule>("./*.tsx", {
@@ -58,18 +66,23 @@ function resolveScene(config: SceneJsonConfig): AnyNexusSceneDefinition | null {
     title: config.title,
     description: config.description,
     initialParameters,
+    initialRenderSettings: sceneModule.initialRenderSettings,
     parameterControls: resolveParameterControls(config, sceneModule, initialParameters),
     Component: sceneModule.Scene,
   };
 }
 
-export const SCENES = (sceneConfigs as SceneJsonConfig[])
+export const SCENES = sceneJsonConfigs
   .map(resolveScene)
   .filter((scene): scene is AnyNexusSceneDefinition => scene !== null);
 
 export type SceneId = (typeof SCENES)[number]["id"];
 
-export const DEFAULT_SCENE_ID: SceneId = SCENES[0]?.id ?? "animated-sdf";
+if (SCENES.length === 0) {
+  throw new Error("No usable scenes were found.");
+}
+
+export const DEFAULT_SCENE_ID: SceneId = SCENES[0].id;
 
 export function getSceneDefinition(sceneId: SceneId): AnyNexusSceneDefinition {
   return SCENES.find((scene) => scene.id === sceneId) ?? SCENES[0];

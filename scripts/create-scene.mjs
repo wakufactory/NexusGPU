@@ -5,15 +5,12 @@ import process from "node:process";
 const scenesDir = path.resolve("src/scenes");
 const scenesJsonPath = path.join(scenesDir, "scenes.json");
 
-const template = {
-  id: "sdf-experiment",
-  module: "./SdfExperimentScene.tsx",
-  path: path.join(scenesDir, "SdfExperimentScene.tsx"),
-};
+const defaultSourceSceneId = "sdf-experiment";
 
 function usage() {
-  console.log("Usage: npm run scene:create -- <scene-id-or-name> [title]");
+  console.log("Usage: npm run scene:create -- <scene-id-or-name> [title] [--from <source-scene>]");
   console.log("Example: npm run scene:create -- crystal-field \"Crystal Field\"");
+  console.log("Example: npm run scene:create -- crystal-field \"Crystal Field\" --from simple-scene");
 }
 
 function toKebabCase(value) {
@@ -62,11 +59,91 @@ function renameSceneSource(source, fromSceneName, toSceneName) {
   return source.split(fromSceneName).join(toSceneName);
 }
 
-const [rawName, ...titleParts] = process.argv.slice(2);
+function parseArgs(args) {
+  let rawName = "";
+  let sourceSceneSelector = "";
+  const titleParts = [];
 
-if (!rawName || rawName === "--help" || rawName === "-h") {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--from" || arg === "-f") {
+      sourceSceneSelector = args[index + 1] ?? "";
+      if (!sourceSceneSelector) {
+        throw new Error(`${arg} requires a source scene id, module path, or file name.`);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--from=")) {
+      sourceSceneSelector = arg.slice("--from=".length);
+      if (!sourceSceneSelector) {
+        throw new Error("--from requires a source scene id, module path, or file name.");
+      }
+      continue;
+    }
+
+    if (arg.startsWith("-")) {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+
+    if (!rawName) {
+      rawName = arg;
+      continue;
+    }
+
+    titleParts.push(arg);
+  }
+
+  return { rawName, titleParts, sourceSceneSelector };
+}
+
+function modulePathToFilePath(modulePath) {
+  return path.resolve(scenesDir, modulePath);
+}
+
+function sourceSceneAliases(scene) {
+  const moduleSceneName = sceneNameFromModule(scene.module);
+  const moduleFileName = path.basename(scene.module);
+
+  return new Set([
+    scene.id,
+    scene.title,
+    scene.module,
+    moduleFileName,
+    moduleSceneName,
+    toKebabCase(moduleSceneName),
+  ]);
+}
+
+function resolveSourceScene(scenes, selector) {
+  const sourceSelector = selector || defaultSourceSceneId;
+  const normalizedSelector = toKebabCase(sourceSelector);
+  const sourceScene = scenes.find((scene) => {
+    const aliases = sourceSceneAliases(scene);
+    return aliases.has(sourceSelector) || aliases.has(normalizedSelector);
+  });
+
+  if (!sourceScene) {
+    throw new Error(`Source scene was not found in scenes.json: ${sourceSelector}`);
+  }
+
+  return sourceScene;
+}
+
+const args = process.argv.slice(2);
+
+if (args.includes("--help") || args.includes("-h")) {
   usage();
-  process.exit(rawName ? 0 : 1);
+  process.exit(0);
+}
+
+const { rawName, titleParts, sourceSceneSelector } = parseArgs(args);
+
+if (!rawName) {
+  usage();
+  process.exit(1);
 }
 
 const sceneId = toKebabCase(rawName);
@@ -96,14 +173,11 @@ if (scenes.some((scene) => scene.module === modulePath)) {
   throw new Error(`Scene module already exists in scenes.json: ${modulePath}`);
 }
 
-const templateScene = scenes.find((scene) => scene.id === template.id);
-
-if (!templateScene) {
-  throw new Error(`Template scene was not found in scenes.json: ${template.id}`);
-}
-
-const templateSource = await readFile(template.path, "utf8");
-const sceneSource = renameSceneSource(templateSource, sceneNameFromModule(template.module), sceneFileBaseName);
+const sourceScene = resolveSourceScene(scenes, sourceSceneSelector);
+const sourcePath = modulePathToFilePath(sourceScene.module);
+const sourceSceneName = sceneNameFromModule(sourceScene.module);
+const source = await readFile(sourcePath, "utf8");
+const sceneSource = renameSceneSource(source, sourceSceneName, sceneFileBaseName);
 
 try {
   await writeFile(targetPath, sceneSource, { flag: "wx" });
@@ -118,7 +192,7 @@ try {
 const nextScene = {
   id: sceneId,
   title,
-  description: `Scene copied from ${templateScene.title}.`,
+  description: `Scene copied from ${sourceScene.title}.`,
   module: modulePath,
 };
 

@@ -28,7 +28,7 @@ export function Scene({ canvasProps }: SimpleSceneProps) {
         }}
       orbitControls
     >
-      <SdfGroup op="or" smoothness={0.2}>
+      <SdfGroup op="or" smoothness={0.2} material="pbr" materialUniform={[0.1,0.9,0.1,0.2]}>
         <SdfSphere position={[-0.9, 0, 0]} radius={0.7} color={[0.05, 0.74, 0.7]} />
         <SdfBox position={[0.9, 0, 0]} size={[1.1, 1.1, 1.1]} color={[0.95, 0.55, 0.18]} />
         <SdfCylinder position={[0, 0, -0.9]} radius={0.35} height={1.4} color={[0.25, 0.55, 0.95]} />

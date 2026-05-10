@@ -1,9 +1,9 @@
 export const raymarchShader = /* wgsl */ `
 // レイを少しずつ進め、距離場にヒットするまで探索する。
-fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
+fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
   var depth = 0.0;
   var color = vec3<f32>(0.0);
-  let initialHit = mapScene(origin);
+  let initialHit = mapSceneDistance(origin);
   var previousDepth = 0.0;
   var previousDistance = initialHit.distance;
   let maxSteps = i32(clamp(camera.renderInfo.x, 1.0, f32(MAX_STEPS_CAP)));
@@ -17,18 +17,27 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     }
 
     let point = origin + direction * depth;
-    let hit = mapScene(point);
+    let hit = mapSceneDistance(point);
 
     if (abs(hit.distance) < surfaceEpsilon) {
       if (!hitInteriorSurfaces && previousDistance < 0.0) {
         depth = depth + surfaceEpsilon * 2.0;
         previousDepth = depth;
-        previousDistance = mapScene(origin + direction * depth).distance;
+        previousDistance = mapSceneDistance(origin + direction * depth).distance;
         continue;
       }
 
-      color = hit.color;
-      return SceneHit(depth, color, hit.smoothness);
+      let evalHit = mapSceneEval(point);
+      color = evalHit.color;
+      return RaymarchHit(
+        depth,
+        color,
+        evalHit.smoothness,
+        evalHit.localPoint,
+        evalHit.gradInfo,
+        evalHit.materialId,
+        evalHit.materialUniform
+      );
     }
 
     // 符号が変わったら直前区間を戻ってゼロ交差を探す。
@@ -38,31 +47,38 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     ) {
       var low = previousDepth;
       var high = depth;
-      var refinedHit = hit;
       let enteringSurface = hit.distance < 0.0;
 
       if (enteringSurface || hitInteriorSurfaces) {
         for (var j = 0; j < 6; j = j + 1) {
           let mid = (low + high) * 0.5;
-          let midHit = mapScene(origin + direction * mid);
+          let midHit = mapSceneDistance(origin + direction * mid);
 
           if ((midHit.distance > 0.0) == enteringSurface) {
             low = mid;
           } else {
             high = mid;
-            refinedHit = midHit;
           }
         }
 
-        color = refinedHit.color;
-        return SceneHit(high, color, refinedHit.smoothness);
+        let refinedEval = mapSceneEval(origin + direction * high);
+        color = refinedEval.color;
+        return RaymarchHit(
+          high,
+          color,
+          refinedEval.smoothness,
+          refinedEval.localPoint,
+          refinedEval.gradInfo,
+          refinedEval.materialId,
+          refinedEval.materialUniform
+        );
       }
     }
 
     if (!hitInteriorSurfaces && hit.distance > 0.0 && previousDistance < 0.0) {
       depth = depth + surfaceEpsilon * 2.0;
       previousDepth = depth;
-      previousDistance = mapScene(origin + direction * depth).distance;
+      previousDistance = mapSceneDistance(origin + direction * depth).distance;
       continue;
     }
 
@@ -74,6 +90,6 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> SceneHit {
     }
   }
 
-  return SceneHit(-1.0, color, 0.0);
+  return RaymarchHit(-1.0, color, 0.0, vec3<f32>(0.0), vec4<f32>(0.0), 0.0, vec4<f32>(0.0));
 }
 `;

@@ -1,3 +1,6 @@
 これはWebGPU対応のreact上に構築した独自フレームワークです
+外部ライブラリはreact以外使用していません。
+reactのcomponentでSDFのレイマーチングシーンを作成できる仕様です。
 
-概要はdocs/architecture.mdを参照のこと
+内部構造等の詳細は docs/architecture.mdを参照
+シーン作成のマニュアルは docs/MakeScene.mdを参照

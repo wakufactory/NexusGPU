@@ -34,6 +34,35 @@ export type NexusLighting = {
   direction?: Vec3;
 };
 
+export type NexusMaterialPreset = "default" | "normal" | "pbr" | "texture0Color" | "texture0Matcap";
+
+export type NexusMaterialRef =
+  | NexusMaterialPreset
+  | {
+      wgsl: string;
+      key?: string;
+    };
+
+export type NexusTextureCrossOrigin = "" | "anonymous" | "use-credentials";
+
+export type NexusTextureSource =
+  | string
+  | ({
+      src: string;
+      crossOrigin?: NexusTextureCrossOrigin;
+    } & Pick<
+      GPUSamplerDescriptor,
+      | "addressModeU"
+      | "addressModeV"
+      | "addressModeW"
+      | "magFilter"
+      | "minFilter"
+      | "mipmapFilter"
+      | "lodMinClamp"
+      | "lodMaxClamp"
+      | "maxAnisotropy"
+    >);
+
 /** 未ヒット時に表示する背景色。Y軸方向の上下2色を補間する。 */
 export type NexusBackground = {
   yPositive?: Vec3;
@@ -86,6 +115,8 @@ export type SdfPrimitiveProps = {
   rotation?: Quaternion;
   color?: Vec3;
   smoothness?: number;
+  material?: NexusMaterialRef;
+  materialUniform?: Vec4;
 };
 
 /** 球プリミティブのprops。radiusはSDFの距離関数へ直接渡される。 */
@@ -124,10 +155,14 @@ export type SdfFunctionProps = SdfPrimitiveProps & {
   bounds?: Partial<SdfBoundingSphere>;
 };
 
-/** グループコンポーネントのprops。transformはMVPでは子primitive側に持たせる。 */
+/** グループコンポーネントのprops。position/rotationは子SDF全体の評価空間を動かす。 */
 export type SdfGroupProps = {
   op?: SdfBooleanOperation;
+  position?: Vec3;
+  rotation?: Quaternion;
   smoothness?: number;
+  material?: NexusMaterialRef;
+  materialUniform?: Vec4;
   children?: ReactNode;
 };
 
@@ -151,6 +186,7 @@ export type NexusCanvasProps = {
   camera?: NexusCamera;
   lighting?: NexusLighting;
   background?: NexusBackground;
+  textures?: readonly NexusTextureSource[];
   orbitControls?: boolean;
   renderingEnabled?: boolean;
   renderSettings?: NexusRenderSettings;
@@ -168,6 +204,8 @@ export type SdfNode = {
   color: Vec3;
   data: SdfData;
   smoothness: number;
+  material?: NexusMaterialRef;
+  materialUniform: Vec4;
   bounds: SdfBoundingSphere;
   sdfFunction?: string;
 };
@@ -181,7 +219,12 @@ export type SdfPrimitiveSceneNode = {
 export type SdfGroupSceneNode = {
   type: "group";
   op: SdfBooleanOperation;
+  position: Vec3;
+  rotation: Quaternion;
+  hasRotation: boolean;
   smoothness: number;
+  material?: NexusMaterialRef;
+  materialUniform: Vec4;
   children: readonly SdfSceneNode[];
   bounds: SdfBoundingSphere;
 };

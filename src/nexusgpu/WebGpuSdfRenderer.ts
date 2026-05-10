@@ -1,34 +1,35 @@
 import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
-import { CUSTOM_SDF_PRIMITIVE_KIND_START, SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
-import {
-  collectSdfFunctionSources,
-  createCustomSdfFunctionSource,
-  createCustomSdfModifierFunctionSource,
-  unique,
-  uniqueModifierFunctionSources,
-} from "./renderer/customWgslFunctions";
-import {
-  createEmptyMapSceneBody,
-  createExpandedMapSceneBody,
-  createSceneTopologySignature,
-} from "./renderer/sceneShaderCompiler";
+import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
+import { createSceneShaderPlan, getMaterialIdFromPlan } from "./renderer/scenePipelineCompiler";
+import { createEmptyMapSceneBody, type SceneCompileProfile } from "./renderer/sceneShaderCompiler";
 import {
   compileSceneObjectRecords,
   countSceneObjectRecords,
   OBJECT_BUFFER_SIZE,
   OBJECT_STRIDE_FLOATS,
 } from "./renderer/sceneBuffers";
+import {
+  MAX_SCENE_TEXTURES,
+  SCENE_SAMPLER_BINDING_START,
+  SCENE_TEXTURE_BINDING_START,
+  SceneTextureBindings,
+} from "./renderer/sceneTextures";
+import { createMaterialShaderPlan } from "./renderer/materialShaderCompiler";
 import type {
   NexusRenderSettings,
   NexusRenderStats,
+  NexusTextureSource,
   SceneSnapshot,
   SdfNode,
+  SdfSceneNode,
   Vec3,
 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+const LOG_SCENE_COMPILE_PROFILE = true;
+const LOG_GENERATED_SHADER_SOURCE = true;
 
 /** UIから省略された描画設定に使う初期値。 */
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
@@ -57,12 +58,14 @@ export class WebGpuSdfRenderer {
   private readonly sceneBindGroupLayout: GPUBindGroupLayout;
   private readonly pipelineLayout: GPUPipelineLayout;
   private readonly resizeObserver: ResizeObserver;
+  private readonly sceneTextures: SceneTextureBindings;
   private readonly objectData = new Float32Array(MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS);
   private readonly cameraData = new Float32Array(CAMERA_FLOATS);
   private pipeline: GPURenderPipeline;
   private bindGroup: GPUBindGroup;
   private shaderSignature = "";
   private customSdfKindIds = new Map<string, number>();
+  private customMaterialIds = new Map<string, number>();
   private snapshot: SceneSnapshot | null = null;
   private renderSettings = DEFAULT_RENDER_SETTINGS;
   private renderStats: NexusRenderStats = {
@@ -107,6 +110,8 @@ export class WebGpuSdfRenderer {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
+    this.sceneTextures = new SceneTextureBindings(device);
+
     this.sceneBindGroupLayout = device.createBindGroupLayout({
       label: "NexusGPU Scene Bind Group Layout",
       entries: [
@@ -126,6 +131,19 @@ export class WebGpuSdfRenderer {
             minBindingSize: OBJECT_BUFFER_SIZE,
           },
         },
+        ...Array.from({ length: MAX_SCENE_TEXTURES }, (_value, index) => ({
+          binding: SCENE_SAMPLER_BINDING_START + index,
+          visibility: GPUShaderStage.FRAGMENT,
+          sampler: { type: "filtering" as GPUSamplerBindingType },
+        })),
+        ...Array.from({ length: MAX_SCENE_TEXTURES }, (_value, index) => ({
+          binding: SCENE_TEXTURE_BINDING_START + index,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: {
+            sampleType: "float" as GPUTextureSampleType,
+            viewDimension: "2d" as GPUTextureViewDimension,
+          },
+        })),
       ],
     });
     this.pipelineLayout = device.createPipelineLayout({
@@ -133,7 +151,7 @@ export class WebGpuSdfRenderer {
       bindGroupLayouts: [this.sceneBindGroupLayout],
     });
 
-    const pipelineState = this.createPipeline([], createEmptyMapSceneBody());
+    const pipelineState = this.createPipeline([], createEmptyMapSceneBody(), createMaterialShaderPlan([]).shader);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
 
@@ -216,6 +234,16 @@ export class WebGpuSdfRenderer {
     this.resizeObserver.disconnect();
     this.cameraBuffer.destroy();
     this.objectBuffer.destroy();
+    this.sceneTextures.destroy();
+  }
+
+  setTextures(textures: readonly NexusTextureSource[] | undefined) {
+    this.sceneTextures.setTextures(textures, () => {
+      this.bindGroup = this.createSceneBindGroup();
+      if (!this.renderingEnabled) {
+        this.scheduleRenderOnce();
+      }
+    });
   }
 
   /** CSSサイズ、devicePixelRatio、解像度スケールから実際の描画ピクセル数を決める。 */
@@ -277,7 +305,11 @@ export class WebGpuSdfRenderer {
 
   /** SceneSnapshot内のSDFノードを、WGSL側のSdfObject配列と同じSoA寄りレイアウトへ詰める。 */
   private uploadObjects(snapshot: SceneSnapshot) {
-    const records = compileSceneObjectRecords(snapshot.sceneNodes, (node) => this.getSdfKindId(node)).slice(0, MAX_SDF_OBJECTS);
+    const records = compileSceneObjectRecords(
+      snapshot.sceneNodes,
+      (node) => this.getSdfKindId(node),
+      (node) => getMaterialIdFromPlan(node.material, this.customMaterialIds),
+    ).slice(0, MAX_SDF_OBJECTS);
     this.objectData.fill(0);
 
     records.forEach((record, index) => {
@@ -293,90 +325,114 @@ export class WebGpuSdfRenderer {
 
   /** SdfFunctionとscene tree構造をshaderへ展開し、必要なときだけpipelineを作り直す。 */
   private configureScenePipeline(snapshot: SceneSnapshot) {
-    const sdfFunctions = unique(collectSdfFunctionSources(snapshot.sceneNodes));
-    const modifierFunctions = uniqueModifierFunctionSources(snapshot.sceneNodes);
+    const shaderPlan = createSceneShaderPlan(snapshot);
 
-    // 同じWGSL文字列は1つのcustom関数として共有し、scene内ではkind IDと関数名で参照する。
-    const customSdfFunctions = sdfFunctions.map((sdfFunction, index) => {
-      const functionName = `customSdfFunction${index}`;
-
-      return {
-        sdfFunction,
-        kindId: CUSTOM_SDF_PRIMITIVE_KIND_START + index,
-        ...createCustomSdfFunctionSource(sdfFunction, functionName),
-      };
-    });
-    const customModifierFunctions = modifierFunctions.map((modifierFunction, index) => {
-      const functionName = `customSdfModifierFunction${index}`;
-
-      return {
-        ...modifierFunction,
-        kindId: CUSTOM_SDF_PRIMITIVE_KIND_START + customSdfFunctions.length + index,
-        ...createCustomSdfModifierFunctionSource(modifierFunction.source, functionName, modifierFunction.mode),
-      };
-    });
-    const customShaders = [...customSdfFunctions, ...customModifierFunctions].map<CustomSdfFunctionShader>((customSdfFunction) => {
-      return {
-        kindId: customSdfFunction.kindId,
-        functionName: customSdfFunction.functionName,
-        source: customSdfFunction.source,
-      };
-    });
-
-    this.customSdfKindIds = new Map(
-      customSdfFunctions.map((customSdfFunction) => [customSdfFunction.sdfFunction, customSdfFunction.kindId]),
-    );
-    const customSdfFunctionNames = new Map(
-      customSdfFunctions.map((customSdfFunction) => {
-        return [
-          customSdfFunction.sdfFunction,
-          {
-            functionName: customSdfFunction.functionName,
-            returnsSceneHit: customSdfFunction.returnsSceneHit,
-            acceptsColor: customSdfFunction.acceptsColor,
-            acceptsSmoothness: customSdfFunction.acceptsSmoothness,
-          },
-        ];
-      }),
-    );
-    const customModifierFunctionNames = new Map(
-      customModifierFunctions.map((customModifierFunction) => {
-        return [
-          customModifierFunction.key,
-          {
-            functionName: customModifierFunction.functionName,
-            returnsSceneHit: customModifierFunction.returnsSceneHit,
-          },
-        ];
-      }),
-    );
-
-    // シーン木はGPU側で解釈せず、mapScene()のWGSLコードとして展開する。
-    const mapSceneBody = createExpandedMapSceneBody(
-      snapshot.sceneNodes,
-      customSdfFunctionNames,
-      customModifierFunctionNames,
-    );
-    const signature = [
-      sdfFunctions.join("\n/* nexusgpu-sdf-function */\n"),
-      modifierFunctions.map((modifierFunction) => `${modifierFunction.mode}:${modifierFunction.source}`).join("\n/* nexusgpu-sdf-modifier */\n"),
-      createSceneTopologySignature(snapshot.sceneNodes),
-    ].join("\n/* nexusgpu-scene-topology */\n");
-
-    if (signature === this.shaderSignature) {
+    if (shaderPlan.signature === this.shaderSignature) {
       return;
     }
 
-    this.shaderSignature = signature;
-    const pipelineState = this.createPipeline(customShaders, mapSceneBody);
+    this.shaderSignature = shaderPlan.signature;
+    this.customSdfKindIds = new Map(shaderPlan.customSdfKindIds);
+    this.customMaterialIds = new Map(shaderPlan.customMaterialIds);
+    if (LOG_SCENE_COMPILE_PROFILE) {
+      this.logSceneCompileProfile(shaderPlan.profile, snapshot);
+    }
+    const pipelineState = this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody, shaderPlan.materialSection);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
   }
 
+  private logSceneCompileProfile(profile: SceneCompileProfile, snapshot: SceneSnapshot) {
+    const objectDump = this.createSceneObjectDump(snapshot.sceneNodes).slice(0, MAX_SDF_OBJECTS);
+
+    console.log("[NexusGPU] SDF scene compile profile data", JSON.stringify(profile, null, 2));
+    console.log("[NexusGPU] SDF scene objects dump", JSON.stringify(objectDump, null, 2));
+  }
+
+  private createSceneObjectDump(sceneNodes: readonly SdfSceneNode[]) {
+    const rows: Array<Record<string, unknown>> = [];
+
+    for (const node of sceneNodes) {
+      this.appendSceneObjectDumpRows(node, rows);
+    }
+
+    return rows;
+  }
+
+  private appendSceneObjectDumpRows(node: SdfSceneNode, rows: Array<Record<string, unknown>>) {
+    if (node.type === "primitive") {
+      const object = node.node;
+      rows.push({
+        index: rows.length,
+        type: "primitive",
+        kind: object.kind,
+        kindId: this.getSdfKindId(object),
+        position: formatVec(object.position),
+        rotation: formatVec(object.rotation),
+        color: formatVec(object.color),
+        smoothness: object.smoothness,
+        data0: formatVec(object.data[0]),
+        data1: formatVec(object.data[1]),
+        data2: formatVec(object.data[2]),
+        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+        sdfFunction: object.sdfFunction ? previewSource(object.sdfFunction) : "",
+      });
+      return;
+    }
+
+    if (node.type === "modifier") {
+      rows.push({
+        index: rows.length,
+        type: "modifier",
+        kind: "modifier",
+        kindId: 0,
+        position: formatVec([0, 0, 0]),
+        rotation: formatVec([0, 0, 0, 1]),
+        color: formatVec([0, 0, 0]),
+        smoothness: 0,
+        data0: formatVec(node.data[0]),
+        data1: formatVec(node.data[1]),
+        data2: formatVec(node.data[2]),
+        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+        preModifier: node.preModifierFunction ? previewSource(node.preModifierFunction) : "",
+        postModifier: node.postModifierFunction ? previewSource(node.postModifierFunction) : "",
+      });
+    } else {
+      rows.push({
+        index: rows.length,
+        type: "group",
+        op: node.op,
+        kind: "group",
+        kindId: 0,
+        position: formatVec(node.position),
+        rotation: formatVec(node.rotation),
+        hasRotation: node.hasRotation,
+        color: formatVec([0, 0, 0]),
+        smoothness: node.smoothness,
+        data0: formatVec([0, 0, 0, 0]),
+        data1: formatVec([0, 0, 0, 0]),
+        data2: formatVec([0, 0, 0, 0]),
+        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+      });
+    }
+
+    for (const child of node.children) {
+      this.appendSceneObjectDumpRows(child, rows);
+    }
+  }
+
   /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */
-  private createPipeline(customSdfFunctions: readonly CustomSdfFunctionShader[], mapSceneBody: string) {
-    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody);
-    console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
+  private createPipeline(
+    customSdfFunctions: readonly CustomSdfFunctionShader[],
+    mapSceneBody: string,
+    materialSection: string,
+  ) {
+    const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody, materialSection);
+
+    if (LOG_GENERATED_SHADER_SOURCE) {
+      console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
+//      console.log("[NexusGPU] Generated WGSL shader source", shaderCode);
+    }
 
     const shaderModule = this.device.createShaderModule({
       label: "NexusGPU SDF Raymarcher",
@@ -403,13 +459,26 @@ export class WebGpuSdfRenderer {
     const bindGroup = this.device.createBindGroup({
       label: "NexusGPU Scene Bind Group",
       layout: this.sceneBindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.cameraBuffer } },
-        { binding: 1, resource: { buffer: this.objectBuffer } },
-      ],
+      entries: this.createSceneBindGroupEntries(),
     });
 
     return { pipeline, bindGroup };
+  }
+
+  private createSceneBindGroup() {
+    return this.device.createBindGroup({
+      label: "NexusGPU Scene Bind Group",
+      layout: this.sceneBindGroupLayout,
+      entries: this.createSceneBindGroupEntries(),
+    });
+  }
+
+  private createSceneBindGroupEntries(): GPUBindGroupEntry[] {
+    return [
+      { binding: 0, resource: { buffer: this.cameraBuffer } },
+      { binding: 1, resource: { buffer: this.objectBuffer } },
+      ...this.sceneTextures.createBindGroupEntries(),
+    ];
   }
 
   /** 組み込みprimitiveは固定ID、SdfFunctionは関数文字列ごとに割り当てた動的IDを返す。 */
@@ -568,6 +637,23 @@ function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Req
 /** 数値を指定範囲内に制限する。 */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function formatVec(values: readonly number[]) {
+  return `[${values.map(formatNumber).join(", ")}]`;
+}
+
+function formatNumber(value: number) {
+  if (!Number.isFinite(value)) {
+    return `${value}`;
+  }
+
+  return `${Math.round(value * 1000000) / 1000000}`;
+}
+
+function previewSource(source: string) {
+  const normalized = source.trim().replace(/\s+/g, " ");
+  return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
 }
 
 /** 3次元ベクトルの差を返す。 */

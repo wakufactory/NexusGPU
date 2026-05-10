@@ -2,6 +2,27 @@ import { useState } from "react";
 import { NexusCanvas, SdfFunction,SdfGroup,SdfBox, useFrame, SdfSphere } from "../nexusgpu";
 import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
+import { defineSceneRenderSettings } from "./types";
+
+export const initialRenderSettings = defineSceneRenderSettings({
+  maxSteps: 140,
+  maxDistance: 42,
+  shadows: false,
+  normalEpsilon: 0.001,
+  surfaceEpsilon: 0.0025,
+  hitInteriorSurfaces: true,
+});
+
+export type Noise0SceneParameters = typeof initialParameters;
+
+type Noise0SceneProps = {
+  parameters: Noise0SceneParameters;
+  canvasProps: NexusSceneCanvasProps;
+};
+
+type Noise0SceneContentProps = {
+  parameters: Noise0SceneParameters;
+};
 
 export const { initialParameters, parameterControls } = defineSceneParameterControls(
   {
@@ -14,16 +35,24 @@ export const { initialParameters, parameterControls } = defineSceneParameterCont
     {
       key: "freq",
       name: "freq",
-      min: 0.1,
-      max: 20,
+      min: 0.02,
+      max: 10,
       step: 0.02,
     },
     {
       key: "edge",
       name: "edge",
       min: 0,
-      max: 1.5,
+      max: 1.7,
       step: 0.01,
+    },
+    {
+      key: "tick",
+      name: "Thickness",
+      min: 0.0,
+      max: 0.1,
+      step: 0.001,
+      precision: 3,
     },
     {
       key: "experimentSpeed",
@@ -32,37 +61,19 @@ export const { initialParameters, parameterControls } = defineSceneParameterCont
       max: 5,
       step: 0.1,
     },
-    {
-      key: "tick",
-      name: "Thickness",
-      min: 0.001,
-      max: 0.1,
-      step: 0.001,
-      precision: 3,
-    },
   ],
 );
 
-export type Noise0SceneParameters = typeof initialParameters;
-
 const EXPERIMENT_SDF = /* wgsl */ `
 let freq = data0.x; // 周期性。大きいほど細かいノイズになる。;
-let div = freq*6. ;
-var ppoint = point ;
-ppoint.z += -data0.z ;
-var heightDistance = abs(-simplexNoise(ppoint*freq) - data0.y)/div-data0.w;
+let div = freq*6. ; 
+var ppoint = vec4(point*freq,data0.z);  ;
+ppoint.z += -data0.z ; // アニメーションのためにzを時間で動かす。
+var noiseDistance = abs(simplexNoise4d(ppoint) - data0.y)/div-data0.w; 
+//var noiseDistance = abs(-simplexNoise3d(ppoint.xyz) - data0.y)/div-data0.w; 
 
-return heightDistance; // 高さ場単体で見たいときはこちらを有効に。
+return noiseDistance; 
 `;
-
-type Noise0SceneProps = {
-  parameters: Noise0SceneParameters;
-  canvasProps: NexusSceneCanvasProps;
-};
-
-type Noise0SceneContentProps = {
-  parameters: Noise0SceneParameters;
-};
 
 function Noise0SceneContent({ parameters }: Noise0SceneContentProps) {
   const [phase, setPhase] = useState(0);
@@ -87,13 +98,11 @@ function Noise0SceneContent({ parameters }: Noise0SceneContentProps) {
       bounds={{ radius: 18 }}
     />
 
-    <SdfSphere position={[0, 0, 0]} radius={2} color={[0.95, 0.55, 0.18]} smoothness={0.9}/>
+    <SdfSphere position={[0, 0, 0]} radius={2} color={[0.95, 0.25, 0.18]} smoothness={0.9}/>
   
     </SdfGroup>
   );
 }
-
-/** SdfFunctionのWGSLを書き換えて試すための実験用テンプレートscene。 */
 export function Scene({ parameters, canvasProps }: Noise0SceneProps) {
   return (
     <NexusCanvas

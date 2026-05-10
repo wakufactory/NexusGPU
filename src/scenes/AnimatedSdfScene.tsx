@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NexusCanvas, SdfBox, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfEllipsoid, SdfFunction, SdfGroup, SdfSphere, useFrame } from "../nexusgpu";
 import type { SdfSphereProps, Vec3 } from "../nexusgpu";
 import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
@@ -70,23 +70,6 @@ function getOrbitPosition({ center, basisA, basisB, distance, period, phase }: O
   ];
 }
 
-type SphereRenderProps = Pick<Required<SdfSphereProps>, "position" | "radius" | "color" | "smoothness">;
-
-export const { initialParameters, parameterControls } = defineSceneParameterControls(
-  { sphereSmoothness: 0.7 },
-  [
-    {
-      key: "sphereSmoothness",
-      name: "Sphere smoothness",
-      min: 0,
-      max: 1.5,
-      step: 0.05,
-    },
-  ],
-);
-
-export type AnimatedSdfSceneParameters = typeof initialParameters;
-
 function getSphereProps(
   sphere: OrbitingSphereConfig,
   elapsed: number,
@@ -104,16 +87,30 @@ function getSpherePropsList(elapsed: number, parameters: AnimatedSdfSceneParamet
   return ORBITING_SPHERES.map((sphere) => getSphereProps(sphere, elapsed, parameters));
 }
 
+// AnimatedSdfSceneのパラメータは、球のスムーズさだけにしてみる。
+type SphereRenderProps = Pick<Required<SdfSphereProps>, "position" | "radius" | "color" | "smoothness">;
+
+export const { initialParameters, parameterControls } = defineSceneParameterControls(
+  { sphereSmoothness: 0.7 },
+  [
+    {
+      key: "sphereSmoothness",
+      name: "Sphere smoothness",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+    },
+  ],
+);
+
+export type AnimatedSdfSceneParameters = typeof initialParameters;
 type AnimatedSdfSceneProps = {
   parameters: AnimatedSdfSceneParameters;
   canvasProps: NexusSceneCanvasProps;
 };
 
-type AnimatedSdfSceneContentProps = {
-  parameters: AnimatedSdfSceneParameters;
-};
-
-function AnimatedSdfSceneContent({ parameters }: AnimatedSdfSceneContentProps) {
+/** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
+function AnimatedSdfSceneContent({ parameters }: { parameters: AnimatedSdfSceneParameters }) {
   const [spherePropsList, setSpherePropsList] = useState<readonly SphereRenderProps[]>(() =>
     getSpherePropsList(0, parameters),
   );
@@ -130,34 +127,28 @@ function AnimatedSdfSceneContent({ parameters }: AnimatedSdfSceneContentProps) {
         color={[0.2, 0.23, 0.28]}
         smoothness={0.}
       />
-      <SdfGroup op="and" smoothness={parameters.sphereSmoothness}>
-      <SdfGroup op="or" smoothness={parameters.sphereSmoothness}>
-        {spherePropsList.map((sphereProps, index) => (
-          <SdfSphere
-            key={index}
-            position={sphereProps.position}
-            radius={sphereProps.radius}
-            color={sphereProps.color}
-            smoothness={sphereProps.smoothness}
-          />
-        ))}
-      </SdfGroup>
-      <SdfGroup op="not" >
-        <SdfFunction
-          sdfFunction="let k0 = length(point / data0.xyz); let k1 = length(point / (data0.xyz * data0.xyz)); return k0 * (k0 - 1.0) / k1;"
-          data0={[1.7, 0.9, 0.4, 0.3]}
-          position={[0, 1, 0]}
-          color={[0.8, 0.8, 0.8]}
-          smoothness={0.1}
-          bounds={{ radius: 0.8 }}
-        />
+      <SdfGroup op="subtract" smoothness={parameters.sphereSmoothness}>
+        <SdfGroup op="or" smoothness={parameters.sphereSmoothness}>
+          {spherePropsList.map((sphereProps, index) => (
+            <SdfSphere
+              key={index}
+              position={sphereProps.position}
+              radius={sphereProps.radius}
+              color={sphereProps.color}
+              smoothness={sphereProps.smoothness}
+            />
+          ))}
         </SdfGroup>
+        <SdfEllipsoid  smoothness={0.1}
+          position={[0, 1, 0]}
+          radii={[1.7, 0.9, 0.4]}
+          color={[0.8, 0.8, 0.8]}
+        />
       </SdfGroup>
     </>
   );
 }
 
-/** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
 export function Scene({ parameters, canvasProps }: AnimatedSdfSceneProps) {
   return (
     <NexusCanvas

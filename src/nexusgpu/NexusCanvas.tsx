@@ -14,6 +14,7 @@ export function NexusCanvas({
   camera,
   lighting,
   background,
+  textures,
   orbitControls = false,
   renderingEnabled = true,
   renderSettings,
@@ -24,6 +25,7 @@ export function NexusCanvas({
   const rendererRef = useRef<WebGpuSdfRenderer | null>(null);
   const elapsedRef = useRef(0);
   const renderSettingsRef = useRef(renderSettings);
+  const texturesRef = useRef(textures);
   const renderingEnabledRef = useRef(renderingEnabled);
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
@@ -69,6 +71,11 @@ export function NexusCanvas({
     rendererRef.current?.setRenderingEnabled(renderingEnabled);
   }, [renderingEnabled]);
 
+  useEffect(() => {
+    texturesRef.current = textures;
+    rendererRef.current?.setTextures(textures);
+  }, [textures]);
+
   // 子コンポーネント向けのフレームループ。useFrameでSDF propsを動かせるようにする。
   useEffect(() => {
     if (!renderingEnabled) {
@@ -113,6 +120,7 @@ export function NexusCanvas({
         rendererRef.current = renderer;
         renderer.setRenderSettings(renderSettingsRef.current);
         renderer.setRenderingEnabled(renderingEnabledRef.current);
+        renderer.setTextures(texturesRef.current);
         unsubscribe = store.subscribe((snapshot: SceneSnapshot) => {
           renderer.setScene(snapshot);
         });
