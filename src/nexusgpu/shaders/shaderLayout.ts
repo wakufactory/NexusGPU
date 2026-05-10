@@ -12,6 +12,7 @@ struct CameraUniform {
   objectInfo: vec4<f32>,
   renderInfo: vec4<f32>,
   lightInfo: vec4<f32>,
+  lightColorInfo: vec4<f32>,
   stereoInfo: vec4<f32>,
   backgroundYPositive: vec4<f32>,
   backgroundYNegative: vec4<f32>,

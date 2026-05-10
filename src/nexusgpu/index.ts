@@ -21,6 +21,8 @@ export type {
   NexusRenderStats,
   NexusCamera,
   NexusCanvasProps,
+  NexusLight,
+  NexusLightType,
   NexusLighting,
   NexusMaterialPreset,
   NexusMaterialRef,

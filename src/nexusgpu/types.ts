@@ -29,9 +29,39 @@ export type NexusCamera = {
   fov?: number;
 };
 
-/** シーン全体のライティング設定。directionは平行光源が照らす向きを表す。 */
-export type NexusLighting = {
+export type NexusLightType = "directional" | "point" | "spot";
+
+/** 1つのライト設定。現状のshaderは先頭ライトをmain lightとして使う。 */
+export type NexusLight = {
+  type?: NexusLightType;
   direction?: Vec3;
+  position?: Vec3;
+  color?: Vec3;
+  intensity?: number;
+  range?: number;
+};
+
+/** シーン全体のライティング設定。旧来のtop-level指定はmain directional lightとして扱う。 */
+export type NexusLighting = NexusLight & {
+  lights?: readonly NexusLight[];
+};
+
+export type ResolvedNexusLight = {
+  type: NexusLightType;
+  direction: Vec3;
+  position: Vec3;
+  color: Vec3;
+  intensity: number;
+  range: number;
+};
+
+export type ResolvedNexusLighting = {
+  lights: readonly ResolvedNexusLight[];
+  mainLight: ResolvedNexusLight;
+  direction: Vec3;
+  color: Vec3;
+  intensity: number;
+  type: NexusLightType;
 };
 
 export type NexusMaterialPreset = "default" | "normal" | "pbr" | "texture0Color" | "texture0Matcap";
@@ -245,7 +275,7 @@ export type SceneSnapshot = {
   nodes: readonly SdfNode[];
   sceneNodes: readonly SdfSceneNode[];
   camera: Required<NexusCamera>;
-  lighting: Required<NexusLighting>;
+  lighting: ResolvedNexusLighting;
   background: Required<NexusBackground>;
   version: number;
 };

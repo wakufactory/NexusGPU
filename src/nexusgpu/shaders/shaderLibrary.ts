@@ -297,6 +297,7 @@ fn simplexNoise(point: vec3<f32>) -> f32 {
   "material/default": /* wgsl */ `
 fn materialDefault(input: MaterialInput) -> vec3<f32> {
   let lightDirection = normalize(camera.lightInfo.xyz);
+  let lightColor = camera.lightColorInfo.rgb * camera.lightColorInfo.a;
   let diffuse = max(dot(input.normal, lightDirection), 0.0);
   let rim = 0.0 * pow(max(0.0, 1.0 - dot(input.normal, -input.rayDirection)), 3.0);
   let ambient = 0.54 + 0.1 * input.normal.y;
@@ -310,7 +311,7 @@ fn materialDefault(input: MaterialInput) -> vec3<f32> {
     shadow = select(1.0, 0.38, shadowed);
   }
 
-  return input.color * (ambient + diffuse * shadow) + rim * vec3<f32>(0.45, 0.75, 0.86);
+  return input.color * ambient + input.color * lightColor * diffuse * shadow + rim * vec3<f32>(0.45, 0.75, 0.86);
 }
 `,
   // Debug material that visualizes the world-space normal as RGB.
@@ -359,7 +360,7 @@ fn materialPbr(input: MaterialInput) -> vec3<f32> {
   let normal = normalize(input.normal);
   let viewDirection = normalize(input.cam - input.worldPoint);
   let lightDirection = normalize(camera.lightInfo.xyz);
-  let lightRadiance = vec3<f32>(3.2);
+  let lightRadiance = vec3<f32>(3.2) * camera.lightColorInfo.rgb * camera.lightColorInfo.a;
   let halfVector = normalize(viewDirection + lightDirection);
   let nDotL = max(dot(normal, lightDirection), 0.0);
   let nDotV = max(dot(normal, viewDirection), 0.0);

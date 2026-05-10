@@ -4,11 +4,13 @@ import type {
   NexusFrameCallback,
   NexusFrameState,
   NexusLighting,
+  ResolvedNexusLighting,
   SceneSnapshot,
   SdfNode,
   SdfSceneNode,
 } from "./types";
 import { DEFAULT_BACKGROUND, DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
+import { resolveLighting } from "./lighting";
 
 type SceneListener = (snapshot: SceneSnapshot) => void;
 
@@ -21,7 +23,7 @@ export class SceneStore {
   private listeners = new Set<SceneListener>();
   private frameListeners = new Set<NexusFrameCallback>();
   private camera = DEFAULT_CAMERA;
-  private lighting = DEFAULT_LIGHTING;
+  private lighting: ResolvedNexusLighting = DEFAULT_LIGHTING;
   private background = DEFAULT_BACKGROUND;
   private version = 0;
   private emitQueued = false;
@@ -38,9 +40,7 @@ export class SceneStore {
 
   /** ライティングpropsをストアへ反映し、購読中のレンダラへ変更を通知する。 */
   setLighting(lighting: NexusLighting | undefined) {
-    this.lighting = {
-      direction: lighting?.direction ?? DEFAULT_LIGHTING.direction,
-    };
+    this.lighting = resolveLighting(lighting);
     this.emit();
   }
 

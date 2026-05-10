@@ -3,6 +3,7 @@ import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
 import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 import { createSceneShaderPlan, getMaterialIdFromPlan } from "./renderer/scenePipelineCompiler";
 import { createEmptyMapSceneBody, type SceneCompileProfile } from "./renderer/sceneShaderCompiler";
+import { getLightTypeId } from "./lighting";
 import {
   compileSceneObjectRecords,
   countSceneObjectRecords,
@@ -26,7 +27,7 @@ import type {
   Vec3,
 } from "./types";
 
-const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
+const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const LOG_SCENE_COMPILE_PROFILE = true;
 const LOG_GENERATED_SHADER_SOURCE = true;
@@ -500,7 +501,8 @@ export class WebGpuSdfRenderer {
     const worldUp: Vec3 = [0, 1, 0];
     const right = normalize(cross(forward, worldUp));
     const up = normalize(cross(right, forward));
-    const lightDirection = normalize(snapshot.lighting.direction, [-0.45, 0.85, 0.35]);
+    const mainLight = snapshot.lighting.mainLight;
+    const lightDirection = normalize(mainLight.direction, [-0.45, 0.85, 0.35]);
     const time = (performance.now() - this.startTime) / 1000;
 
     this.cameraData.set([width, height, time, snapshot.camera.fov], 0);
@@ -526,7 +528,8 @@ export class WebGpuSdfRenderer {
       ],
       24,
     );
-    this.cameraData.set([...lightDirection, 0], 28);
+    this.cameraData.set([...lightDirection, getLightTypeId(mainLight.type)], 28);
+    this.cameraData.set([...mainLight.color, mainLight.intensity], 32);
     this.cameraData.set(
       [
         this.renderSettings.stereoSbs ? 1 : 0,
@@ -534,10 +537,10 @@ export class WebGpuSdfRenderer {
         this.renderSettings.stereoSwapEyes ? 1 : 0,
         0,
       ],
-      32,
+      36,
     );
-    this.cameraData.set([...snapshot.background.yPositive, 0], 36);
-    this.cameraData.set([...snapshot.background.yNegative, 0], 40);
+    this.cameraData.set([...snapshot.background.yPositive, 0], 40);
+    this.cameraData.set([...snapshot.background.yNegative, 0], 44);
 
     this.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraData);
   }
