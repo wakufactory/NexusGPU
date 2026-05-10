@@ -1,14 +1,26 @@
 # NexusGPU
 
-NexusGPU is a WebGPU-first experiment for rendering SDF primitives from declarative React components.
+NexusGPU is a WebGPU-first experiment for rendering signed distance field (SDF) scenes from declarative React components.
 
-This repository implements phase 1 of the roadmap in `NexusGPU_Framework_Roadmap.md`:
+## API Overview
 
-- React components for `<NexusCanvas>`, `<SdfSphere>`, and `<SdfBox>`
-- A `useFrame` hook for driving React-side SDF animations
-- A scene store that syncs React props into GPU-friendly storage-buffer records
-- A WGSL fragment raymarcher for smooth sphere and box primitives
-- A Vite demo app that exercises the first framework API
+The public API is centered on `<NexusCanvas>`, which owns the WebGPU renderer and provides a scene context for SDF components.
+
+- `<NexusCanvas>` renders the scene and accepts camera, lighting, background, texture, render-setting, and orbit-control props.
+- Built-in primitives include `<SdfSphere>`, `<SdfBox>`, `<SdfCylinder>`, `<SdfTorus>`, and `<SdfEllipsoid>`.
+- `<SdfGroup>` combines child SDFs with boolean operations such as union, intersection, subtraction, and inversion.
+- `<SdfModifier>` applies pre/post SDF transforms such as repeat, twist, onion, or custom WGSL snippets.
+- `<SdfFunction>` lets a scene provide custom WGSL SDF code directly.
+- `useFrame` runs a React-side animation callback from the canvas frame loop.
+- `useCamera` and `useLighting` allow scene components to update camera and light state from inside the canvas tree.
+
+The renderer expands the React scene tree into WGSL, uploads compact object records to WebGPU buffers, and raymarches the scene in a fragment shader.
+
+## Demo App
+
+The Vite demo app in `src/App.tsx` is a small playground for the framework API. It loads scene modules from `src/scenes/scenes.json`, lets you switch between demos, and exposes per-scene parameters through slider controls.
+
+The sidebar also includes render controls for FPS, resolution scale, raymarch settings, shadows, stereo side-by-side output, and fullscreen/pause controls. Current scene parameters and render settings are saved in `localStorage` so experiments survive reloads.
 
 ## Run
 
@@ -19,18 +31,23 @@ npm run dev
 
 Open the printed local URL in a browser with WebGPU support.
 
-## API Sketch
+## Scene Basic Sample
 
 ```tsx
 import { useState } from "react";
-import { NexusCanvas, SdfBox, SdfSphere, useFrame } from "./nexusgpu";
+import { NexusCanvas, SdfBox, SdfGroup, SdfSphere, useFrame } from "./nexusgpu";
 import type { Vec3 } from "./nexusgpu";
 
 export function Scene() {
   return (
-    <NexusCanvas camera={{ position: [0, 0.7, 5], target: [0, 0, 0], fov: 48 }}>
-      <AnimatedSphere />
-      <SdfBox position={[1, 0, 0]} size={[1.2, 1.2, 1.2]} color={[0.95, 0.55, 0.18]} />
+    <NexusCanvas
+      camera={{ position: [0, 0.7, 5], target: [0, 0, 0], fov: 48 }}
+      orbitControls
+    >
+      <SdfGroup op="or" smoothness={0.2}>
+        <AnimatedSphere />
+        <SdfBox position={[1, 0, 0]} size={[1.2, 1.2, 1.2]} color={[0.95, 0.55, 0.18]} />
+      </SdfGroup>
     </NexusCanvas>
   );
 }
