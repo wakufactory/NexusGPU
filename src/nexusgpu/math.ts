@@ -65,6 +65,36 @@ function scale4(value: Vec4, scalar: number): Vec4 {
   return [value[0] * scalar, value[1] * scalar, value[2] * scalar, value[3] * scalar];
 }
 
+
+export function axisAngleToQuaternion(axis: [number, number, number], theta: number): [number, number, number, number] {
+    let [ux, uy, uz] = axis;
+
+    // 1. 軸ベクトルの正規化 (長さが1になるように調整)
+    const magnitude = Math.sqrt(ux * ux + uy * uy + uz * uz);
+    
+    // 零ベクトルが入力された場合のガード
+    if (magnitude < 0.000001) {
+        return [0, 0, 0, 1];
+    }
+
+    ux /= magnitude;
+    uy /= magnitude;
+    uz /= magnitude;
+
+    // 2. 半角計算
+    const halfTheta = theta / 2;
+    const sinHalf = Math.sin(halfTheta);
+    const cosHalf = Math.cos(halfTheta);
+
+    // 3. クォータニオン成分の計算 [x, y, z, w]
+    return [
+        ux * sinHalf, // x
+        uy * sinHalf, // y
+        uz * sinHalf, // z
+        cosHalf       // w
+    ];
+}
+
 function simplexGrad4(j: number, ip: Vec4): Vec4 {
   const pxyz: Vec3 = [
     Math.floor(fract(j * ip[0]) * 7.0) * ip[2] - 1.0,

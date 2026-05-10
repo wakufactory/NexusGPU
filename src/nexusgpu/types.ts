@@ -34,7 +34,7 @@ export type NexusLighting = {
   direction?: Vec3;
 };
 
-export type NexusMaterialPreset = "default" | "normal" | "texture0Color" | "texture0Matcap";
+export type NexusMaterialPreset = "default" | "normal" | "pbr" | "texture0Color" | "texture0Matcap";
 
 export type NexusMaterialRef =
   | NexusMaterialPreset

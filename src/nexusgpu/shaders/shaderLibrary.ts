@@ -319,6 +319,72 @@ fn materialNormal(input: MaterialInput) -> vec3<f32> {
   return input.normal * 0.5 + vec3<f32>(0.5);
 }
 `,
+  // Lightweight Cook-Torrance style material.
+  // materialUniform: x=metallic, y=roughness, z=specular, w=ambient.
+  "material/pbr": /* wgsl */ `
+fn materialPbrFresnelSchlick(cosTheta: f32, f0: vec3<f32>) -> vec3<f32> {
+  return f0 + (vec3<f32>(1.0) - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+fn materialPbrDistributionGgx(normal: vec3<f32>, halfVector: vec3<f32>, roughness: f32) -> f32 {
+  let alpha = roughness * roughness;
+  let alpha2 = alpha * alpha;
+  let nDotH = max(dot(normal, halfVector), 0.0);
+  let nDotH2 = nDotH * nDotH;
+  let denom = nDotH2 * (alpha2 - 1.0) + 1.0;
+  return alpha2 / max(3.14159265359 * denom * denom, 0.0001);
+}
+
+fn materialPbrGeometrySchlickGgx(nDotV: f32, roughness: f32) -> f32 {
+  let r = roughness + 1.0;
+  let k = (r * r) * 0.125;
+  return nDotV / max(nDotV * (1.0 - k) + k, 0.0001);
+}
+
+fn materialPbrGeometrySmith(normal: vec3<f32>, viewDirection: vec3<f32>, lightDirection: vec3<f32>, roughness: f32) -> f32 {
+  let nDotV = max(dot(normal, viewDirection), 0.0);
+  let nDotL = max(dot(normal, lightDirection), 0.0);
+  return materialPbrGeometrySchlickGgx(nDotV, roughness) * materialPbrGeometrySchlickGgx(nDotL, roughness);
+}
+
+fn materialPbr(input: MaterialInput) -> vec3<f32> {
+  let metallic = clamp(input.materialUniform.x, 0.0, 1.0);
+  let roughnessInput = select(input.materialUniform.y, 0.48, abs(input.materialUniform.y) <= 0.0001);
+  let roughness = clamp(roughnessInput, 0.04, 1.0);
+  let specularInput = select(input.materialUniform.z, 0.5, abs(input.materialUniform.z) <= 0.0001);
+  let specular = clamp(specularInput, 0.0, 1.0);
+  let ambientInput = select(input.materialUniform.w, 0.045, abs(input.materialUniform.w) <= 0.0001);
+  let ambientStrength = clamp(ambientInput, 0.0, 1.0);
+
+  let normal = normalize(input.normal);
+  let viewDirection = normalize(input.cam - input.worldPoint);
+  let lightDirection = normalize(camera.lightInfo.xyz);
+  let halfVector = normalize(viewDirection + lightDirection);
+  let nDotL = max(dot(normal, lightDirection), 0.0);
+  let nDotV = max(dot(normal, viewDirection), 0.0);
+
+  let baseColor = clamp(input.color, vec3<f32>(0.0), vec3<f32>(1.0));
+  let dielectricF0 = vec3<f32>(0.08 * specular);
+  let f0 = mix(dielectricF0, baseColor, metallic);
+  let fresnel = materialPbrFresnelSchlick(max(dot(halfVector, viewDirection), 0.0), f0);
+  let distribution = materialPbrDistributionGgx(normal, halfVector, roughness);
+  let geometry = materialPbrGeometrySmith(normal, viewDirection, lightDirection, roughness);
+  let specularTerm = (distribution * geometry * fresnel) / max(4.0 * nDotV * nDotL, 0.0001);
+  let diffuseTerm = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) * baseColor * 0.31830988618;
+
+  var shadow = 1.0;
+  if (camera.renderInfo.z > 0.5) {
+    let shadowPoint = input.worldPoint + normal * 0.015;
+    let shadowHit = raymarch(shadowPoint, lightDirection);
+    let shadowed = shadowHit.distance > 0.0 && shadowHit.distance < min(8.0, camera.renderInfo.y);
+    shadow = select(1.0, 0.32, shadowed);
+  }
+
+  let direct = (diffuseTerm + specularTerm) * nDotL * shadow;
+  let ambient = baseColor * ambientStrength * (1.0 - metallic * 0.55);
+  return ambient + direct;
+}
+`,
   // Texture color material that samples texture0 with localPoint.xz mapping.
   "material/texture0-color": /* wgsl */ `
 fn materialTexture0Color(input: MaterialInput) -> vec3<f32> {

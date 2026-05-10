@@ -2,8 +2,9 @@ import type { NexusMaterialRef, SdfGroupSceneNode, SdfNode, SdfSceneNode } from 
 
 export const DEFAULT_MATERIAL_ID = 0;
 const NORMAL_MATERIAL_ID = 1;
-const TEXTURE0_COLOR_MATERIAL_ID = 2;
-const TEXTURE0_MATCAP_MATERIAL_ID = 3;
+const PBR_MATERIAL_ID = 2;
+const TEXTURE0_COLOR_MATERIAL_ID = 3;
+const TEXTURE0_MATCAP_MATERIAL_ID = 4;
 const CUSTOM_MATERIAL_ID_START = 16;
 
 export type MaterialShaderPlan = {
@@ -39,6 +40,10 @@ export function getBuiltinMaterialId(material: NexusMaterialRef | undefined) {
 
   if (material === "normal") {
     return NORMAL_MATERIAL_ID;
+  }
+
+  if (material === "pbr") {
+    return PBR_MATERIAL_ID;
   }
 
   if (material === "texture0Color") {
@@ -100,6 +105,7 @@ function createMaterialShader(customMaterials: readonly CustomMaterial[]) {
   return /* wgsl */ `
 #include <material/default>
 #include <material/normal>
+#include <material/pbr>
 #include <material/texture0-color>
 #include <material/texture0-matcap>
 
@@ -108,6 +114,7 @@ ${customFunctions}
 fn shadeMaterialById(materialId: f32, input: MaterialInput) -> vec3<f32> {
   switch u32(round(materialId)) {
     case ${NORMAL_MATERIAL_ID}u: { return materialNormal(input); }
+    case ${PBR_MATERIAL_ID}u: { return materialPbr(input); }
     case ${TEXTURE0_COLOR_MATERIAL_ID}u: { return materialTexture0Color(input); }
     case ${TEXTURE0_MATCAP_MATERIAL_ID}u: { return materialTexture0Matcap(input); }
 ${customCases}
