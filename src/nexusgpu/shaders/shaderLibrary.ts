@@ -353,12 +353,13 @@ fn materialPbr(input: MaterialInput) -> vec3<f32> {
   let roughness = clamp(roughnessInput, 0.04, 1.0);
   let specularInput = select(input.materialUniform.z, 0.5, abs(input.materialUniform.z) <= 0.0001);
   let specular = clamp(specularInput, 0.0, 1.0);
-  let ambientInput = select(input.materialUniform.w, 0.045, abs(input.materialUniform.w) <= 0.0001);
+  let ambientInput = select(input.materialUniform.w, 0.28, abs(input.materialUniform.w) <= 0.0001);
   let ambientStrength = clamp(ambientInput, 0.0, 1.0);
 
   let normal = normalize(input.normal);
   let viewDirection = normalize(input.cam - input.worldPoint);
   let lightDirection = normalize(camera.lightInfo.xyz);
+  let lightRadiance = vec3<f32>(3.2);
   let halfVector = normalize(viewDirection + lightDirection);
   let nDotL = max(dot(normal, lightDirection), 0.0);
   let nDotV = max(dot(normal, viewDirection), 0.0);
@@ -380,7 +381,7 @@ fn materialPbr(input: MaterialInput) -> vec3<f32> {
     shadow = select(1.0, 0.32, shadowed);
   }
 
-  let direct = (diffuseTerm + specularTerm) * nDotL * shadow;
+  let direct = (diffuseTerm + specularTerm) * lightRadiance * nDotL * shadow;
   let ambient = baseColor * ambientStrength * (1.0 - metallic * 0.55);
   return ambient + direct;
 }
