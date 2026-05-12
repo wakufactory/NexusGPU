@@ -55,14 +55,14 @@ function ModTestSceneContent({ parameters }: { parameters: ModTestSceneParameter
   return (
     <>
       <SdfGroup op="or" smoothness={parameters.sphereSmoothness}>
-      <SdfBox active={false}
-        position={[0, -0.06, 0]}
+      <SdfBox active={true}
+        position={[0, -0.7, 0]}
         size={[4.4, 0.12, 3.2]}
         color={[0.2, 0.23, 0.28]}
         smoothness={1}
       />
-      <SdfModifier preset="preRepeat" data0={[2, 2, 2, 0]} active={true}>
-        <SdfModifier preset="postMix" data0={[parameters.mixratio2, 0, 0, 0]} active={false}> 
+      <SdfModifier preset="preRepeat" data0={[4, 4, 4, 0]} active={false}>
+        <SdfModifier preset="postMix" data0={[parameters.mixratio2, 0, 0, 0]} active={true}> 
         <SdfModifier preset="postMix" data0={[parameters.mixratio, 0, 0, 0]} active={true}>
           <SdfOctahedron smoothness={1} active={true}
             position={[0, 0., 0]}
@@ -75,8 +75,8 @@ function ModTestSceneContent({ parameters }: { parameters: ModTestSceneParameter
             color={[0.3, 0.8, 0.3]}
           />  
           </SdfModifier>
-          <SdfTorus active={false}
-            position={[0, 0.6, 0]}
+          <SdfTorus active={true}
+            position={[0, 0, 0]}
             majorRadius={0.6}
             minorRadius={0.2}
             color={[0.3, 0.3, 0.8]}
