@@ -251,7 +251,7 @@ Reactで使うSDFプリミティブを定義します。
 - `<SdfSubtract />`
 - `<SdfModifier />`
 
-各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめた`SdfGroupSceneNode`が親の登録先へ渡されます。
+各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめた`SdfGroupSceneNode`が親の登録先へ渡されます。primitive / groupの`active` propが`false`の場合は登録済みノードを削除し、scene graph、Storage Buffer、shader展開から完全に除外します。`<SdfModifier active={false} />`は子を外さず、modifier機能を停止した`op="or"` groupとして親へ登録します。
 
 `<SdfFunction />`は、WGSLのSDF関数を文字列として渡す汎用プリミティブです。`data0`、`data1`、`data2`は`Vec4`として受け取り、GPU側の`object.data0`、`object.data1`、`object.data2`へそのまま渡されます。渡した関数には、オブジェクトの`position`と`rotation`を適用済みのローカル座標`point`と、`data0-2`が渡されます。
 

@@ -28,6 +28,16 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
       }
 
       let evalHit = mapSceneEval(point);
+      if (!hitInteriorSurfaces) {
+        let normal = estimateNormalFromGradInfo(point, evalHit.gradInfo);
+        if (dot(normal, direction) > 0.0) {
+          depth = depth + surfaceEpsilon * 2.0;
+          previousDepth = depth;
+          previousDistance = mapSceneDistance(origin + direction * depth).distance;
+          continue;
+        }
+      }
+
       color = evalHit.color;
       return RaymarchHit(
         depth,
@@ -61,7 +71,18 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
           }
         }
 
-        let refinedEval = mapSceneEval(origin + direction * high);
+        let refinedPoint = origin + direction * high;
+        let refinedEval = mapSceneEval(refinedPoint);
+        if (!hitInteriorSurfaces) {
+          let normal = estimateNormalFromGradInfo(refinedPoint, refinedEval.gradInfo);
+          if (dot(normal, direction) > 0.0) {
+            depth = high + surfaceEpsilon * 2.0;
+            previousDepth = depth;
+            previousDistance = mapSceneDistance(origin + direction * depth).distance;
+            continue;
+          }
+        }
+
         color = refinedEval.color;
         return RaymarchHit(
           high,

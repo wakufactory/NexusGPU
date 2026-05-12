@@ -141,6 +141,7 @@ export type NexusFrameCallback = (state: NexusFrameState) => void;
 
 /** SDFプリミティブに共通するReact props。 */
 export type SdfPrimitiveProps = {
+  active?: boolean;
   position?: Vec3;
   rotation?: Quaternion;
   color?: Vec3;
@@ -207,6 +208,7 @@ export type SdfFunctionProps = SdfPrimitiveProps & {
 
 /** グループコンポーネントのprops。position/rotationは子SDF全体の評価空間を動かす。 */
 export type SdfGroupProps = {
+  active?: boolean;
   op?: SdfBooleanOperation;
   position?: Vec3;
   rotation?: Quaternion;
@@ -221,6 +223,7 @@ export type SdfModifierPreset = "twistY" | "preRepeat" | "preScale" | "postInfla
 
 /** 子SDFの評価前後にWGSL modifierを差し込むコンポーネントのprops。 */
 export type SdfModifierProps = {
+  active?: boolean;
   preset?: SdfModifierPreset | readonly SdfModifierPreset[];
   preModifierFunction?: string;
   postModifierFunction?: string;

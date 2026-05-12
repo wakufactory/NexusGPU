@@ -42,6 +42,7 @@ const SdfSceneNodeTargetContext = createContext<SdfSceneNodeTarget | null>(null)
 
 /** React propsからSDF球を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfSphere({
+  active = true,
   position,
   rotation,
   radius = 1,
@@ -55,6 +56,11 @@ export function SdfSphere({
 
   // props変更ごとにGPUへ渡すノード情報を作り直す。
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const node: SdfNode = {
       id,
       kind: "sphere",
@@ -70,7 +76,7 @@ export function SdfSphere({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [color, id, material, materialUniform, position, radius, rotation, smoothness, target]);
+  }, [active, color, id, material, materialUniform, position, radius, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -81,6 +87,7 @@ export function SdfSphere({
 
 /** React propsからSDFボックスを作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfBox({
+  active = true,
   position,
   rotation,
   size = [1, 1, 1],
@@ -94,6 +101,11 @@ export function SdfBox({
 
   // SDFのbox関数は半径ベクトルを使うため、propsのsizeは半分にしてGPUへ渡す。
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const node: SdfNode = {
       id,
       kind: "box",
@@ -109,7 +121,7 @@ export function SdfBox({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [color, id, material, materialUniform, position, rotation, size, smoothness, target]);
+  }, [active, color, id, material, materialUniform, position, rotation, size, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -120,6 +132,7 @@ export function SdfBox({
 
 /** React propsからSDF円柱を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfCylinder({
+  active = true,
   position,
   rotation,
   radius = 0.5,
@@ -133,6 +146,11 @@ export function SdfCylinder({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const normalizedRadius = Math.max(0.001, radius);
     const halfHeight = Math.max(0.001, height * 0.5);
     const node: SdfNode = {
@@ -150,7 +168,7 @@ export function SdfCylinder({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [color, height, id, material, materialUniform, position, radius, rotation, smoothness, target]);
+  }, [active, color, height, id, material, materialUniform, position, radius, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -161,6 +179,7 @@ export function SdfCylinder({
 
 /** React propsからSDF円錐台を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfCone({
+  active = true,
   position,
   rotation,
   topRadius = 0,
@@ -175,6 +194,11 @@ export function SdfCone({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const normalizedTopRadius = Math.max(0, topRadius);
     const normalizedBottomRadius = Math.max(0, bottomRadius);
     const halfHeight = Math.max(0.001, height * 0.5);
@@ -193,7 +217,7 @@ export function SdfCone({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [bottomRadius, color, height, id, material, materialUniform, position, rotation, smoothness, target, topRadius]);
+  }, [active, bottomRadius, color, height, id, material, materialUniform, position, rotation, smoothness, target, topRadius]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -204,6 +228,7 @@ export function SdfCone({
 
 /** React propsから任意軸capsule/円柱を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfCapsule({
+  active = true,
   position,
   rotation,
   top = [0, 0.5, 0],
@@ -219,6 +244,11 @@ export function SdfCapsule({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const normalizedTop = normalizeVec3(top, [0, 0.5, 0]);
     const normalizedBottom = normalizeVec3(bottom, [0, -0.5, 0]);
     const normalizedRadius = Math.max(0.001, radius);
@@ -237,7 +267,7 @@ export function SdfCapsule({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [bottom, color, id, material, materialUniform, position, radius, rotation, round, smoothness, target, top]);
+  }, [active, bottom, color, id, material, materialUniform, position, radius, rotation, round, smoothness, target, top]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -248,6 +278,7 @@ export function SdfCapsule({
 
 /** React propsからSDFトーラスを作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfTorus({
+  active = true,
   position,
   rotation,
   majorRadius = 0.7,
@@ -261,6 +292,11 @@ export function SdfTorus({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const normalizedMajorRadius = Math.max(0.001, majorRadius);
     const normalizedMinorRadius = Math.max(0.001, minorRadius);
     const node: SdfNode = {
@@ -278,7 +314,7 @@ export function SdfTorus({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [color, id, majorRadius, material, materialUniform, minorRadius, position, rotation, smoothness, target]);
+  }, [active, color, id, majorRadius, material, materialUniform, minorRadius, position, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -289,6 +325,7 @@ export function SdfTorus({
 
 /** React propsからSDF楕円球を作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfEllipsoid({
+  active = true,
   position,
   rotation,
   radii = [1, 0.6, 0.4],
@@ -301,6 +338,11 @@ export function SdfEllipsoid({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const normalizedRadii = normalizeRadii(radii);
     const node: SdfNode = {
       id,
@@ -317,7 +359,7 @@ export function SdfEllipsoid({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [color, id, material, materialUniform, position, radii, rotation, smoothness, target]);
+  }, [active, color, id, material, materialUniform, position, radii, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -344,6 +386,7 @@ export function SdfIcosahedron(props: SdfRegularPolyhedronProps) {
 
 function SdfRegularPolyhedronPrimitive({
   kind,
+  active = true,
   position,
   rotation,
   radius = 1,
@@ -356,6 +399,11 @@ function SdfRegularPolyhedronPrimitive({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const normalizedRadius = Math.max(0.001, radius);
     const node: SdfNode = {
       id,
@@ -372,7 +420,7 @@ function SdfRegularPolyhedronPrimitive({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [color, id, kind, material, materialUniform, position, radius, rotation, smoothness, target]);
+  }, [active, color, id, kind, material, materialUniform, position, radius, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -383,6 +431,7 @@ function SdfRegularPolyhedronPrimitive({
 
 /** WGSLのSDF関数文字列とdata0-2をそのまま渡す汎用SDFプリミティブ。 */
 export function SdfFunction({
+  active = true,
   position,
   rotation,
   color,
@@ -399,6 +448,11 @@ export function SdfFunction({
   const id = useStableId();
 
   useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
     const node: SdfNode = {
       id,
       kind: "function",
@@ -415,7 +469,7 @@ export function SdfFunction({
     };
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [bounds, color, data0, data1, data2, id, material, materialUniform, position, rotation, sdfFunction, smoothness, target]);
+  }, [active, bounds, color, data0, data1, data2, id, material, materialUniform, position, rotation, sdfFunction, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -426,6 +480,7 @@ export function SdfFunction({
 
 /** 子SDFを1つのboolean演算単位にまとめ、boundsで評価スキップできるようにする。 */
 export function SdfGroup({
+  active = true,
   op = "or",
   position,
   rotation,
@@ -441,7 +496,7 @@ export function SdfGroup({
 
   useEffect(() => {
     return registry.subscribe((childNodes) => {
-      if (childNodes.length === 0) {
+      if (!active || childNodes.length === 0) {
         target.removeSceneNode(id);
         return;
       }
@@ -465,7 +520,7 @@ export function SdfGroup({
 
       target.upsertSceneNode(id, groupNode);
     });
-  }, [id, material, materialUniform, normalizedSmoothness, op, position, registry, rotation, target]);
+  }, [active, id, material, materialUniform, normalizedSmoothness, op, position, registry, rotation, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -474,16 +529,25 @@ export function SdfGroup({
   return <SdfSceneNodeTargetContext.Provider value={registry}>{children}</SdfSceneNodeTargetContext.Provider>;
 }
 
-export function SdfNot({ children }: Pick<SdfGroupProps, "children">) {
-  return <SdfGroup op="not">{children}</SdfGroup>;
+export function SdfNot({ active, children }: Pick<SdfGroupProps, "active" | "children">) {
+  return (
+    <SdfGroup active={active} op="not">
+      {children}
+    </SdfGroup>
+  );
 }
 
-export function SdfSubtract({ children }: Pick<SdfGroupProps, "children">) {
-  return <SdfGroup op="subtract">{children}</SdfGroup>;
+export function SdfSubtract({ active, children }: Pick<SdfGroupProps, "active" | "children">) {
+  return (
+    <SdfGroup active={active} op="subtract">
+      {children}
+    </SdfGroup>
+  );
 }
 
 /** 子SDFの評価前後にWGSL関数を差し込むmodifier。boundsは保持だけ行い、現状は枝刈りしない。 */
 export function SdfModifier({
+  active = true,
   preset,
   preModifierFunction,
   postModifierFunction,
@@ -508,6 +572,21 @@ export function SdfModifier({
         return;
       }
 
+      if (!active) {
+        target.upsertSceneNode(id, {
+          type: "group",
+          op: "or",
+          position: DEFAULT_POSITION,
+          rotation: DEFAULT_ROTATION,
+          hasRotation: false,
+          smoothness: 0,
+          materialUniform: DEFAULT_MATERIAL_UNIFORM,
+          children: childNodes,
+          bounds: createGroupBounds("or", childNodes, 0),
+        });
+        return;
+      }
+
       target.upsertSceneNode(id, {
         type: "modifier",
         preModifierFunction: resolvedFunctions.preModifierFunction,
@@ -518,7 +597,7 @@ export function SdfModifier({
         bounds: createModifierBounds(childNodes, bounds),
       });
     });
-  }, [bounds, data0, data1, data2, id, registry, resolvedFunctions, target]);
+  }, [active, bounds, data0, data1, data2, id, registry, resolvedFunctions, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
