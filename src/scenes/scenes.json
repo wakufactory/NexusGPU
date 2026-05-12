@@ -6,6 +6,12 @@
     "module": "./SimpleScene.tsx"
   },
   {
+    "id": "added-primitives",
+    "title": "Added Primitives",
+    "description": "A sample scene showing cone, capsule, flat-ended capsule, and regular polyhedra primitives.",
+    "module": "./AddedPrimitivesScene.tsx"
+  },
+  {
     "id": "animated-sdf",
     "title": "AnimatedSdfScene",
     "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
@@ -46,5 +52,59 @@
     "title": "SDF boid test",
     "description": "Scene for testing SDF boids ",
     "module": "./BoidsSpheresScene.tsx"
+  },
+  {
+    "id": "mat-test",
+    "title": "material test",
+    "description": "Scene copied from texture test.",
+    "module": "./MatTestScene.tsx"
+  },
+  {
+    "id": "spheres",
+    "title": "spheres",
+    "description": "Scene copied from AnimatedSdfScene.",
+    "module": "./SpheresScene.tsx"
+  },
+  {
+    "id": "showcase-neon-garden",
+    "title": "Showcase: Neon Garden",
+    "description": "A repeated, twisted SDF garden using modifiers, smooth unions, PBR, and custom WGSL material bands.",
+    "module": "./ShowcaseNeonGardenScene.tsx"
+  },
+  {
+    "id": "showcase-crystal-reliquary",
+    "title": "Showcase: Crystal Reliquary",
+    "description": "A polished CSG sculpture with subtractive cuts, nested primitives, and adjustable PBR surface response.",
+    "module": "./ShowcaseCrystalReliquaryScene.tsx"
+  },
+  {
+    "id": "showcase-wave-temple",
+    "title": "Showcase: Wave Temple",
+    "description": "An animated SdfFunction water field framed by SDF architecture and metallic trim.",
+    "module": "./ShowcaseWaveTempleScene.tsx"
+  },
+  {
+    "id": "showcase-matcap-gallery",
+    "title": "Showcase: Matcap Gallery",
+    "description": "A moving-camera gallery scene using texture0Matcap, a custom faceted SDF, and dynamic lighting.",
+    "module": "./ShowcaseMatcapGalleryScene.tsx"
+  },
+  {
+    "id": "showcase-orbital-forge",
+    "title": "Showcase: Orbital Forge",
+    "description": "A kinetic gyroid core with onion-shell modifier, animated satellites, rings, and PBR materials.",
+    "module": "./ShowcaseOrbitalForgeScene.tsx"
+  },
+  {
+    "id": "gyroid0",
+    "title": "gyroid0",
+    "description": "Scene copied from Showcase: Orbital Forge.",
+    "module": "./Gyroid0Scene.tsx"
+  },
+  {
+    "id": "mod-test",
+    "title": "modifier test",
+    "description": "Scene copied from spheres.",
+    "module": "./ModTestScene.tsx"
   }
 ]
