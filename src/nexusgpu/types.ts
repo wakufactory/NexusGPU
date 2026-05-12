@@ -197,7 +197,7 @@ export type SdfGroupProps = {
 };
 
 /** SDF modifierの組み込みプリセット。1つのpresetがpre/postの両方を持つ場合がある。 */
-export type SdfModifierPreset = "twistY" | "preRepeat" | "postInflate" | "postOnion";
+export type SdfModifierPreset = "twistY" | "preRepeat" | "preScale" | "postInflate" | "postOnion" | "postMix";
 
 /** 子SDFの評価前後にWGSL modifierを差し込むコンポーネントのprops。 */
 export type SdfModifierProps = {
@@ -263,6 +263,7 @@ export type SdfModifierSceneNode = {
   type: "modifier";
   preModifierFunction?: string;
   postModifierFunction?: string;
+  postModifierOperation?: "mix";
   data: SdfData;
   children: readonly SdfSceneNode[];
   bounds: SdfBoundingSphere;

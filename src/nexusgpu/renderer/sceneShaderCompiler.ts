@@ -213,7 +213,10 @@ function accumulateSceneCompileProfile(
     if (node.postModifierFunction) {
       profile.modifiers.withPost += 1;
     }
-    if (node.preModifierFunction || node.postModifierFunction) {
+    if (node.postModifierOperation) {
+      profile.modifiers.withPost += 1;
+    }
+    if (node.preModifierFunction || node.postModifierFunction || node.postModifierOperation) {
       profile.modifiers.invalidatesGrad += 1;
     }
 
@@ -411,7 +414,7 @@ function compileExpandedModifierNode(
   const lines: string[] = [];
   let childPointExpression = pointExpression;
 
-  if (preCallSpec || postCallSpec) {
+  if (preCallSpec || postCallSpec || node.postModifierOperation) {
     lines.push(`  let ${modifierObjectName} = objects[${modifierObjectIndex}u];`);
   }
 
@@ -420,6 +423,49 @@ function compileExpandedModifierNode(
     lines.push(
       `  let ${childPointExpression} = ${preCallSpec.functionName}(${pointExpression}, ${formatSdfDataArgs(modifierObjectName)});`,
     );
+  }
+
+  if (node.postModifierOperation === "mix" && !postCallSpec) {
+    if (node.children.length !== 2) {
+      throw new Error("SdfModifier preset=\"postMix\" requires exactly two children.");
+    }
+
+    const firstChildResult = compileExpandedSceneNode(
+      node.children[0],
+      state,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+      childPointExpression,
+      mode,
+    );
+    const secondChildResult = compileExpandedSceneNode(
+      node.children[1],
+      state,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+      childPointExpression,
+      mode,
+    );
+    const hitName = nextTempName("mixedHit", state);
+    const ratioName = nextTempName("mixRatio", state);
+    lines.push(firstChildResult.code, secondChildResult.code);
+    lines.push(`  let ${ratioName} = clamp(${modifierObjectName}.data0.x, 0.0, 1.0);`);
+
+    if (mode === "eval") {
+      lines.push(
+        `  let ${hitName} = sceneEvalNoGrad(mix(${firstChildResult.hitName}.distance, ${secondChildResult.hitName}.distance, ${ratioName}), mix(${firstChildResult.hitName}.color, ${secondChildResult.hitName}.color, ${ratioName}), mix(${firstChildResult.hitName}.smoothness, ${secondChildResult.hitName}.smoothness, ${ratioName}), select(${firstChildResult.hitName}.localPoint, ${secondChildResult.hitName}.localPoint, vec3<bool>(${ratioName} >= 0.5)), select(${firstChildResult.hitName}.materialId, ${secondChildResult.hitName}.materialId, ${ratioName} >= 0.5), select(${firstChildResult.hitName}.materialUniform, ${secondChildResult.hitName}.materialUniform, vec4<bool>(${ratioName} >= 0.5)));`,
+      );
+    } else {
+      lines.push(
+        `  let ${hitName} = sceneDistance(mix(${firstChildResult.hitName}.distance, ${secondChildResult.hitName}.distance, ${ratioName}), mix(${firstChildResult.hitName}.smoothness, ${secondChildResult.hitName}.smoothness, ${ratioName}));`,
+      );
+    }
+
+    return {
+      code: lines.join("\n"),
+      hitName,
+      smoothnessExpression: `${hitName}.smoothness`,
+    };
   }
 
   const childResult = compileExpandedSceneNode(
@@ -629,7 +675,7 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
   }
 
   if (node.type === "modifier") {
-    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}(${node.children
+    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}:${node.postModifierOperation ?? ""}(${node.children
       .map(createSceneNodeTopologySignature)
       .join(",")})`;
   }

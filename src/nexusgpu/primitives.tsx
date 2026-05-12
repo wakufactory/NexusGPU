@@ -367,6 +367,7 @@ export function SdfModifier({
         type: "modifier",
         preModifierFunction: resolvedFunctions.preModifierFunction,
         postModifierFunction: resolvedFunctions.postModifierFunction,
+        postModifierOperation: resolvedFunctions.postModifierOperation,
         data: createSdfData(data0, data1, data2),
         children: childNodes,
         bounds: createModifierBounds(childNodes, bounds),
@@ -630,6 +631,7 @@ function resolveSdfModifierFunctions(
   const presets = typeof preset === "string" ? [preset] : preset ?? [];
   let resolvedPreModifierFunction = preModifierFunction;
   let resolvedPostModifierFunction = postModifierFunction;
+  let resolvedPostModifierOperation: SdfModifierPresetFunctions["postModifierOperation"];
 
   for (const presetName of presets) {
     const presetFunctions = resolveSdfModifierPreset(presetName);
@@ -641,17 +643,27 @@ function resolveSdfModifierFunctions(
     if (presetFunctions.postModifierFunction && !resolvedPostModifierFunction) {
       resolvedPostModifierFunction = presetFunctions.postModifierFunction;
     }
+
+    if (
+      presetFunctions.postModifierOperation &&
+      !resolvedPostModifierFunction &&
+      !resolvedPostModifierOperation
+    ) {
+      resolvedPostModifierOperation = presetFunctions.postModifierOperation;
+    }
   }
 
   return {
     preModifierFunction: resolvedPreModifierFunction,
     postModifierFunction: resolvedPostModifierFunction,
+    postModifierOperation: resolvedPostModifierFunction ? undefined : resolvedPostModifierOperation,
   };
 }
 
 type SdfModifierPresetFunctions = {
   preModifierFunction?: string;
   postModifierFunction?: string;
+  postModifierOperation?: "mix";
 };
 
 function resolveSdfModifierPreset(preset: SdfModifierPreset) {
@@ -680,9 +692,29 @@ return hit.distance / max(stretch, 1.0);
     } satisfies SdfModifierPresetFunctions;
   }
 
+  if (preset === "preScale") {
+    return {
+      preModifierFunction: /* wgsl */ `
+let scale = select(data0.xyz, vec3<f32>(1.0), abs(data0.xyz) <= vec3<f32>(0.0001));
+return point / scale;
+`,
+      postModifierFunction: /* wgsl */ `
+let scale = select(abs(data0.xyz), vec3<f32>(1.0), abs(data0.xyz) <= vec3<f32>(0.0001));
+let distanceScale = min(scale.x, min(scale.y, scale.z));
+return hit.distance * distanceScale;
+`,
+    } satisfies SdfModifierPresetFunctions;
+  }
+
   if (preset === "postOnion") {
     return {
       postModifierFunction: /* wgsl */ `return abs(hit.distance) - data0.x;`,
+    } satisfies SdfModifierPresetFunctions;
+  }
+
+  if (preset === "postMix") {
+    return {
+      postModifierOperation: "mix",
     } satisfies SdfModifierPresetFunctions;
   }
 

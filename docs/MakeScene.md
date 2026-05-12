@@ -92,7 +92,7 @@ primitive固有props:
 - `SdfGroup.op`: `"or"`、`"and"`、`"subtract"`、`"not"`のいずれか。省略時は`"or"`
 - `SdfGroup.position`, `rotation`: 子SDF全体の評価空間を移動・回転する。`rotation`省略時はprimitiveと同じくquaternion回転計算を生成しない
 - `SdfGroup.material`: groupの合成結果全体に適用するmaterial。未指定なら子のmaterialを引き継ぐ
-- `SdfModifier.preset`: `"twistY"`、`"preRepeat"`、`"postInflate"`、`"postOnion"`、またはそれらの配列
+- `SdfModifier.preset`: `"twistY"`、`"preRepeat"`、`"preScale"`、`"postInflate"`、`"postOnion"`、`"postMix"`、またはそれらの配列
 - `SdfModifier.preModifierFunction`: 子SDFを評価する前に`point`を加工するWGSL
 - `SdfModifier.postModifierFunction`: 子SDFを評価した後に`hit.distance`や`hit.color`を加工するWGSL
 - `SdfModifier.data0`, `data1`, `data2`: modifier関数へ渡す`vec4<f32>`相当の追加データ
@@ -475,14 +475,27 @@ fn shell(
 }
 ```
 
-組み込みpresetは次の4つです。presetはpre/postの片方だけでなく、両方を持つ場合があります。
+組み込みpresetは次の6つです。presetはpre/postの片方だけでなく、両方を持つ場合があります。
 
 | preset | 種類 | 内容 | 主なdata |
 | --- | --- | --- | --- |
 | `"twistY"` | pre + post | Y軸方向にtwistし、postで距離を変形率に合わせて補正する | `data0.x`: twist強度 |
 | `"preRepeat"` | pre | 空間を繰り返す | `data0.xyz`: cellサイズ |
+| `"preScale"` | pre + post | 子SDFへ渡す評価点をXYZ軸ごとにスケーリングし、postで距離を安全側に補正する | `data0.xyz`: scale |
 | `"postInflate"` | post | 距離を外側へ膨らませる | `data0.x`: 膨張量 |
 | `"postOnion"` | post | 表面を殻状にする | `data0.x`: 厚み |
+| `"postMix"` | post | 先頭2 childrenのdistanceをratioで線形補間する | `data0.x`: ratio `0..1` |
+
+`"preScale"`は`point / data0.xyz`で子SDFを評価します。たとえば`data0={[2, 1, 1, 0]}`ならX方向に2倍へ伸びた形状になります。uniform scaleではpost補正後の距離も厳密です。非一様scaleでは完全なSDF距離には戻らないため、postでは`min(abs(data0.x), abs(data0.y), abs(data0.z))`を掛けてレイマーチング安全側に補正します。
+
+`"postMix"`はchildrenがちょうど2つ必要です。`data0.x`を`clamp(..., 0.0, 1.0)`したratioとして、distance pathでは`mix(child0.distance, child1.distance, ratio)`を返します。eval pathでは色とsmoothnessも同じratioでmixし、materialとlocalPointはratioが0.5未満なら1つ目、0.5以上なら2つ目を使います。
+
+```tsx
+<SdfModifier preset="postMix" data0={[0.35, 0, 0, 0]}>
+  <SdfSphere radius={0.8} color={[1, 0.2, 0.1]} />
+  <SdfBox size={[1.2, 1.2, 1.2]} color={[0.1, 0.5, 1]} />
+</SdfModifier>
+```
 
 `"twistY"`のpost補正は、元の評価点のXZ半径と`data0.x`から局所的な伸びを見積もり、`hit.distance`を割ってレイマーチングが表面を飛び越えにくいようにします。
 

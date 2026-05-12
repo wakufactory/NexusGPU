@@ -277,7 +277,7 @@ Reactで使うSDFプリミティブを定義します。
 
 現在のグループ実装はGPU上でグループ命令列を解釈しません。React側で作られたシーン木を`scenePipelineCompiler.ts` / `sceneShaderCompiler.ts`がWGSLの`mapSceneDistance()`と`mapSceneEval()`へ展開し、primitiveデータだけをStorage Bufferへ詰めます。これにより、数十オブジェクト規模ではグループ用のループ、stack、動的op分岐を避けられます。
 
-`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"postInflate"`、`"postOnion"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
+`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"preScale"`、`"postInflate"`、`"postOnion"`、`"postMix"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`"preScale"`は`point / data0.xyz`でXYZ軸ごとのscaleを適用し、postで距離に最小scaleを掛けてレイマーチング安全側に補正します。`"postMix"`は先頭2 childrenを個別評価し、`data0.x`をratioとしてdistanceを線形補間する組み込みpost operationです。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
 
 ```tsx
 <SdfModifier
@@ -614,6 +614,7 @@ type SdfModifierSceneNode = {
   type: "modifier";
   preModifierFunction?: string;
   postModifierFunction?: string;
+  postModifierOperation?: "mix";
   data: SdfData;
   children: readonly SdfSceneNode[];
   bounds: SdfBoundingSphere;
