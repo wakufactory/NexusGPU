@@ -607,6 +607,20 @@ function createPrimitiveHitExpression(
     );
   }
 
+  if (node.kind === "cone") {
+    return createBuiltinHit(
+      `sdCone(${localPointName}, ${objectName}.data0.xyz)`,
+      `sdConeGrad(${localPointName}, ${objectName}.data0.xyz)`,
+    );
+  }
+
+  if (node.kind === "capsule") {
+    return createBuiltinHit(
+      `sdCapsule(${localPointName}, ${objectName}.data0.xyz, ${objectName}.data1.xyz, ${objectName}.data0.w, ${objectName}.data1.w)`,
+      `sdCapsuleGrad(${localPointName}, ${objectName}.data0.xyz, ${objectName}.data1.xyz, ${objectName}.data0.w, ${objectName}.data1.w)`,
+    );
+  }
+
   if (node.kind === "torus") {
     return createBuiltinHit(
       `sdTorus(${localPointName}, ${objectName}.data0.xy)`,
@@ -618,6 +632,34 @@ function createPrimitiveHitExpression(
     return createBuiltinHit(
       `sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`,
       `sdEllipsoidGrad(${localPointName}, ${objectName}.data0.xyz)`,
+    );
+  }
+
+  if (node.kind === "tetrahedron") {
+    return createBuiltinHit(
+      `sdTetrahedron(${localPointName}, ${objectName}.data0.x)`,
+      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 0.0)`,
+    );
+  }
+
+  if (node.kind === "octahedron") {
+    return createBuiltinHit(
+      `sdOctahedron(${localPointName}, ${objectName}.data0.x)`,
+      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 1.0)`,
+    );
+  }
+
+  if (node.kind === "dodecahedron") {
+    return createBuiltinHit(
+      `sdDodecahedron(${localPointName}, ${objectName}.data0.x)`,
+      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 2.0)`,
+    );
+  }
+
+  if (node.kind === "icosahedron") {
+    return createBuiltinHit(
+      `sdIcosahedron(${localPointName}, ${objectName}.data0.x)`,
+      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 3.0)`,
     );
   }
 

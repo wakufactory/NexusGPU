@@ -7,7 +7,7 @@ NexusGPU is a WebGPU-first experiment for rendering signed distance field (SDF) 
 The public API is centered on `<NexusCanvas>`, which owns the WebGPU renderer and provides a scene context for SDF components.
 
 - `<NexusCanvas>` renders the scene and accepts camera, lighting, background, texture, render-setting, and orbit-control props.
-- Built-in primitives include `<SdfSphere>`, `<SdfBox>`, `<SdfCylinder>`, `<SdfTorus>`, and `<SdfEllipsoid>`.
+- Built-in primitives include `<SdfSphere>`, `<SdfBox>`, `<SdfCylinder>`, `<SdfCone>`, `<SdfCapsule>`, `<SdfTorus>`, `<SdfEllipsoid>`, and regular polyhedra except cube.
 - `<SdfGroup>` combines child SDFs with boolean operations such as union, intersection, subtraction, and inversion.
 - `<SdfModifier>` applies pre/post SDF transforms such as repeat, twist, onion, or custom WGSL snippets.
 - `<SdfFunction>` lets a scene provide custom WGSL SDF code directly.

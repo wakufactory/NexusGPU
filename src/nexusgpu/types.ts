@@ -165,6 +165,21 @@ export type SdfCylinderProps = SdfPrimitiveProps & {
   height?: number;
 };
 
+/** 円錐台プリミティブのprops。heightはY軸方向のフル高さで、上下端の半径を指定する。 */
+export type SdfConeProps = SdfPrimitiveProps & {
+  topRadius?: number;
+  bottomRadius?: number;
+  height?: number;
+};
+
+/** 任意軸capsuleプリミティブのprops。top/bottomはローカル座標の端中央、round=0なら平面キャップ円柱、1なら半球cap。 */
+export type SdfCapsuleProps = SdfPrimitiveProps & {
+  top?: Vec3;
+  bottom?: Vec3;
+  radius?: number;
+  round?: number;
+};
+
 /** トーラスプリミティブのprops。majorRadiusは中心からチューブ中心まで、minorRadiusはチューブ半径。 */
 export type SdfTorusProps = SdfPrimitiveProps & {
   majorRadius?: number;
@@ -174,6 +189,11 @@ export type SdfTorusProps = SdfPrimitiveProps & {
 /** 楕円球プリミティブのprops。radiiはX/Y/Z各軸の半径。 */
 export type SdfEllipsoidProps = SdfPrimitiveProps & {
   radii?: Vec3;
+};
+
+/** 正多面体プリミティブのprops。radiusは中心から頂点までの半径。 */
+export type SdfRegularPolyhedronProps = SdfPrimitiveProps & {
+  radius?: number;
 };
 
 /** WGSLのSDF関数を直接渡す汎用プリミティブのprops。 */

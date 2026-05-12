@@ -3,14 +3,20 @@ export { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 export { useCamera, useFrame, useLighting } from "./SceneContext";
 export {
   SdfBox,
+  SdfCapsule,
+  SdfCone,
   SdfCylinder,
+  SdfDodecahedron,
   SdfEllipsoid,
   SdfFunction,
   SdfGroup,
+  SdfIcosahedron,
   SdfModifier,
   SdfNot,
+  SdfOctahedron,
   SdfSphere,
   SdfSubtract,
+  SdfTetrahedron,
   SdfTorus,
 } from "./primitives";
 export type {
@@ -33,6 +39,8 @@ export type {
   SdfBooleanOperation,
   SdfBoundingSphere,
   SdfBoxProps,
+  SdfCapsuleProps,
+  SdfConeProps,
   SdfCylinderProps,
   SdfData,
   SdfEllipsoidProps,
@@ -41,6 +49,7 @@ export type {
   SdfModifierPreset,
   SdfModifierProps,
   SdfPrimitiveProps,
+  SdfRegularPolyhedronProps,
   SdfSphereProps,
   SdfTorusProps,
   Vec4,

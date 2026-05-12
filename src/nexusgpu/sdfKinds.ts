@@ -5,9 +5,15 @@ export const SDF_PRIMITIVE_KIND_IDS = {
   cylinder: 2,
   torus: 3,
   ellipsoid: 4,
+  cone: 5,
+  capsule: 6,
+  tetrahedron: 7,
+  octahedron: 8,
+  dodecahedron: 9,
+  icosahedron: 10,
 } as const;
 
-export const CUSTOM_SDF_PRIMITIVE_KIND_START = 5;
+export const CUSTOM_SDF_PRIMITIVE_KIND_START = 11;
 
 /** primitive IDと衝突しない、GPU命令列用の演算ノードID。 */
 export const SDF_OPERATION_KIND_IDS = {

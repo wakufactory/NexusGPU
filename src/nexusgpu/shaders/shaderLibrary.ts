@@ -70,6 +70,76 @@ fn sdCylinderGrad(point: vec3<f32>, dimensions: vec2<f32>) -> vec3<f32> {
   return vec3<f32>(0.0, sign(point.y), 0.0);
 }
 `,
+  // Built-in Y-axis capped cone/frustum SDF and numeric gradient.
+  "sdf/cone": /* wgsl */ `
+// Y軸方向の円錐台のSigned Distance Function。paramsは(topRadius, bottomRadius, halfHeight)。
+fn sdCone(point: vec3<f32>, params: vec3<f32>) -> f32 {
+  let topRadius = max(params.x, 0.0);
+  let bottomRadius = max(params.y, 0.0);
+  let halfHeight = max(params.z, 0.001);
+  let q = vec2<f32>(length(point.xz), point.y);
+  let k1 = vec2<f32>(topRadius, halfHeight);
+  let k2 = vec2<f32>(topRadius - bottomRadius, 2.0 * halfHeight);
+  let capRadius = select(topRadius, bottomRadius, q.y < 0.0);
+  let ca = vec2<f32>(q.x - min(q.x, capRadius), abs(q.y) - halfHeight);
+  let cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / max(dot(k2, k2), 0.000001), 0.0, 1.0);
+  let signValue = select(1.0, -1.0, cb.x < 0.0 && ca.y < 0.0);
+  return signValue * sqrt(min(dot(ca, ca), dot(cb, cb)));
+}
+
+fn sdConeGrad(point: vec3<f32>, params: vec3<f32>) -> vec3<f32> {
+  let e = vec2<f32>(0.0005, 0.0);
+  let grad = vec3<f32>(
+    sdCone(point + e.xyy, params) - sdCone(point - e.xyy, params),
+    sdCone(point + e.yxy, params) - sdCone(point - e.yxy, params),
+    sdCone(point + e.yyx, params) - sdCone(point - e.yyx, params)
+  );
+  let gradLength = length(grad);
+  if (gradLength <= 0.000001) {
+    return vec3<f32>(0.0, 1.0, 0.0);
+  }
+
+  return grad / gradLength;
+}
+`,
+  // Built-in arbitrary-axis rounded capsule/capped cylinder SDF and numeric gradient.
+  "sdf/capsule": /* wgsl */ `
+// 任意軸capsuleのSigned Distance Function。roundAmountは0なら平面キャップ円柱、1なら半球cap。
+fn sdCapsule(point: vec3<f32>, top: vec3<f32>, bottom: vec3<f32>, radius: f32, roundAmount: f32) -> f32 {
+  let safeRadius = max(radius, 0.001);
+  let axis = top - bottom;
+  let axisLength = length(axis);
+
+  if (axisLength <= 0.000001) {
+    return length(point - bottom) - safeRadius;
+  }
+
+  let direction = axis / axisLength;
+  let center = (top + bottom) * 0.5;
+  let local = point - center;
+  let y = dot(local, direction);
+  let capRound = min(safeRadius, max(roundAmount, 0.0) * safeRadius);
+  let coreRadius = safeRadius - capRound;
+  let radial = length(local - direction * y) - coreRadius;
+  let capped = vec2<f32>(radial, abs(y) - axisLength * 0.5);
+  return min(max(capped.x, capped.y), 0.0) + length(max(capped, vec2<f32>(0.0))) - capRound;
+}
+
+fn sdCapsuleGrad(point: vec3<f32>, top: vec3<f32>, bottom: vec3<f32>, radius: f32, roundAmount: f32) -> vec3<f32> {
+  let e = vec2<f32>(0.0005, 0.0);
+  let grad = vec3<f32>(
+    sdCapsule(point + e.xyy, top, bottom, radius, roundAmount) - sdCapsule(point - e.xyy, top, bottom, radius, roundAmount),
+    sdCapsule(point + e.yxy, top, bottom, radius, roundAmount) - sdCapsule(point - e.yxy, top, bottom, radius, roundAmount),
+    sdCapsule(point + e.yyx, top, bottom, radius, roundAmount) - sdCapsule(point - e.yyx, top, bottom, radius, roundAmount)
+  );
+  let gradLength = length(grad);
+  if (gradLength <= 0.000001) {
+    return vec3<f32>(0.0, 1.0, 0.0);
+  }
+
+  return grad / gradLength;
+}
+`,
   // Built-in XZ-plane torus SDF and analytic gradient.
   "sdf/torus": /* wgsl */ `
 // XZ平面上のトーラスのSigned Distance Function。radiiは(majorRadius, minorRadius)。
@@ -115,6 +185,80 @@ fn sdEllipsoidGrad(point: vec3<f32>, radii: vec3<f32>) -> vec3<f32> {
   }
 
   return implicitGrad / gradLength;
+}
+`,
+  // Built-in regular polyhedron SDFs. radius is the circumradius.
+  "sdf/polyhedra": /* wgsl */ `
+const POLY_PHI = 1.61803398875;
+const POLY_INV_PHI = 0.61803398875;
+const POLY_INV_SQRT3 = 0.57735026919;
+const POLY_ICOS_DODEC_INRADIUS_RATIO = 0.79465447229;
+
+fn sdTetrahedron(point: vec3<f32>, radius: f32) -> f32 {
+  let safeRadius = max(radius, 0.001);
+  let invSqrt3 = POLY_INV_SQRT3;
+  var d = dot(point, vec3<f32>(1.0, 1.0, 1.0) * invSqrt3);
+  d = max(d, dot(point, vec3<f32>(-1.0, -1.0, 1.0) * invSqrt3));
+  d = max(d, dot(point, vec3<f32>(-1.0, 1.0, -1.0) * invSqrt3));
+  d = max(d, dot(point, vec3<f32>(1.0, -1.0, -1.0) * invSqrt3));
+  return d - safeRadius / 3.0;
+}
+
+fn sdOctahedron(point: vec3<f32>, radius: f32) -> f32 {
+  let safeRadius = max(radius, 0.001);
+  return (abs(point.x) + abs(point.y) + abs(point.z) - safeRadius) * POLY_INV_SQRT3;
+}
+
+fn sdDodecahedron(point: vec3<f32>, radius: f32) -> f32 {
+  let safeRadius = max(radius, 0.001);
+  let p = abs(point);
+  var d = p.y + POLY_PHI * p.z;
+  d = max(d, p.x + POLY_PHI * p.y);
+  d = max(d, POLY_PHI * p.x + p.z);
+  return d / sqrt(1.0 + POLY_PHI * POLY_PHI) - safeRadius * POLY_ICOS_DODEC_INRADIUS_RATIO;
+}
+
+fn sdIcosahedron(point: vec3<f32>, radius: f32) -> f32 {
+  let safeRadius = max(radius, 0.001);
+  let p = abs(point);
+  var d = p.x + p.y + p.z;
+  d = max(d, POLY_INV_PHI * p.y + POLY_PHI * p.z);
+  d = max(d, POLY_INV_PHI * p.x + POLY_PHI * p.y);
+  d = max(d, POLY_PHI * p.x + POLY_INV_PHI * p.z);
+  return d * POLY_INV_SQRT3 - safeRadius * POLY_ICOS_DODEC_INRADIUS_RATIO;
+}
+
+fn sdPolyhedronGrad(point: vec3<f32>, radius: f32, kind: f32) -> vec3<f32> {
+  let e = vec2<f32>(0.0005, 0.0);
+  var dx = 0.0;
+  var dy = 0.0;
+  var dz = 0.0;
+
+  if (kind == 0.0) {
+    dx = sdTetrahedron(point + e.xyy, radius) - sdTetrahedron(point - e.xyy, radius);
+    dy = sdTetrahedron(point + e.yxy, radius) - sdTetrahedron(point - e.yxy, radius);
+    dz = sdTetrahedron(point + e.yyx, radius) - sdTetrahedron(point - e.yyx, radius);
+  } else if (kind == 1.0) {
+    dx = sdOctahedron(point + e.xyy, radius) - sdOctahedron(point - e.xyy, radius);
+    dy = sdOctahedron(point + e.yxy, radius) - sdOctahedron(point - e.yxy, radius);
+    dz = sdOctahedron(point + e.yyx, radius) - sdOctahedron(point - e.yyx, radius);
+  } else if (kind == 2.0) {
+    dx = sdDodecahedron(point + e.xyy, radius) - sdDodecahedron(point - e.xyy, radius);
+    dy = sdDodecahedron(point + e.yxy, radius) - sdDodecahedron(point - e.yxy, radius);
+    dz = sdDodecahedron(point + e.yyx, radius) - sdDodecahedron(point - e.yyx, radius);
+  } else {
+    dx = sdIcosahedron(point + e.xyy, radius) - sdIcosahedron(point - e.xyy, radius);
+    dy = sdIcosahedron(point + e.yxy, radius) - sdIcosahedron(point - e.yxy, radius);
+    dz = sdIcosahedron(point + e.yyx, radius) - sdIcosahedron(point - e.yyx, radius);
+  }
+
+  let grad = vec3<f32>(dx, dy, dz);
+  let gradLength = length(grad);
+  if (gradLength <= 0.000001) {
+    return vec3<f32>(0.0, 1.0, 0.0);
+  }
+
+  return grad / gradLength;
 }
 `,
   // Smooth minimum helper used by SDF and custom WGSL snippets.

@@ -5,6 +5,8 @@ import type {
   SdfBooleanOperation,
   SdfBoundingSphere,
   SdfBoxProps,
+  SdfCapsuleProps,
+  SdfConeProps,
   SdfCylinderProps,
   SdfData,
   SdfEllipsoidProps,
@@ -13,6 +15,7 @@ import type {
   SdfModifierProps,
   SdfModifierPreset,
   SdfNode,
+  SdfRegularPolyhedronProps,
   SdfSceneNode,
   SdfSphereProps,
   SdfTorusProps,
@@ -156,6 +159,93 @@ export function SdfCylinder({
   return null;
 }
 
+/** React propsからSDF円錐台を作り、SceneStoreへ登録する宣言的プリミティブ。 */
+export function SdfCone({
+  position,
+  rotation,
+  topRadius = 0,
+  bottomRadius = 0.5,
+  height = 1,
+  color,
+  smoothness = 0,
+  material,
+  materialUniform = DEFAULT_MATERIAL_UNIFORM,
+}: SdfConeProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+
+  useEffect(() => {
+    const normalizedTopRadius = Math.max(0, topRadius);
+    const normalizedBottomRadius = Math.max(0, bottomRadius);
+    const halfHeight = Math.max(0.001, height * 0.5);
+    const node: SdfNode = {
+      id,
+      kind: "cone",
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      hasRotation: rotation !== undefined,
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData([normalizedTopRadius, normalizedBottomRadius, halfHeight, 0]),
+      smoothness: clamp(smoothness, 0, 2),
+      material,
+      materialUniform,
+      bounds: createConeBounds(position, normalizedTopRadius, normalizedBottomRadius, halfHeight),
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [bottomRadius, color, height, id, material, materialUniform, position, rotation, smoothness, target, topRadius]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return null;
+}
+
+/** React propsから任意軸capsule/円柱を作り、SceneStoreへ登録する宣言的プリミティブ。 */
+export function SdfCapsule({
+  position,
+  rotation,
+  top = [0, 0.5, 0],
+  bottom = [0, -0.5, 0],
+  radius = 0.25,
+  round = 1,
+  color,
+  smoothness = 0,
+  material,
+  materialUniform = DEFAULT_MATERIAL_UNIFORM,
+}: SdfCapsuleProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+
+  useEffect(() => {
+    const normalizedTop = normalizeVec3(top, [0, 0.5, 0]);
+    const normalizedBottom = normalizeVec3(bottom, [0, -0.5, 0]);
+    const normalizedRadius = Math.max(0.001, radius);
+    const node: SdfNode = {
+      id,
+      kind: "capsule",
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      hasRotation: rotation !== undefined,
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData([...normalizedTop, normalizedRadius], [...normalizedBottom, Math.max(0, round)]),
+      smoothness: clamp(smoothness, 0, 2),
+      material,
+      materialUniform,
+      bounds: createCapsuleBounds(position, rotation, normalizedTop, normalizedBottom, normalizedRadius),
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [bottom, color, id, material, materialUniform, position, radius, rotation, round, smoothness, target, top]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return null;
+}
+
 /** React propsからSDFトーラスを作り、SceneStoreへ登録する宣言的プリミティブ。 */
 export function SdfTorus({
   position,
@@ -228,6 +318,61 @@ export function SdfEllipsoid({
 
     target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
   }, [color, id, material, materialUniform, position, radii, rotation, smoothness, target]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return null;
+}
+
+export function SdfTetrahedron(props: SdfRegularPolyhedronProps) {
+  return <SdfRegularPolyhedronPrimitive {...props} kind="tetrahedron" />;
+}
+
+export function SdfOctahedron(props: SdfRegularPolyhedronProps) {
+  return <SdfRegularPolyhedronPrimitive {...props} kind="octahedron" />;
+}
+
+export function SdfDodecahedron(props: SdfRegularPolyhedronProps) {
+  return <SdfRegularPolyhedronPrimitive {...props} kind="dodecahedron" />;
+}
+
+export function SdfIcosahedron(props: SdfRegularPolyhedronProps) {
+  return <SdfRegularPolyhedronPrimitive {...props} kind="icosahedron" />;
+}
+
+function SdfRegularPolyhedronPrimitive({
+  kind,
+  position,
+  rotation,
+  radius = 1,
+  color,
+  smoothness = 0,
+  material,
+  materialUniform = DEFAULT_MATERIAL_UNIFORM,
+}: SdfRegularPolyhedronProps & { kind: "tetrahedron" | "octahedron" | "dodecahedron" | "icosahedron" }) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+
+  useEffect(() => {
+    const normalizedRadius = Math.max(0.001, radius);
+    const node: SdfNode = {
+      id,
+      kind,
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      hasRotation: rotation !== undefined,
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: createSdfData([normalizedRadius, 0, 0, 0]),
+      smoothness: clamp(smoothness, 0, 2),
+      material,
+      materialUniform,
+      bounds: createSphereBounds(position, normalizedRadius),
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [color, id, kind, material, materialUniform, position, radius, rotation, smoothness, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -477,6 +622,44 @@ function createCylinderBounds(
   return {
     center: normalizeVec3(position, DEFAULT_POSITION),
     radius: Math.hypot(radius, halfHeight),
+  };
+}
+
+function createConeBounds(
+  position: Vec3 | undefined,
+  topRadius: number,
+  bottomRadius: number,
+  halfHeight: number,
+): SdfBoundingSphere {
+  return {
+    center: normalizeVec3(position, DEFAULT_POSITION),
+    radius: Math.hypot(Math.max(topRadius, bottomRadius), halfHeight),
+  };
+}
+
+function createCapsuleBounds(
+  position: Vec3 | undefined,
+  rotation: Quaternion | undefined,
+  top: Vec3,
+  bottom: Vec3,
+  radius: number,
+): SdfBoundingSphere {
+  const center: Vec3 = [
+    (top[0] + bottom[0]) * 0.5,
+    (top[1] + bottom[1]) * 0.5,
+    (top[2] + bottom[2]) * 0.5,
+  ];
+  const normalizedPosition = normalizeVec3(position, DEFAULT_POSITION);
+  const normalizedRotation = normalizeQuaternion(rotation, DEFAULT_ROTATION);
+  const rotatedCenter = rotation ? rotateVec3ByQuaternion(center, normalizedRotation) : center;
+
+  return {
+    center: [
+      rotatedCenter[0] + normalizedPosition[0],
+      rotatedCenter[1] + normalizedPosition[1],
+      rotatedCenter[2] + normalizedPosition[2],
+    ],
+    radius: lengthVec3(subtractVec3(top, bottom)) * 0.5 + radius,
   };
 }
 
