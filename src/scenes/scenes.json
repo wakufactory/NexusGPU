@@ -56,7 +56,7 @@
   {
     "id": "mod-test",
     "title": "modifier test",
-    "description": "Scene copied from spheres.",
+    "description": "Modifier and Mix test .",
     "module": "./ModTestScene.tsx"
   }
 ]
