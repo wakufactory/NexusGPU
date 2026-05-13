@@ -37,6 +37,54 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+/** 3次元ベクトルの差を返す。 */
+export function subtractVec3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+/** 3次元ベクトルの長さを返す。 */
+export function lengthVec3(value: Vec3) {
+  return Math.hypot(value[0], value[1], value[2]);
+}
+
+/** 3次元ベクトルの外積を返す。 */
+export function crossVec3(a: Vec3, b: Vec3): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+/** 3次元ベクトルを単位ベクトル化する。ゼロ長に近い場合はfallbackを返す。 */
+export function normalizeDirectionVec3(value: Vec3, fallback: Vec3 = [0, 0, 1]): Vec3 {
+  const length = lengthVec3(value);
+  if (length <= 0.00001) {
+    return fallback;
+  }
+
+  return [value[0] / length, value[1] / length, value[2] / length];
+}
+
+export function rotateVec3ByQuaternion(point: Vec3, rotation: Quaternion): Vec3 {
+  const qx = rotation[0];
+  const qy = rotation[1];
+  const qz = rotation[2];
+  const qw = rotation[3];
+  const uv: Vec3 = [
+    qy * point[2] - qz * point[1],
+    qz * point[0] - qx * point[2],
+    qx * point[1] - qy * point[0],
+  ];
+  const uuv: Vec3 = [
+    qy * uv[2] - qz * uv[1],
+    qz * uv[0] - qx * uv[2],
+    qx * uv[1] - qy * uv[0],
+  ];
+
+  return [
+    point[0] + (uv[0] * qw + uuv[0]) * 2,
+    point[1] + (uv[1] * qw + uuv[1]) * 2,
+    point[2] + (uv[2] * qw + uuv[2]) * 2,
+  ];
+}
+
 function fract(value: number) {
   return value - Math.floor(value);
 }

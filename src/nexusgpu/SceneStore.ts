@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import { DEFAULT_BACKGROUND, DEFAULT_CAMERA, DEFAULT_LIGHTING } from "./defaults";
 import { resolveLighting } from "./lighting";
+import { collectSdfNodes } from "./sceneTraversal";
 
 type SceneListener = (snapshot: SceneSnapshot) => void;
 
@@ -105,7 +106,7 @@ export class SceneStore {
     const sceneNodes = [...this.sceneNodes.values()];
 
     return {
-      nodes: sceneNodes.flatMap(flattenSdfNodes),
+      nodes: collectSdfNodes(sceneNodes),
       sceneNodes,
       camera: this.camera,
       lighting: this.lighting,
@@ -135,12 +136,4 @@ export class SceneStore {
       listener(snapshot);
     }
   }
-}
-
-function flattenSdfNodes(node: SdfSceneNode): SdfNode[] {
-  if (node.type === "primitive") {
-    return [node.node];
-  }
-
-  return node.children.flatMap(flattenSdfNodes);
 }

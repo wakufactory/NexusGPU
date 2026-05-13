@@ -1,3 +1,4 @@
+import { walkSceneNodesPreOrder } from "../sceneTraversal";
 import type { SdfSceneNode } from "../types";
 
 export type CustomSdfFunctionCallSpec = {
@@ -48,26 +49,26 @@ export function uniqueModifierFunctionSources(sceneNodes: readonly SdfSceneNode[
 }
 
 export function collectSdfFunctionSources(sceneNodes: readonly SdfSceneNode[]): string[] {
-  return sceneNodes.flatMap((node) => {
-    if (node.type === "primitive") {
-      return node.node.kind === "function" && node.node.sdfFunction ? [node.node.sdfFunction] : [];
-    }
+  const sources: string[] = [];
 
-    return collectSdfFunctionSources(node.children);
+  walkSceneNodesPreOrder(sceneNodes, (node) => {
+    if (node.type === "primitive") {
+      if (node.node.kind === "function" && node.node.sdfFunction) {
+        sources.push(node.node.sdfFunction);
+      }
+    }
   });
+
+  return sources;
 }
 
 function collectSdfModifierFunctionSources(sceneNodes: readonly SdfSceneNode[]): SdfModifierFunctionSource[] {
-  return sceneNodes.flatMap((node) => {
-    if (node.type === "primitive") {
-      return [];
-    }
+  const sources: SdfModifierFunctionSource[] = [];
 
+  walkSceneNodesPreOrder(sceneNodes, (node) => {
     if (node.type === "modifier") {
-      const ownFunctions: SdfModifierFunctionSource[] = [];
-
       if (node.preModifierFunction) {
-        ownFunctions.push({
+        sources.push({
           key: createSdfModifierFunctionKey("pre", node.preModifierFunction),
           mode: "pre",
           source: node.preModifierFunction,
@@ -75,18 +76,16 @@ function collectSdfModifierFunctionSources(sceneNodes: readonly SdfSceneNode[]):
       }
 
       if (node.postModifierFunction) {
-        ownFunctions.push({
+        sources.push({
           key: createSdfModifierFunctionKey("post", node.postModifierFunction),
           mode: "post",
           source: node.postModifierFunction,
         });
       }
-
-      return [...ownFunctions, ...collectSdfModifierFunctionSources(node.children)];
     }
-
-    return collectSdfModifierFunctionSources(node.children);
   });
+
+  return sources;
 }
 
 export function createSdfModifierFunctionKey(mode: "pre" | "post", source: string) {

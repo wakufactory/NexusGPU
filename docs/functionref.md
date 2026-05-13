@@ -71,7 +71,15 @@
   - `subscribeFrame`: `useFrame` 用callbackを購読する。
   - `advanceFrame`: 登録済みframe callbackへ時刻情報を流す。
   - `snapshot`: rendererへ渡す不変 `SceneSnapshot` を作る。
-- `flattenSdfNodes`: scene treeからprimitive `SdfNode` だけを再帰収集する。
+  - `snapshot` 内では `collectSdfNodes` でscene treeからprimitive `SdfNode` だけを収集する。
+
+## src/nexusgpu/sceneTraversal.ts
+
+- `getSceneNodeChildren`: primitiveなら空配列、それ以外なら `children` を返す。
+- `walkSceneNodesPreOrder`: `SdfSceneNode[]` を深さ優先pre-orderで走査する。
+- `collectSceneNodesPreOrder`: pre-orderの `SdfSceneNode[]` を返す。
+- `countSceneNodes`: scene tree内のnode数を数える。
+- `collectSdfNodes`: scene treeからprimitive `SdfNode` だけを収集する。
 
 ## src/nexusgpu/primitives.tsx
 
@@ -83,6 +91,8 @@
 - `EMPTY_GROUP_BOUNDS`: 有効boundsを持たないgroupを表すsentinel。
 - `type SdfSceneNodeListener`: group / modifier registryが子ノード配列を通知するcallback。
 - `type SdfSceneNodeTarget`: scene nodeを追加/更新/削除できる登録先interface。
+- `type SdfPrimitiveNodeOptions`: `useSdfPrimitiveNode` へ渡すprimitive共通props。
+- `type SdfPrimitiveNodeFields`: primitive固有の `data` / `bounds` / `sdfFunction`。
 - `SdfSceneNodeTargetContext`: group / modifier配下の子ノード登録先を切り替えるContext。
 - `SdfSphere`: React propsから球primitive nodeを登録する。
 - `SdfBox`: React propsからbox primitive nodeを登録する。`size` は半径ベクトルへ変換される。
@@ -101,6 +111,7 @@
 - `SdfModifier`: 子SDFの評価前後にcustom / preset modifier WGSLを差し込む。
 - `useStableId`: React再レンダーをまたいで同じsymbol IDを保つ。
 - `useSdfSceneNodeTarget`: 現在の登録先をContextまたはSceneStoreから取得する。
+- `useSdfPrimitiveNode`: primitive共通のID生成、props正規化、active判定、登録、解除を行う内部hook。
 - `class SdfGroupRegistry`: group / modifier内の子ノードを集約して親へmicrotask単位で通知するregistry。
 - `createSdfData`: `data0-2` を `SdfData` tupleへまとめる。
 - `toHalfSize`: boxのfull size propsをSDF用半径ベクトルへ変換する。
@@ -109,12 +120,11 @@
 - `mergeBoundingSpheres`: 2つのbounding sphereを包含するsphereを作る。
 - `inflateBounds`: bounds半径をsmoothness分だけ膨らませる。
 - `createTransformedGroupBounds`: groupのposition / rotationをboundsへ反映する。
-- `rotateVec3ByQuaternion`: Vec3をQuaternionで回転する。
 - `createModifierBounds`: modifier nodeのboundsを子boundsまたは明示propsから作る。
 - `resolveSdfModifierFunctions`: presetと直接指定からpre / post modifier WGSLを解決する。
 - `type SdfModifierPresetFunctions`: presetが提供するpre / post modifier WGSLの入れ物。
 - `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。
-- `subtractVec3`, `lengthVec3`, `normalizeRadii`: bounds計算用の小さなmath helper。
+- `normalizeRadii`: ellipsoid radii propsを正規化する。
 
 ## src/nexusgpu/types.ts
 
@@ -177,6 +187,11 @@
 - `normalizeVec3`: Vec3 propsを検証し、不正成分をfallbackで補う。
 - `normalizeQuaternion`: Quaternion propsを検証・正規化し、不正値ならfallbackを使う。
 - `clamp`: 数値を指定範囲に収める。
+- `subtractVec3`: 2つのVec3の差を返す。
+- `lengthVec3`: Vec3の長さを返す。
+- `crossVec3`: 2つのVec3の外積を返す。
+- `normalizeDirectionVec3`: Vec3を単位ベクトル化し、ゼロ長ならfallbackを返す。
+- `rotateVec3ByQuaternion`: Vec3をQuaternionで回転する。
 - `fract`: 小数部を返す。
 - `simplexMod289`, `simplexPermute`, `simplexTaylorInvSqrt`: simplex noise用helper。
 - `dot3`, `dot4`, `scale4`: vector演算helper。
@@ -204,8 +219,6 @@
 
 - `CAMERA_FLOATS`: CameraUniformへ詰めるf32要素数。
 - `CAMERA_BUFFER_SIZE`: camera uniform bufferのバイトサイズ。
-- `LOG_SCENE_COMPILE_PROFILE`: scene shader compile profileをconsoleへ出すかのフラグ。
-- `LOG_GENERATED_SHADER_SOURCE`: 生成WGSLの一部をconsoleへ出すかのフラグ。
 - `DEFAULT_RENDER_SETTINGS`: UIから省略された描画品質設定の既定値。
 - `class WebGpuSdfRenderer`: CanvasへWebGPU SDF raymarch結果を描画する低レベルrenderer。
   - `create`: WebGPU adapter / deviceを取得してrendererを初期化する。
@@ -215,9 +228,22 @@
   - `destroy`: RAF、ResizeObserver、GPUBuffer、textureを解放する。
   - `setTextures`: scene texture / samplerを更新する。
 - `normalizeRenderSettings`: render settingsをshaderが扱える安全な範囲へ丸める。
-- `clamp`: 数値を指定範囲に制限する。
-- `formatVec`, `formatNumber`, `previewSource`: debug log用formatter。
-- `subtract`, `cross`, `normalize`: camera basis計算用Vec3 helper。
+
+## src/nexusgpu/renderer/debugFlags.ts
+
+- `DEBUG_SCENE_COMPILE_PROFILE`: pipeline再生成時にscene compile profileをconsoleへ出すかのフラグ。
+- `DEBUG_SCENE_OBJECTS_DUMP`: pipeline再生成時にStorage Buffer詰め順のscene objects dumpをconsoleへ出すかのフラグ。
+- `DEBUG_GENERATED_SHADER_SOURCE`: 結合後のWGSL shader全体をconsoleへ出すかのフラグ。
+- `DEBUG_GENERATED_SCENE_MAPPING`: 展開済みscene mapping WGSLをconsoleへ出すかのフラグ。
+
+## src/nexusgpu/renderer/sceneDebugDump.ts
+
+- `type GetSdfKindId`: `SdfNode` からGPU側kind IDを返すcallback。
+- `logSceneCompileProfile`: `SceneCompileProfile` をJSON文字列としてconsoleへ出す。
+- `logSceneObjectsDump`: `SceneSnapshot.sceneNodes` をpre-orderで走査し、Storage Bufferへ詰める順序のobject dumpをconsoleへ出す。
+- `createSceneObjectDump`: scene treeをdebug dump用row配列へ変換する。
+- `appendSceneObjectDumpRow`: 1つのscene nodeをdebug dump rowへ変換する。
+- `formatVec`, `formatNumber`, `previewSource`: debug dump用formatter。
 
 ## src/nexusgpu/sdfShader.ts
 
@@ -233,8 +259,8 @@
 - `type SdfModifierFunctionSource`: pre / post種別、key、sourceを持つmodifier WGSL情報。
 - `unique`: 出現順を保ったまま文字列配列の重複を取り除く。
 - `uniqueModifierFunctionSources`: scene tree内のmodifier WGSLをkey単位で重複排除する。
-- `collectSdfFunctionSources`: scene tree内の `SdfFunction` WGSLソースを集める。
-- `collectSdfModifierFunctionSources`: scene tree内のmodifier pre / post WGSLソースを集める。
+- `collectSdfFunctionSources`: `walkSceneNodesPreOrder` でscene tree内の `SdfFunction` WGSLソースを集める。
+- `collectSdfModifierFunctionSources`: `walkSceneNodesPreOrder` でscene tree内のmodifier pre / post WGSLソースを集める。
 - `createSdfModifierFunctionKey`: pre / post種別とsourceから一意keyを作る。
 - `createCustomSdfFunctionSource`: `SdfFunction` 入力をrenderer管理名のWGSL関数へ正規化する。
 - `createCustomSdfModifierFunctionSource`: `SdfModifier` 入力をpre / post固定シグネチャのWGSL関数へ正規化する。
@@ -250,8 +276,7 @@
 - `createMaterialShaderPlan`: scene treeからmaterial shader断片、signature、custom ID表を作る。
 - `getBuiltinMaterialId`: built-in material名を固定IDへ変換する。
 - `getCustomMaterialKey`: custom materialの安定keyを返す。
-- `collectCustomMaterials`: scene tree内のcustom materialを集める。
-- `collectCustomMaterialsFromNode`: 1つのscene node以下からcustom materialを再帰収集する。
+- `collectCustomMaterials`: `walkSceneNodesPreOrder` でscene tree内のcustom materialを集める。
 - `addCustomMaterial`: nodeのcustom material WGSLをmapへ追加する。
 - `createMaterialShader`: built-in / custom materialをdispatchするWGSLを生成する。
 - `renameMaterialFunction`: custom material関数名をrenderer管理名へ差し替える。
@@ -267,9 +292,10 @@
 - `type GetMaterialId`: primitive / group nodeからmaterial IDを返すcallback。
 - `compileSceneObjectRecords`: scene treeをStorage Buffer用record列へ変換する。
 - `countSceneObjectRecords`: scene tree展開後のrecord数を数える。
-- `appendSceneObjectRecord`: nodeを深さ優先でrecord配列へ追加する。
+- `createSceneObjectRecord`: 1つのscene nodeをStorage Buffer用recordへ変換する。
 - `createPrimitiveRecord`: primitive `SdfNode` を固定長f32 recordへ詰める。
 - `createModifierRecord`: modifier dataを補助recordへ詰める。
+- `createMixRecord`: mix ratioを補助recordへ詰める。
 - `createGroupRecord`: group transform / smoothness / materialを補助recordへ詰める。
 
 ## src/nexusgpu/renderer/scenePipelineCompiler.ts
@@ -283,11 +309,13 @@
 - `type ExpandedSceneCompileState`: object indexと一時変数indexを持つscene展開状態。
 - `type SceneCompileMode`: 距離のみ評価か詳細評価かを表すcompile mode。
 - `type ExpandedSceneCompileResult`: 生成WGSL、hit変数名、smoothness式をまとめた結果。
+- `type BuiltinPrimitiveShaderSpec`: built-in primitiveのdistance式とgradient式を作る関数ペア。
+- `BUILTIN_PRIMITIVE_SHADER_SPECS`: built-in primitive kindごとのWGSL distance / gradient式テーブル。
 - `type SceneCompileProfile`: scene shader展開のprimitive / group / modifier / gradient統計。
 - `createExpandedMapSceneBody`: scene treeを `mapSceneDistance` / `mapSceneEval` / `mapScene` WGSL bodyへ展開する。
 - `createEmptyMapSceneBody`: scene未設定時の空 `mapScene*` WGSL bodyを作る。
 - `createSceneCompileProfile`: scene shader展開の統計情報を作る。
-- `accumulateSceneCompileProfile`: 1 node以下のprofile値を再帰的に加算する。
+- `accumulateSceneCompileProfile`: 1 node分のprofile値を加算する。tree走査は `walkSceneNodesPreOrder` が担当する。
 - `compileExpandedSceneNode`: 1つのscene nodeを評価するWGSL片へ再帰コンパイルする。
 - `compileExpandedModifierNode`: modifier nodeのpre / post評価をWGSL片へコンパイルする。
 - `createImplicitUnionGroup`: modifier配下の複数childrenを暗黙union groupに包む。

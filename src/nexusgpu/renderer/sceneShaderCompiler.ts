@@ -1,4 +1,5 @@
-import { SDF_PRIMITIVE_KIND_IDS } from "../sdfKinds";
+import { SDF_PRIMITIVE_KIND_IDS, type BuiltinSdfPrimitiveKind } from "../sdfKinds";
+import { walkSceneNodesPreOrder } from "../sceneTraversal";
 import type { SdfBooleanOperation, SdfGroupSceneNode, SdfMixSceneNode, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
 import {
   createSdfModifierFunctionKey,
@@ -23,6 +24,60 @@ type ExpandedSceneCompileResult = {
   /** 親グループがboolean演算時に使うsmoothness式。 */
   smoothnessExpression: string;
 };
+
+type BuiltinPrimitiveShaderSpec = {
+  distance: (localPointName: string, objectName: string) => string;
+  gradient: (localPointName: string, objectName: string) => string;
+};
+
+const BUILTIN_PRIMITIVE_SHADER_SPECS = {
+  sphere: {
+    distance: (point, object) => `sdSphere(${point}, ${object}.data0.x)`,
+    gradient: (point) => `sdSphereGrad(${point})`,
+  },
+  box: {
+    distance: (point, object) => `sdBox(${point}, ${object}.data0.xyz)`,
+    gradient: (point, object) => `sdBoxGrad(${point}, ${object}.data0.xyz)`,
+  },
+  cylinder: {
+    distance: (point, object) => `sdCylinder(${point}, ${object}.data0.xy)`,
+    gradient: (point, object) => `sdCylinderGrad(${point}, ${object}.data0.xy)`,
+  },
+  cone: {
+    distance: (point, object) => `sdCone(${point}, ${object}.data0.xyz)`,
+    gradient: (point, object) => `sdConeGrad(${point}, ${object}.data0.xyz)`,
+  },
+  capsule: {
+    distance: (point, object) =>
+      `sdCapsule(${point}, ${object}.data0.xyz, ${object}.data1.xyz, ${object}.data0.w, ${object}.data1.w)`,
+    gradient: (point, object) =>
+      `sdCapsuleGrad(${point}, ${object}.data0.xyz, ${object}.data1.xyz, ${object}.data0.w, ${object}.data1.w)`,
+  },
+  torus: {
+    distance: (point, object) => `sdTorus(${point}, ${object}.data0.xy)`,
+    gradient: (point, object) => `sdTorusGrad(${point}, ${object}.data0.xy)`,
+  },
+  ellipsoid: {
+    distance: (point, object) => `sdEllipsoid(${point}, ${object}.data0.xyz)`,
+    gradient: (point, object) => `sdEllipsoidGrad(${point}, ${object}.data0.xyz)`,
+  },
+  tetrahedron: {
+    distance: (point, object) => `sdTetrahedron(${point}, ${object}.data0.x)`,
+    gradient: (point, object) => `sdPolyhedronGrad(${point}, ${object}.data0.x, 0.0)`,
+  },
+  octahedron: {
+    distance: (point, object) => `sdOctahedron(${point}, ${object}.data0.x)`,
+    gradient: (point, object) => `sdPolyhedronGrad(${point}, ${object}.data0.x, 1.0)`,
+  },
+  dodecahedron: {
+    distance: (point, object) => `sdDodecahedron(${point}, ${object}.data0.x)`,
+    gradient: (point, object) => `sdPolyhedronGrad(${point}, ${object}.data0.x, 2.0)`,
+  },
+  icosahedron: {
+    distance: (point, object) => `sdIcosahedron(${point}, ${object}.data0.x)`,
+    gradient: (point, object) => `sdPolyhedronGrad(${point}, ${object}.data0.x, 3.0)`,
+  },
+} satisfies Record<BuiltinSdfPrimitiveKind, BuiltinPrimitiveShaderSpec>;
 
 export type SceneCompileProfile = {
   sceneRoots: number;
@@ -175,9 +230,7 @@ export function createSceneCompileProfile(
     },
   };
 
-  for (const node of sceneNodes) {
-    accumulateSceneCompileProfile(node, customSdfFunctionNames, profile);
-  }
+  walkSceneNodesPreOrder(sceneNodes, (node) => accumulateSceneCompileProfile(node, customSdfFunctionNames, profile));
 
   profile.gradient.totalAnalyticCalcsPerMapEval =
     profile.gradient.analyticPrimitiveCalcsPerMapEval + profile.gradient.customSceneEvalCalcsPerMapEval;
@@ -225,20 +278,12 @@ function accumulateSceneCompileProfile(
       profile.modifiers.invalidatesGrad += 1;
     }
 
-    for (const child of node.children) {
-      accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
-    }
-
     return;
   }
 
   if (node.type === "mix") {
     profile.mixes.total += 1;
     profile.mixes.invalidatesGrad += 1;
-
-    for (const child of node.children) {
-      accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
-    }
 
     return;
   }
@@ -252,10 +297,6 @@ function accumulateSceneCompileProfile(
     } else {
       profile.groups.hardMergeOps += mergeOps;
     }
-  }
-
-  for (const child of node.children) {
-    accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
   }
 }
 
@@ -629,80 +670,11 @@ function createPrimitiveHitExpression(
       ? `sceneEvalNoGrad(${distanceExpression}, ${objectName}.colorSmooth.rgb, ${objectName}.colorSmooth.w, ${localPointName}, ${objectName}.materialInfo.x, ${objectName}.materialUniform)`
       : `sceneDistance(${distanceExpression}, ${objectName}.colorSmooth.w)`;
 
-  if (node.kind === "sphere") {
+  if (node.kind !== "function") {
+    const spec = BUILTIN_PRIMITIVE_SHADER_SPECS[node.kind];
     return createBuiltinHit(
-      `sdSphere(${localPointName}, ${objectName}.data0.x)`,
-      `sdSphereGrad(${localPointName})`,
-    );
-  }
-
-  if (node.kind === "box") {
-    return createBuiltinHit(
-      `sdBox(${localPointName}, ${objectName}.data0.xyz)`,
-      `sdBoxGrad(${localPointName}, ${objectName}.data0.xyz)`,
-    );
-  }
-
-  if (node.kind === "cylinder") {
-    return createBuiltinHit(
-      `sdCylinder(${localPointName}, ${objectName}.data0.xy)`,
-      `sdCylinderGrad(${localPointName}, ${objectName}.data0.xy)`,
-    );
-  }
-
-  if (node.kind === "cone") {
-    return createBuiltinHit(
-      `sdCone(${localPointName}, ${objectName}.data0.xyz)`,
-      `sdConeGrad(${localPointName}, ${objectName}.data0.xyz)`,
-    );
-  }
-
-  if (node.kind === "capsule") {
-    return createBuiltinHit(
-      `sdCapsule(${localPointName}, ${objectName}.data0.xyz, ${objectName}.data1.xyz, ${objectName}.data0.w, ${objectName}.data1.w)`,
-      `sdCapsuleGrad(${localPointName}, ${objectName}.data0.xyz, ${objectName}.data1.xyz, ${objectName}.data0.w, ${objectName}.data1.w)`,
-    );
-  }
-
-  if (node.kind === "torus") {
-    return createBuiltinHit(
-      `sdTorus(${localPointName}, ${objectName}.data0.xy)`,
-      `sdTorusGrad(${localPointName}, ${objectName}.data0.xy)`,
-    );
-  }
-
-  if (node.kind === "ellipsoid") {
-    return createBuiltinHit(
-      `sdEllipsoid(${localPointName}, ${objectName}.data0.xyz)`,
-      `sdEllipsoidGrad(${localPointName}, ${objectName}.data0.xyz)`,
-    );
-  }
-
-  if (node.kind === "tetrahedron") {
-    return createBuiltinHit(
-      `sdTetrahedron(${localPointName}, ${objectName}.data0.x)`,
-      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 0.0)`,
-    );
-  }
-
-  if (node.kind === "octahedron") {
-    return createBuiltinHit(
-      `sdOctahedron(${localPointName}, ${objectName}.data0.x)`,
-      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 1.0)`,
-    );
-  }
-
-  if (node.kind === "dodecahedron") {
-    return createBuiltinHit(
-      `sdDodecahedron(${localPointName}, ${objectName}.data0.x)`,
-      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 2.0)`,
-    );
-  }
-
-  if (node.kind === "icosahedron") {
-    return createBuiltinHit(
-      `sdIcosahedron(${localPointName}, ${objectName}.data0.x)`,
-      `sdPolyhedronGrad(${localPointName}, ${objectName}.data0.x, 3.0)`,
+      spec.distance(localPointName, objectName),
+      spec.gradient(localPointName, objectName),
     );
   }
 

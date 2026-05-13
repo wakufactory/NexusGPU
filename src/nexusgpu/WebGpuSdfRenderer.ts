@@ -2,8 +2,9 @@ import { MAX_SDF_OBJECTS } from "./sdfShader";
 import { assembleSdfShader, type CustomSdfFunctionShader } from "./shaders";
 import { SDF_PRIMITIVE_KIND_IDS } from "./sdfKinds";
 import { createSceneShaderPlan, getMaterialIdFromPlan } from "./renderer/scenePipelineCompiler";
-import { createEmptyMapSceneBody, type SceneCompileProfile } from "./renderer/sceneShaderCompiler";
+import { createEmptyMapSceneBody } from "./renderer/sceneShaderCompiler";
 import { getLightTypeId } from "./lighting";
+import { clamp, crossVec3, normalizeDirectionVec3, subtractVec3 } from "./math";
 import {
   compileSceneObjectRecords,
   countSceneObjectRecords,
@@ -17,20 +18,24 @@ import {
   SceneTextureBindings,
 } from "./renderer/sceneTextures";
 import { createMaterialShaderPlan } from "./renderer/materialShaderCompiler";
+import {
+  DEBUG_GENERATED_SCENE_MAPPING,
+  DEBUG_GENERATED_SHADER_SOURCE,
+  DEBUG_SCENE_COMPILE_PROFILE,
+  DEBUG_SCENE_OBJECTS_DUMP,
+} from "./renderer/debugFlags";
+import { logSceneCompileProfile, logSceneObjectsDump } from "./renderer/sceneDebugDump";
 import type {
   NexusRenderSettings,
   NexusRenderStats,
   NexusTextureSource,
   SceneSnapshot,
   SdfNode,
-  SdfSceneNode,
   Vec3,
 } from "./types";
 
 const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const LOG_SCENE_COMPILE_PROFILE = true;
-const LOG_GENERATED_SHADER_SOURCE = true;
 
 /** UIから省略された描画設定に使う初期値。 */
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
@@ -335,106 +340,15 @@ export class WebGpuSdfRenderer {
     this.shaderSignature = shaderPlan.signature;
     this.customSdfKindIds = new Map(shaderPlan.customSdfKindIds);
     this.customMaterialIds = new Map(shaderPlan.customMaterialIds);
-    if (LOG_SCENE_COMPILE_PROFILE) {
-      this.logSceneCompileProfile(shaderPlan.profile, snapshot);
+    if (DEBUG_SCENE_COMPILE_PROFILE) {
+      logSceneCompileProfile(shaderPlan.profile);
+    }
+    if (DEBUG_SCENE_OBJECTS_DUMP) {
+      logSceneObjectsDump(snapshot, (node) => this.getSdfKindId(node));
     }
     const pipelineState = this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody, shaderPlan.materialSection);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
-  }
-
-  private logSceneCompileProfile(profile: SceneCompileProfile, snapshot: SceneSnapshot) {
-    const objectDump = this.createSceneObjectDump(snapshot.sceneNodes).slice(0, MAX_SDF_OBJECTS);
-
-    console.log("[NexusGPU] SDF scene compile profile data", JSON.stringify(profile, null, 2));
-    console.log("[NexusGPU] SDF scene objects dump", JSON.stringify(objectDump, null, 2));
-  }
-
-  private createSceneObjectDump(sceneNodes: readonly SdfSceneNode[]) {
-    const rows: Array<Record<string, unknown>> = [];
-
-    for (const node of sceneNodes) {
-      this.appendSceneObjectDumpRows(node, rows);
-    }
-
-    return rows;
-  }
-
-  private appendSceneObjectDumpRows(node: SdfSceneNode, rows: Array<Record<string, unknown>>) {
-    if (node.type === "primitive") {
-      const object = node.node;
-      rows.push({
-        index: rows.length,
-        type: "primitive",
-        kind: object.kind,
-        kindId: this.getSdfKindId(object),
-        position: formatVec(object.position),
-        rotation: formatVec(object.rotation),
-        color: formatVec(object.color),
-        smoothness: object.smoothness,
-        data0: formatVec(object.data[0]),
-        data1: formatVec(object.data[1]),
-        data2: formatVec(object.data[2]),
-        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
-        sdfFunction: object.sdfFunction ? previewSource(object.sdfFunction) : "",
-      });
-      return;
-    }
-
-    if (node.type === "modifier") {
-      rows.push({
-        index: rows.length,
-        type: "modifier",
-        kind: "modifier",
-        kindId: 0,
-        position: formatVec([0, 0, 0]),
-        rotation: formatVec([0, 0, 0, 1]),
-        color: formatVec([0, 0, 0]),
-        smoothness: 0,
-        data0: formatVec(node.data[0]),
-        data1: formatVec(node.data[1]),
-        data2: formatVec(node.data[2]),
-        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
-        preModifier: node.preModifierFunction ? previewSource(node.preModifierFunction) : "",
-        postModifier: node.postModifierFunction ? previewSource(node.postModifierFunction) : "",
-      });
-    } else if (node.type === "mix") {
-      rows.push({
-        index: rows.length,
-        type: "mix",
-        kind: "mix",
-        kindId: 0,
-        position: formatVec([0, 0, 0]),
-        rotation: formatVec([0, 0, 0, 1]),
-        color: formatVec([0, 0, 0]),
-        smoothness: 0,
-        data0: formatVec([node.ratio, 0, 0, 0]),
-        data1: formatVec([0, 0, 0, 0]),
-        data2: formatVec([0, 0, 0, 0]),
-        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
-      });
-    } else {
-      rows.push({
-        index: rows.length,
-        type: "group",
-        op: node.op,
-        kind: "group",
-        kindId: 0,
-        position: formatVec(node.position),
-        rotation: formatVec(node.rotation),
-        hasRotation: node.hasRotation,
-        color: formatVec([0, 0, 0]),
-        smoothness: node.smoothness,
-        data0: formatVec([0, 0, 0, 0]),
-        data1: formatVec([0, 0, 0, 0]),
-        data2: formatVec([0, 0, 0, 0]),
-        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
-      });
-    }
-
-    for (const child of node.children) {
-      this.appendSceneObjectDumpRows(child, rows);
-    }
   }
 
   /** 現在のcustom SDF関数とmapScene()からShader ModuleとRender Pipelineを作る。 */
@@ -445,9 +359,12 @@ export class WebGpuSdfRenderer {
   ) {
     const shaderCode = assembleSdfShader(MAX_SDF_OBJECTS, customSdfFunctions, mapSceneBody, materialSection);
 
-    if (LOG_GENERATED_SHADER_SOURCE) {
+    if (DEBUG_GENERATED_SCENE_MAPPING) {
       console.log("[NexusGPU] Generated WGSL scene mapping", mapSceneBody);
-//      console.log("[NexusGPU] Generated WGSL shader source", shaderCode);
+    }
+
+    if (DEBUG_GENERATED_SHADER_SOURCE) {
+      console.log("[NexusGPU] Generated WGSL shader source", shaderCode);
     }
 
     const shaderModule = this.device.createShaderModule({
@@ -512,12 +429,12 @@ export class WebGpuSdfRenderer {
     const height = this.canvas.height;
     const position = snapshot.camera.position;
     const target = snapshot.camera.target;
-    const forward = normalize(subtract(target, position));
+    const forward = normalizeDirectionVec3(subtractVec3(target, position));
     const worldUp: Vec3 = [0, 1, 0];
-    const right = normalize(cross(forward, worldUp));
-    const up = normalize(cross(right, forward));
+    const right = normalizeDirectionVec3(crossVec3(forward, worldUp));
+    const up = normalizeDirectionVec3(crossVec3(right, forward));
     const mainLight = snapshot.lighting.mainLight;
-    const lightDirection = normalize(mainLight.direction, [-0.45, 0.85, 0.35]);
+    const lightDirection = normalizeDirectionVec3(mainLight.direction, [-0.45, 0.85, 0.35]);
     const time = (performance.now() - this.startTime) / 1000;
 
     this.cameraData.set([width, height, time, snapshot.camera.fov], 0);
@@ -650,46 +567,4 @@ function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Req
     stereoSwapEyes: settings?.stereoSwapEyes ?? DEFAULT_RENDER_SETTINGS.stereoSwapEyes,
     hitInteriorSurfaces: settings?.hitInteriorSurfaces ?? DEFAULT_RENDER_SETTINGS.hitInteriorSurfaces,
   };
-}
-
-/** 数値を指定範囲内に制限する。 */
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function formatVec(values: readonly number[]) {
-  return `[${values.map(formatNumber).join(", ")}]`;
-}
-
-function formatNumber(value: number) {
-  if (!Number.isFinite(value)) {
-    return `${value}`;
-  }
-
-  return `${Math.round(value * 1000000) / 1000000}`;
-}
-
-function previewSource(source: string) {
-  const normalized = source.trim().replace(/\s+/g, " ");
-  return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
-}
-
-/** 3次元ベクトルの差を返す。 */
-function subtract(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-}
-
-/** 3次元ベクトルの外積を返し、カメラのright/upベクトル計算に使う。 */
-function cross(a: Vec3, b: Vec3): Vec3 {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
-/** 3次元ベクトルを単位ベクトル化する。ゼロ長に近い場合は安全な前方向を返す。 */
-function normalize(value: Vec3, fallback: Vec3 = [0, 0, 1]): Vec3 {
-  const length = Math.hypot(value[0], value[1], value[2]);
-  if (length <= 0.00001) {
-    return fallback;
-  }
-
-  return [value[0] / length, value[1] / length, value[2] / length];
 }

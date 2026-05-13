@@ -1,5 +1,12 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
-import { clamp, normalizeQuaternion, normalizeVec3 } from "./math";
+import {
+  clamp,
+  lengthVec3,
+  normalizeQuaternion,
+  normalizeVec3,
+  rotateVec3ByQuaternion,
+  subtractVec3,
+} from "./math";
 import { useSceneStore } from "./SceneContext";
 import type {
   SdfBooleanOperation,
@@ -39,6 +46,19 @@ type SdfSceneNodeTarget = {
   removeSceneNode: (id: symbol) => void;
 };
 
+type SdfPrimitiveNodeOptions = {
+  active: boolean;
+  kind: SdfNode["kind"];
+  position: Vec3 | undefined;
+  rotation: Quaternion | undefined;
+  color: Vec3 | undefined;
+  smoothness: number;
+  material: SdfNode["material"];
+  materialUniform: Vec4;
+};
+
+type SdfPrimitiveNodeFields = Pick<SdfNode, "data" | "bounds" | "sdfFunction">;
+
 const SdfSceneNodeTargetContext = createContext<SdfSceneNodeTarget | null>(null);
 
 /** React propsからSDF球を作り、SceneStoreへ登録する宣言的プリミティブ。 */
@@ -52,36 +72,14 @@ export function SdfSphere({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfSphereProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
-
-  // props変更ごとにGPUへ渡すノード情報を作り直す。
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const node: SdfNode = {
-      id,
-      kind: "sphere",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
+  useSdfPrimitiveNode(
+    { active, kind: "sphere", position, rotation, color, smoothness, material, materialUniform },
+    () => ({
       data: createSdfData([Math.max(0.001, radius), 0, 0, 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
       bounds: createSphereBounds(position, radius),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, color, id, material, materialUniform, position, radius, rotation, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+    }),
+    [radius],
+  );
 
   return null;
 }
@@ -97,36 +95,15 @@ export function SdfBox({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfBoxProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
-
   // SDFのbox関数は半径ベクトルを使うため、propsのsizeは半分にしてGPUへ渡す。
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const node: SdfNode = {
-      id,
-      kind: "box",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
+  useSdfPrimitiveNode(
+    { active, kind: "box", position, rotation, color, smoothness, material, materialUniform },
+    () => ({
       data: createSdfData([...toHalfSize(size), 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
       bounds: createBoxBounds(position, size),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, color, id, material, materialUniform, position, rotation, size, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+    }),
+    [size],
+  );
 
   return null;
 }
@@ -143,37 +120,19 @@ export function SdfCylinder({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfCylinderProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
+  useSdfPrimitiveNode(
+    { active, kind: "cylinder", position, rotation, color, smoothness, material, materialUniform },
+    () => {
+      const normalizedRadius = Math.max(0.001, radius);
+      const halfHeight = Math.max(0.001, height * 0.5);
 
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const normalizedRadius = Math.max(0.001, radius);
-    const halfHeight = Math.max(0.001, height * 0.5);
-    const node: SdfNode = {
-      id,
-      kind: "cylinder",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
-      data: createSdfData([normalizedRadius, halfHeight, 0, 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
-      bounds: createCylinderBounds(position, normalizedRadius, halfHeight),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, color, height, id, material, materialUniform, position, radius, rotation, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+      return {
+        data: createSdfData([normalizedRadius, halfHeight, 0, 0]),
+        bounds: createCylinderBounds(position, normalizedRadius, halfHeight),
+      };
+    },
+    [height, radius],
+  );
 
   return null;
 }
@@ -191,38 +150,20 @@ export function SdfCone({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfConeProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
+  useSdfPrimitiveNode(
+    { active, kind: "cone", position, rotation, color, smoothness, material, materialUniform },
+    () => {
+      const normalizedTopRadius = Math.max(0, topRadius);
+      const normalizedBottomRadius = Math.max(0, bottomRadius);
+      const halfHeight = Math.max(0.001, height * 0.5);
 
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const normalizedTopRadius = Math.max(0, topRadius);
-    const normalizedBottomRadius = Math.max(0, bottomRadius);
-    const halfHeight = Math.max(0.001, height * 0.5);
-    const node: SdfNode = {
-      id,
-      kind: "cone",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
-      data: createSdfData([normalizedTopRadius, normalizedBottomRadius, halfHeight, 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
-      bounds: createConeBounds(position, normalizedTopRadius, normalizedBottomRadius, halfHeight),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, bottomRadius, color, height, id, material, materialUniform, position, rotation, smoothness, target, topRadius]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+      return {
+        data: createSdfData([normalizedTopRadius, normalizedBottomRadius, halfHeight, 0]),
+        bounds: createConeBounds(position, normalizedTopRadius, normalizedBottomRadius, halfHeight),
+      };
+    },
+    [bottomRadius, height, topRadius],
+  );
 
   return null;
 }
@@ -241,38 +182,20 @@ export function SdfCapsule({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfCapsuleProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
+  useSdfPrimitiveNode(
+    { active, kind: "capsule", position, rotation, color, smoothness, material, materialUniform },
+    () => {
+      const normalizedTop = normalizeVec3(top, [0, 0.5, 0]);
+      const normalizedBottom = normalizeVec3(bottom, [0, -0.5, 0]);
+      const normalizedRadius = Math.max(0.001, radius);
 
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const normalizedTop = normalizeVec3(top, [0, 0.5, 0]);
-    const normalizedBottom = normalizeVec3(bottom, [0, -0.5, 0]);
-    const normalizedRadius = Math.max(0.001, radius);
-    const node: SdfNode = {
-      id,
-      kind: "capsule",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
-      data: createSdfData([...normalizedTop, normalizedRadius], [...normalizedBottom, Math.max(0, round)]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
-      bounds: createCapsuleBounds(position, rotation, normalizedTop, normalizedBottom, normalizedRadius),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, bottom, color, id, material, materialUniform, position, radius, rotation, round, smoothness, target, top]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+      return {
+        data: createSdfData([...normalizedTop, normalizedRadius], [...normalizedBottom, Math.max(0, round)]),
+        bounds: createCapsuleBounds(position, rotation, normalizedTop, normalizedBottom, normalizedRadius),
+      };
+    },
+    [bottom, radius, round, top],
+  );
 
   return null;
 }
@@ -289,37 +212,19 @@ export function SdfTorus({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfTorusProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
+  useSdfPrimitiveNode(
+    { active, kind: "torus", position, rotation, color, smoothness, material, materialUniform },
+    () => {
+      const normalizedMajorRadius = Math.max(0.001, majorRadius);
+      const normalizedMinorRadius = Math.max(0.001, minorRadius);
 
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const normalizedMajorRadius = Math.max(0.001, majorRadius);
-    const normalizedMinorRadius = Math.max(0.001, minorRadius);
-    const node: SdfNode = {
-      id,
-      kind: "torus",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
-      data: createSdfData([normalizedMajorRadius, normalizedMinorRadius, 0, 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
-      bounds: createTorusBounds(position, normalizedMajorRadius, normalizedMinorRadius),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, color, id, majorRadius, material, materialUniform, minorRadius, position, rotation, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+      return {
+        data: createSdfData([normalizedMajorRadius, normalizedMinorRadius, 0, 0]),
+        bounds: createTorusBounds(position, normalizedMajorRadius, normalizedMinorRadius),
+      };
+    },
+    [majorRadius, minorRadius],
+  );
 
   return null;
 }
@@ -335,36 +240,18 @@ export function SdfEllipsoid({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfEllipsoidProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
+  useSdfPrimitiveNode(
+    { active, kind: "ellipsoid", position, rotation, color, smoothness, material, materialUniform },
+    () => {
+      const normalizedRadii = normalizeRadii(radii);
 
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const normalizedRadii = normalizeRadii(radii);
-    const node: SdfNode = {
-      id,
-      kind: "ellipsoid",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
-      data: createSdfData([...normalizedRadii, 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
-      bounds: createEllipsoidBounds(position, normalizedRadii),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, color, id, material, materialUniform, position, radii, rotation, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+      return {
+        data: createSdfData([...normalizedRadii, 0]),
+        bounds: createEllipsoidBounds(position, normalizedRadii),
+      };
+    },
+    [radii],
+  );
 
   return null;
 }
@@ -396,36 +283,18 @@ function SdfRegularPolyhedronPrimitive({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfRegularPolyhedronProps & { kind: "tetrahedron" | "octahedron" | "dodecahedron" | "icosahedron" }) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
+  useSdfPrimitiveNode(
+    { active, kind, position, rotation, color, smoothness, material, materialUniform },
+    () => {
+      const normalizedRadius = Math.max(0.001, radius);
 
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const normalizedRadius = Math.max(0.001, radius);
-    const node: SdfNode = {
-      id,
-      kind,
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
-      data: createSdfData([normalizedRadius, 0, 0, 0]),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
-      bounds: createSphereBounds(position, normalizedRadius),
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, color, id, kind, material, materialUniform, position, radius, rotation, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+      return {
+        data: createSdfData([normalizedRadius, 0, 0, 0]),
+        bounds: createSphereBounds(position, normalizedRadius),
+      };
+    },
+    [radius],
+  );
 
   return null;
 }
@@ -445,36 +314,15 @@ export function SdfFunction({
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
 }: SdfFunctionProps) {
-  const target = useSdfSceneNodeTarget();
-  const id = useStableId();
-
-  useEffect(() => {
-    if (!active) {
-      target.removeSceneNode(id);
-      return;
-    }
-
-    const node: SdfNode = {
-      id,
-      kind: "function",
-      position: normalizeVec3(position, DEFAULT_POSITION),
-      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
-      hasRotation: rotation !== undefined,
-      color: normalizeVec3(color, DEFAULT_COLOR),
+  useSdfPrimitiveNode(
+    { active, kind: "function", position, rotation, color, smoothness, material, materialUniform },
+    () => ({
       data: createSdfData(data0, data1, data2),
-      smoothness: clamp(smoothness, 0, 2),
-      material,
-      materialUniform,
       bounds: createFunctionBounds(position, data0, bounds),
       sdfFunction,
-    };
-
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
-  }, [active, bounds, color, data0, data1, data2, id, material, materialUniform, position, rotation, sdfFunction, smoothness, target]);
-
-  useEffect(() => {
-    return () => target.removeSceneNode(id);
-  }, [id, target]);
+    }),
+    [bounds, data0, data1, data2, sdfFunction],
+  );
 
   return null;
 }
@@ -646,6 +494,46 @@ function useSdfSceneNodeTarget(): SdfSceneNodeTarget {
   const store = useSceneStore();
 
   return contextTarget ?? store;
+}
+
+function useSdfPrimitiveNode(
+  options: SdfPrimitiveNodeOptions,
+  createFields: () => SdfPrimitiveNodeFields,
+  dependencies: readonly unknown[],
+) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+  const { active, kind, position, rotation, color, smoothness, material, materialUniform } = options;
+
+  // props変更ごとにGPUへ渡すノード情報を作り直す。
+  useEffect(() => {
+    if (!active) {
+      target.removeSceneNode(id);
+      return;
+    }
+
+    const fields = createFields();
+    const node: SdfNode = {
+      id,
+      kind,
+      position: normalizeVec3(position, DEFAULT_POSITION),
+      rotation: normalizeQuaternion(rotation, DEFAULT_ROTATION),
+      hasRotation: rotation !== undefined,
+      color: normalizeVec3(color, DEFAULT_COLOR),
+      data: fields.data,
+      smoothness: clamp(smoothness, 0, 2),
+      material,
+      materialUniform,
+      bounds: fields.bounds,
+      sdfFunction: fields.sdfFunction,
+    };
+
+    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+  }, [active, color, id, kind, material, materialUniform, position, rotation, smoothness, target, ...dependencies]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
 }
 
 class SdfGroupRegistry implements SdfSceneNodeTarget {
@@ -880,29 +768,6 @@ function createTransformedGroupBounds(
   };
 }
 
-function rotateVec3ByQuaternion(point: Vec3, rotation: Quaternion): Vec3 {
-  const qx = rotation[0];
-  const qy = rotation[1];
-  const qz = rotation[2];
-  const qw = rotation[3];
-  const uv: Vec3 = [
-    qy * point[2] - qz * point[1],
-    qz * point[0] - qx * point[2],
-    qx * point[1] - qy * point[0],
-  ];
-  const uuv: Vec3 = [
-    qy * uv[2] - qz * uv[1],
-    qz * uv[0] - qx * uv[2],
-    qx * uv[1] - qy * uv[0],
-  ];
-
-  return [
-    point[0] + (uv[0] * qw + uuv[0]) * 2,
-    point[1] + (uv[1] * qw + uuv[1]) * 2,
-    point[2] + (uv[2] * qw + uuv[2]) * 2,
-  ];
-}
-
 function createModifierBounds(
   children: readonly SdfSceneNode[],
   bounds: Partial<SdfBoundingSphere> | undefined,
@@ -998,14 +863,6 @@ return hit.distance * distanceScale;
   return {
     postModifierFunction: /* wgsl */ `return hit.distance - data0.x;`,
   } satisfies SdfModifierPresetFunctions;
-}
-
-function subtractVec3(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-}
-
-function lengthVec3(value: Vec3) {
-  return Math.hypot(value[0], value[1], value[2]);
 }
 
 function normalizeRadii(radii: Vec3 | undefined): Vec3 {

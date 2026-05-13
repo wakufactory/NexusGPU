@@ -1,3 +1,4 @@
+import { walkSceneNodesPreOrder } from "../sceneTraversal";
 import type { NexusMaterialRef, SdfGroupSceneNode, SdfNode, SdfSceneNode } from "../types";
 
 export const DEFAULT_MATERIAL_ID = 0;
@@ -64,26 +65,18 @@ export function getCustomMaterialKey(material: NexusMaterialRef) {
 function collectCustomMaterials(sceneNodes: readonly SdfSceneNode[]) {
   const materialSources = new Map<string, string>();
 
-  for (const node of sceneNodes) {
-    collectCustomMaterialsFromNode(node, materialSources);
-  }
+  walkSceneNodesPreOrder(sceneNodes, (node) => {
+    if (node.type === "primitive") {
+      addCustomMaterial(node.node, materialSources);
+      return;
+    }
+
+    if (node.type === "group") {
+      addCustomMaterial(node, materialSources);
+    }
+  });
 
   return [...materialSources.entries()].map(([key, source]) => ({ key, source }));
-}
-
-function collectCustomMaterialsFromNode(node: SdfSceneNode, materialSources: Map<string, string>) {
-  if (node.type === "primitive") {
-    addCustomMaterial(node.node, materialSources);
-    return;
-  }
-
-  if (node.type === "group") {
-    addCustomMaterial(node, materialSources);
-  }
-
-  for (const child of node.children) {
-    collectCustomMaterialsFromNode(child, materialSources);
-  }
 }
 
 function addCustomMaterial(node: SdfNode | SdfGroupSceneNode, materialSources: Map<string, string>) {

@@ -47,11 +47,14 @@ src/
     useOrbitCameraControls.ts Canvas上のドラッグ、ホイール、ピンチをカメラ更新へ変換するhook
     SceneContext.ts          プリミティブとuseFrameがSceneStoreへアクセスするContext
     SceneStore.ts            React側シーン状態とフレーム購読の保持、変更通知
+    sceneTraversal.ts        SdfSceneNode treeをpre-orderで走査する共通helper
     primitives.tsx           SDFプリミティブとSdfGroupコンポーネント
     WebGpuSdfRenderer.ts     WebGPU初期化、バッファ更新、描画ループ
     sdfShader.ts             WGSL文字列のエントリポイント
-    math.ts                  Vec3正規化などの小さな補助関数
+    math.ts                  Vec3 / Quaternion正規化、ベクトル演算、noiseなどの補助関数
     renderer/
+      debugFlags.ts            開発用console出力のコードレベル切り替えフラグ
+      sceneDebugDump.ts        scene compile profile / object dumpのconsole出力
       scenePipelineCompiler.ts SceneSnapshotからshader planを作る
       sceneShaderCompiler.ts   scene treeをmapSceneDistance / mapSceneEvalへ展開する
       sceneBuffers.ts          scene treeをSdfObjectレコードへ詰める
@@ -252,7 +255,7 @@ Reactで使うSDFプリミティブを定義します。
 - `<SdfMix />`
 - `<SdfModifier />`
 
-各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`や`<SdfMix />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめたscene nodeが親の登録先へ渡されます。primitive / group / mixの`active` propが`false`の場合は登録済みノードを削除し、scene graph、Storage Buffer、shader展開から完全に除外します。`<SdfModifier active={false} />`は子を外さず、modifier機能を停止した`op="or"` groupとして親へ登録します。
+各プリミティブはDOMを描画しません。代わりに内部hookの`useSdfPrimitiveNode()`が`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。各component側は、半径、サイズ、`data0-2`、boundsなどprimitive固有の値だけを作り、`id`、`position`、`rotation`、`color`、`smoothness`、material、登録解除処理は共通hookへ寄せています。通常は`SceneStore`が登録先ですが、`<SdfGroup />`や`<SdfMix />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめたscene nodeが親の登録先へ渡されます。primitive / group / mixの`active` propが`false`の場合は登録済みノードを削除し、scene graph、Storage Buffer、shader展開から完全に除外します。`<SdfModifier active={false} />`は子を外さず、modifier機能を停止した`op="or"` groupとして親へ登録します。
 
 `<SdfFunction />`は、WGSLのSDF関数を文字列として渡す汎用プリミティブです。`data0`、`data1`、`data2`は`Vec4`として受け取り、GPU側の`object.data0`、`object.data1`、`object.data2`へそのまま渡されます。渡した関数には、オブジェクトの`position`と`rotation`を適用済みのローカル座標`point`と、`data0-2`が渡されます。
 
@@ -314,9 +317,15 @@ export const SDF_PRIMITIVE_KIND_IDS = {
   cylinder: 2,
   torus: 3,
   ellipsoid: 4,
+  cone: 5,
+  capsule: 6,
+  tetrahedron: 7,
+  octahedron: 8,
+  dodecahedron: 9,
+  icosahedron: 10,
 } as const;
 
-export const CUSTOM_SDF_PRIMITIVE_KIND_START = 5;
+export const CUSTOM_SDF_PRIMITIVE_KIND_START = 11;
 ```
 
 `sphere`と`box`のような組み込みプリミティブは、この対応表から固定のkind IDを使います。`SdfFunction`は対応表には追加せず、`CUSTOM_SDF_PRIMITIVE_KIND_START`以降のIDを`WebGpuSdfRenderer`がシーン内の関数文字列ごとに動的に割り当てます。
@@ -331,24 +340,22 @@ export const CUSTOM_SDF_PRIMITIVE_KIND_START = 5;
 
 1. `src/nexusgpu/sdfKinds.ts`へprimitive名と固定kind IDを追加し、`CUSTOM_SDF_PRIMITIVE_KIND_START`を組み込みkind IDの最大値 + 1 に更新する
 2. `src/nexusgpu/types.ts`へ`SdfXxxProps`を追加する。追加パラメータは最終的に`SdfNode.data`の`data0`、`data1`、`data2`へ入るため、GPU側の`vec4<f32>`境界を意識して割り当てる
-3. `src/nexusgpu/primitives.tsx`へReact componentを追加する。propsを正規化し、`SdfNode`の`kind`、`position`、`rotation`、`color`、`data`、`smoothness`、`bounds`を作って`target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds })`で登録する。unmount時は`target.removeSceneNode(id)`で解除する
+3. `src/nexusgpu/primitives.tsx`へReact componentを追加する。`useSdfPrimitiveNode()`へ`kind`、共通props、primitive固有の`data` / `bounds` / 任意の`sdfFunction`を渡す。登録、解除、共通propsの正規化は`useSdfPrimitiveNode()`が行う
 4. `src/nexusgpu/shaders/shaderLibrary.ts`へWGSLのSDF距離関数と、可能なら解析的gradient関数を追加する
 5. `src/nexusgpu/shaders/sdfPrimitivesShader.ts`で追加したWGSLチャンクを`#include <sdf/...>`する
-6. `src/nexusgpu/renderer/sceneShaderCompiler.ts`の`createPrimitiveHitExpression()`へprimitive種別の分岐を追加し、distance pathとeval pathの式を生成する
+6. `src/nexusgpu/renderer/sceneShaderCompiler.ts`の`BUILTIN_PRIMITIVE_SHADER_SPECS`へdistance式とgradient式を追加する。`satisfies Record<BuiltinSdfPrimitiveKind, ...>`で、`sdfKinds.ts`へ追加した組み込みkindのshader定義漏れを型で検出する
 7. `src/nexusgpu/index.ts`からcomponentとprops型をexportする
 8. 新しいcomponentを使うsceneを作り、`npm run build`で型とbundleを確認する
 
-`createPrimitiveHitExpression()`では、組み込みprimitiveは通常`createBuiltinHit(distanceExpression, localGradExpression)`で返します。distance pathでは`distanceExpression`だけが`SceneDistance`へ入り、色やgradientは計算されません。eval pathでは`SceneEval`に色、smoothness、localPoint、world space gradientが入ります。
+`createPrimitiveHitExpression()`では、組み込みprimitiveは`BUILTIN_PRIMITIVE_SHADER_SPECS[node.kind]`からdistance式とlocal gradient式を取り出し、`createBuiltinHit(distanceExpression, localGradExpression)`へ渡します。distance pathでは`distanceExpression`だけが`SceneDistance`へ入り、色やgradientは計算されません。eval pathでは`SceneEval`に色、smoothness、localPoint、world space gradientが入ります。
 
 例:
 
 ```ts
-if (node.kind === "torus") {
-  return createBuiltinHit(
-    `sdTorus(${localPointName}, ${objectName}.data0.xy)`,
-    `sdTorusGrad(${localPointName}, ${objectName}.data0.xy)`,
-  );
-}
+torus: {
+  distance: (point, object) => `sdTorus(${point}, ${object}.data0.xy)`,
+  gradient: (point, object) => `sdTorusGrad(${point}, ${object}.data0.xy)`,
+},
 ```
 
 解析的gradientが未実装の段階では`sceneEvalNoGrad(...)`へ落とせますが、そのprimitiveが最終hitになると`estimateNormalFromHit()`は有限差分fallbackとして`mapSceneDistance()`を4回呼びます。標準primitiveとして追加する場合は、距離関数と同時に`sdXxxGrad()`も用意するのが基本です。
@@ -372,7 +379,21 @@ React propsから生成されたシーン状態を保持するストアです。
 
 `upsertNode()`は単体primitive用の互換経路として残っていますが、内部では`SdfNode`を`{ type: "primitive" }`の`SdfSceneNode`へ包んで`upsertSceneNode()`へ渡します。`<SdfGroup />`は子registryで集めた`SdfSceneNode[]`からgroup nodeを作り、同じ`upsertSceneNode()`経路で登録します。
 
+`snapshot()`では、rootの`sceneNodes`をそのまま保持しつつ、互換・custom SDF収集用のフラットな`nodes`を`sceneTraversal.ts`の`collectSdfNodes()`で作ります。これにより、scene treeのpre-order走査は`SceneStore`、Storage Buffer生成、custom WGSL収集、material収集、debug dumpで同じhelperを共有します。
+
 `useFrame`用には`subscribeFrame()`と`advanceFrame()`を持ちます。`advanceFrame()`は`NexusCanvas`のフレームループから呼ばれ、登録済みcallbackへ同じ`NexusFrameState`を配信します。
+
+### sceneTraversal.ts
+
+`SdfSceneNode` treeをpre-orderで走査する共通helperです。
+
+- `getSceneNodeChildren(node)`: primitiveなら空配列、それ以外なら`children`を返す
+- `walkSceneNodesPreOrder(sceneNodes, visitor)`: root配列から深さ優先pre-orderで各nodeへvisitorを呼ぶ
+- `collectSceneNodesPreOrder(sceneNodes)`: pre-orderのnode配列を返す
+- `countSceneNodes(sceneNodes)`: pre-orderで数えたnode数を返す
+- `collectSdfNodes(sceneNodes)`: primitive nodeだけを`SdfNode[]`として集める
+
+このhelperは、`SdfSceneNode`の種別が増えたときに、各モジュールが独自の再帰分岐を持って修正漏れを起こすのを避けるための共通層です。`sceneShaderCompiler.ts`のWGSL生成本体だけは、子の評価結果を親の式へ組み込む必要があるため、専用の再帰コンパイル処理を持ちます。
 
 ### WebGpuSdfRenderer.ts
 
@@ -398,9 +419,18 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
 - `destroy()`で`requestAnimationFrame`、`ResizeObserver`、GPU Bufferを解放する
 
+開発用console出力は`src/nexusgpu/renderer/debugFlags.ts`でコードレベルに切り替えます。現在のフラグは次の通りです。
+
+- `DEBUG_SCENE_COMPILE_PROFILE`: pipeline再生成時にscene compile profileを出す
+- `DEBUG_SCENE_OBJECTS_DUMP`: pipeline再生成時に`SDF scene objects dump`を出す
+- `DEBUG_GENERATED_SCENE_MAPPING`: 展開済み`mapSceneDistance()` / `mapSceneEval()`を出す
+- `DEBUG_GENERATED_SHADER_SOURCE`: 結合後のWGSL全体を出す
+
+profileとobject dumpの整形処理は`renderer/sceneDebugDump.ts`に分離し、`WebGpuSdfRenderer.ts`本体はフラグを見て呼び出すだけにしています。`DEBUG_SCENE_COMPILE_PROFILE`と`DEBUG_SCENE_OBJECTS_DUMP`は独立しているため、compile統計だけを見る、object buffer詰め順だけを見る、といった使い分けができます。
+
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ32個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。primitiveとgroupは`materialInfo.x`へmaterial ID、`materialUniform`へmaterial用の追加値を格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。`SdfMix`は`data0.x`だけをratioとして使う補助レコードとして入ります。`SdfGroup`もboolean合成時の`smoothness`とmaterialを動的に読むため、補助レコードとして同じbufferへ入ります。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`がシーン木をたどり、primitive、group、modifier、mixの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ32個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。primitiveとgroupは`materialInfo.x`へmaterial ID、`materialUniform`へmaterial用の追加値を格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。`SdfMix`は`data0.x`だけをratioとして使う補助レコードとして入ります。`SdfGroup`もboolean合成時の`smoothness`とmaterialを動的に読むため、補助レコードとして同じbufferへ入ります。`sceneBuffers.ts`は`sceneTraversal.ts`のpre-order走査で、primitive、group、modifier、mixの出現順にレコードを作ります。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`も同じpre-order前提で`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
 
 scene textureは`SceneStore`や`SceneSnapshot`には含めません。SDF topologyやStorage Bufferの値ではなく、`NexusCanvas`からrendererへ直接渡す描画リソースとして扱います。textureのURLやsampler設定が変わった場合は、Render Pipelineは再生成せず、GPUTexture / GPUSamplerとbind groupだけを更新します。WGSL側のbinding名は固定で、`sampler0`と`texture0`、`sampler1`と`texture1`のように同じindex同士を組み合わせて使います。
 
@@ -456,7 +486,7 @@ fn mapSceneEval(point: vec3<f32>) -> SceneEval {
 
 `mapSceneDistance()`はraymarch、shadow、有限差分fallbackに使われ、距離とsmoothnessだけを返します。distance pathでは色、`localPoint`、gradientを計算しないため、raymarchの各stepでは不要な色mixや解析的gradient計算を避けます。`mapSceneEval()`はhit確定後のsurface評価に使われ、色、material用`localPoint`、gradientを返します。組み込みprimitiveでは`sdSphereGrad()`などの解析的gradientを返します。この方式は、オブジェクト数が数十程度のシーンでGPU上の汎用インタプリタ方式より軽くなることを優先した設計です。scene topologyや`SdfFunction`の種類が変わるとpipeline再生成が必要ですが、位置、回転、色、サイズなどprimitiveレコードの値だけが変わる場合はStorage Buffer更新だけで済みます。
 
-pipeline再生成時には、開発用consoleへ`[NexusGPU] SDF scene compile profile`を出力します。profileにはprimitive種別ごとの数、group op数、smooth合成数、`mapSceneDistance()`内の解析的gradient計算数、`mapSceneEval()`内の解析的gradient計算数、有限差分fallback時の`mapSceneDistance()`呼び出し回数などが含まれます。`[NexusGPU] SDF scene compile profile data`は同じ内容をJSON文字列で出すため、ブラウザログ収集でも確認できます。
+`DEBUG_SCENE_COMPILE_PROFILE`が有効な場合、pipeline再生成時には開発用consoleへ`[NexusGPU] SDF scene compile profile data`を出力します。profileにはprimitive種別ごとの数、group op数、smooth合成数、`mapSceneDistance()`内の解析的gradient計算数、`mapSceneEval()`内の解析的gradient計算数、有限差分fallback時の`mapSceneDistance()`呼び出し回数などが含まれます。`DEBUG_SCENE_OBJECTS_DUMP`が有効な場合は、別途`[NexusGPU] SDF scene objects dump`としてStorage Bufferへ詰めるpre-order順のnode情報を出力します。
 
 modifierを含む場合は、pre/post関数もcustom WGSL関数としてshaderへ追加されます。概念的には次の順序で展開されます。
 

@@ -1,4 +1,5 @@
 import { MAX_SDF_OBJECTS } from "../sdfShader";
+import { collectSceneNodesPreOrder, countSceneNodes } from "../sceneTraversal";
 import type { SdfData, SdfGroupSceneNode, SdfNode, SdfSceneNode } from "../types";
 
 export const OBJECT_STRIDE_FLOATS = 32;
@@ -16,8 +17,8 @@ export function compileSceneObjectRecords(
 ) {
   const records: SdfRecord[] = [];
 
-  for (const node of sceneNodes) {
-    appendSceneObjectRecord(node, records, getSdfKindId, getMaterialId);
+  for (const node of collectSceneNodesPreOrder(sceneNodes)) {
+    records.push(createSceneObjectRecord(node, getSdfKindId, getMaterialId));
   }
 
   return records;
@@ -25,42 +26,28 @@ export function compileSceneObjectRecords(
 
 /** シーン木を展開した補助レコード数を数え、camera.objectInfo.xへ渡す値に使う。 */
 export function countSceneObjectRecords(sceneNodes: readonly SdfSceneNode[]): number {
-  return sceneNodes.reduce((count, node) => {
-    if (node.type === "primitive") {
-      return count + 1;
-    }
-
-    if (node.type === "modifier" || node.type === "mix") {
-      return count + 1 + countSceneObjectRecords(node.children);
-    }
-
-    return count + 1 + countSceneObjectRecords(node.children);
-  }, 0);
+  return countSceneNodes(sceneNodes);
 }
 
-/** シーン木を展開し、primitive / group / modifier / mixをrecordsへ追加する。 */
-function appendSceneObjectRecord(
+/** primitive / group / modifier / mixの1ノードをStorage Buffer用レコードへ変換する。 */
+function createSceneObjectRecord(
   node: SdfSceneNode,
-  records: SdfRecord[],
   getSdfKindId: GetSdfKindId,
   getMaterialId: GetMaterialId,
-) {
+): SdfRecord {
   if (node.type === "primitive") {
-    records.push(createPrimitiveRecord(node.node, getSdfKindId(node.node), getMaterialId(node.node)));
-    return;
+    return createPrimitiveRecord(node.node, getSdfKindId(node.node), getMaterialId(node.node));
   }
 
   if (node.type === "modifier") {
-    records.push(createModifierRecord(node.data));
-  } else if (node.type === "mix") {
-    records.push(createMixRecord(node.ratio));
-  } else {
-    records.push(createGroupRecord(node, getMaterialId(node)));
+    return createModifierRecord(node.data);
   }
 
-  for (const child of node.children) {
-    appendSceneObjectRecord(child, records, getSdfKindId, getMaterialId);
+  if (node.type === "mix") {
+    return createMixRecord(node.ratio);
   }
+
+  return createGroupRecord(node, getMaterialId(node));
 }
 
 /** SdfNodeをWGSL側のSdfObject構造体と同じ固定長f32配列へ詰める。 */
