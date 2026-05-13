@@ -495,7 +495,7 @@ fn shell(
 | preset | 種類 | 内容 | 主なdata |
 | --- | --- | --- | --- |
 | `"twistY"` | pre + post | Y軸方向にtwistし、postで距離を変形率に合わせて補正する | `data0.x`: twist強度 |
-| `"preRepeat"` | pre | 空間を繰り返す | `data0.xyz`: cellサイズ |
+| `"preRepeat"` | pre | 空間を繰り返す。cellサイズが0の軸は繰り返さない | `data0.xyz`: cellサイズ |
 | `"preScale"` | pre + post | 子SDFへ渡す評価点をXYZ軸ごとにスケーリングし、postで距離を安全側に補正する | `data0.xyz`: scale |
 | `"postInflate"` | post | 距離を外側へ膨らませる | `data0.x`: 膨張量 |
 | `"postOnion"` | post | 表面を殻状にする | `data0.x`: 厚み |

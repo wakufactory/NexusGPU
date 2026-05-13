@@ -932,8 +932,10 @@ function resolveSdfModifierPreset(preset: SdfModifierPreset) {
   if (preset === "preRepeat") {
     return {
       preModifierFunction: /* wgsl */ `
-let cell = max(abs(data0.xyz), vec3<f32>(0.0001));
-return point - cell * round(point / cell);
+let repeatAxis = abs(data0.xyz) > vec3<f32>(0.0001);
+let cell = select(vec3<f32>(1.0), abs(data0.xyz), repeatAxis);
+let repeatedPoint = point - cell * round(point / cell);
+return select(point, repeatedPoint, repeatAxis);
 `,
     } satisfies SdfModifierPresetFunctions;
   }
