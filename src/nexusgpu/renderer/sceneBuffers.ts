@@ -8,7 +8,7 @@ type SdfRecord = number[];
 type GetSdfKindId = (node: SdfNode) => number;
 type GetMaterialId = (node: SdfNode | SdfGroupSceneNode) => number;
 
-/** シーン木を深さ優先でたどり、Storage Bufferへ積むprimitive / group / modifierレコード列へ変換する。 */
+/** シーン木を深さ優先でたどり、Storage Bufferへ積むprimitive / group / modifier / mixレコード列へ変換する。 */
 export function compileSceneObjectRecords(
   sceneNodes: readonly SdfSceneNode[],
   getSdfKindId: GetSdfKindId,
@@ -30,7 +30,7 @@ export function countSceneObjectRecords(sceneNodes: readonly SdfSceneNode[]): nu
       return count + 1;
     }
 
-    if (node.type === "modifier") {
+    if (node.type === "modifier" || node.type === "mix") {
       return count + 1 + countSceneObjectRecords(node.children);
     }
 
@@ -38,7 +38,7 @@ export function countSceneObjectRecords(sceneNodes: readonly SdfSceneNode[]): nu
   }, 0);
 }
 
-/** シーン木を展開し、primitive / group / modifierをrecordsへ追加する。 */
+/** シーン木を展開し、primitive / group / modifier / mixをrecordsへ追加する。 */
 function appendSceneObjectRecord(
   node: SdfSceneNode,
   records: SdfRecord[],
@@ -52,6 +52,8 @@ function appendSceneObjectRecord(
 
   if (node.type === "modifier") {
     records.push(createModifierRecord(node.data));
+  } else if (node.type === "mix") {
+    records.push(createMixRecord(node.ratio));
   } else {
     records.push(createGroupRecord(node, getMaterialId(node)));
   }
@@ -97,6 +99,44 @@ function createModifierRecord(data: SdfData): SdfRecord {
     ...data[0],
     ...data[1],
     ...data[2],
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  ];
+}
+
+/** Mixはdata0.xだけをratioとして使う補助レコードとして詰める。 */
+function createMixRecord(ratio: number): SdfRecord {
+  return [
+    0,
+    0,
+    0,
+    0,
+    ratio,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
     0,
     0,
     0,

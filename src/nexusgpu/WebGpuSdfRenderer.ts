@@ -398,6 +398,21 @@ export class WebGpuSdfRenderer {
         preModifier: node.preModifierFunction ? previewSource(node.preModifierFunction) : "",
         postModifier: node.postModifierFunction ? previewSource(node.postModifierFunction) : "",
       });
+    } else if (node.type === "mix") {
+      rows.push({
+        index: rows.length,
+        type: "mix",
+        kind: "mix",
+        kindId: 0,
+        position: formatVec([0, 0, 0]),
+        rotation: formatVec([0, 0, 0, 1]),
+        color: formatVec([0, 0, 0]),
+        smoothness: 0,
+        data0: formatVec([node.ratio, 0, 0, 0]),
+        data1: formatVec([0, 0, 0, 0]),
+        data2: formatVec([0, 0, 0, 0]),
+        bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+      });
     } else {
       rows.push({
         index: rows.length,

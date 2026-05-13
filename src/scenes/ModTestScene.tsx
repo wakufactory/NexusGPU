@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NexusCanvas, SdfBox, SdfDodecahedron, SdfEllipsoid, SdfFunction, SdfGroup, SdfIcosahedron, SdfModifier, SdfOctahedron, SdfSphere, SdfTorus, useFrame } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfDodecahedron, SdfEllipsoid, SdfFunction, SdfGroup, SdfIcosahedron, SdfMix, SdfModifier, SdfOctahedron, SdfSphere, SdfTorus, useFrame } from "../nexusgpu";
 import type { SdfSphereProps, Vec3,NexusTextureSource } from "../nexusgpu";
 import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
@@ -54,16 +54,18 @@ function ModTestSceneContent({ parameters }: { parameters: ModTestSceneParameter
 
   return (
     <>
+    <SdfGroup op="and" >
+      <SdfBox size={[10,4,10]} color={[0.2, 0.23, 0.28]} />
       <SdfGroup op="or" smoothness={parameters.sphereSmoothness}>
-      <SdfBox active={true}
-        position={[0, -0.7, 0]}
-        size={[4.4, 0.12, 3.2]}
+      <SdfFunction 
+        sdfFunction={`return dot(point,vec3(0,1.,0));`}
+        position={[0, -0.6, 0]}
         color={[0.2, 0.23, 0.28]}
         smoothness={1}
       />
-      <SdfModifier preset="preRepeat" data0={[4, 4, 4, 0]} active={false}>
-        <SdfModifier preset="postMix" data0={[parameters.mixratio2, 0, 0, 0]} active={true}> 
-        <SdfModifier preset="postMix" data0={[parameters.mixratio, 0, 0, 0]} active={true}>
+      <SdfModifier preset="preRepeat" data0={[2, 0, 2, 0]} active={true}>
+        <SdfMix ratio={parameters.mixratio2} active={true}>
+        <SdfMix ratio={parameters.mixratio} active={true}>
           <SdfOctahedron smoothness={1} active={true}
             position={[0, 0., 0]}
             radius={0.6}
@@ -74,7 +76,7 @@ function ModTestSceneContent({ parameters }: { parameters: ModTestSceneParameter
             size={[1.2, 1.2, 1.2]}
             color={[0.3, 0.8, 0.3]}
           />  
-          </SdfModifier>
+          </SdfMix>
           <SdfTorus active={true}
             position={[0, 0, 0]}
             majorRadius={0.6}
@@ -82,10 +84,11 @@ function ModTestSceneContent({ parameters }: { parameters: ModTestSceneParameter
             color={[0.3, 0.3, 0.8]}
             rotation={axisAngleToQuaternion([1, 0, 0], Math.PI / 2)}
           />
-        </SdfModifier>
+        </SdfMix>
 
       </SdfModifier>  
       </SdfGroup>
+    </SdfGroup>
     </>
   );
 }

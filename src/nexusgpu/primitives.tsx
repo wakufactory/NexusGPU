@@ -12,6 +12,7 @@ import type {
   SdfEllipsoidProps,
   SdfFunctionProps,
   SdfGroupProps,
+  SdfMixProps,
   SdfModifierProps,
   SdfModifierPreset,
   SdfNode,
@@ -545,6 +546,36 @@ export function SdfSubtract({ active, children }: Pick<SdfGroupProps, "active" |
   );
 }
 
+/** 2つの子SDFをratioで線形補間する。ratio=0で1つ目、ratio=1で2つ目に寄る。 */
+export function SdfMix({ active = true, ratio = 0.5, children }: SdfMixProps) {
+  const target = useSdfSceneNodeTarget();
+  const id = useStableId();
+  const registry = useMemo(() => new SdfGroupRegistry(), []);
+  const normalizedRatio = clamp(ratio, 0, 1);
+
+  useEffect(() => {
+    return registry.subscribe((childNodes) => {
+      if (!active || childNodes.length === 0) {
+        target.removeSceneNode(id);
+        return;
+      }
+
+      target.upsertSceneNode(id, {
+        type: "mix",
+        ratio: normalizedRatio,
+        children: childNodes,
+        bounds: createGroupBounds("or", childNodes, 0),
+      });
+    });
+  }, [active, id, normalizedRatio, registry, target]);
+
+  useEffect(() => {
+    return () => target.removeSceneNode(id);
+  }, [id, target]);
+
+  return <SdfSceneNodeTargetContext.Provider value={registry}>{children}</SdfSceneNodeTargetContext.Provider>;
+}
+
 /** 子SDFの評価前後にWGSL関数を差し込むmodifier。boundsは保持だけ行い、現状は枝刈りしない。 */
 export function SdfModifier({
   active = true,
@@ -591,7 +622,6 @@ export function SdfModifier({
         type: "modifier",
         preModifierFunction: resolvedFunctions.preModifierFunction,
         postModifierFunction: resolvedFunctions.postModifierFunction,
-        postModifierOperation: resolvedFunctions.postModifierOperation,
         data: createSdfData(data0, data1, data2),
         children: childNodes,
         bounds: createModifierBounds(childNodes, bounds),
@@ -893,7 +923,6 @@ function resolveSdfModifierFunctions(
   const presets = typeof preset === "string" ? [preset] : preset ?? [];
   let resolvedPreModifierFunction = preModifierFunction;
   let resolvedPostModifierFunction = postModifierFunction;
-  let resolvedPostModifierOperation: SdfModifierPresetFunctions["postModifierOperation"];
 
   for (const presetName of presets) {
     const presetFunctions = resolveSdfModifierPreset(presetName);
@@ -905,27 +934,17 @@ function resolveSdfModifierFunctions(
     if (presetFunctions.postModifierFunction && !resolvedPostModifierFunction) {
       resolvedPostModifierFunction = presetFunctions.postModifierFunction;
     }
-
-    if (
-      presetFunctions.postModifierOperation &&
-      !resolvedPostModifierFunction &&
-      !resolvedPostModifierOperation
-    ) {
-      resolvedPostModifierOperation = presetFunctions.postModifierOperation;
-    }
   }
 
   return {
     preModifierFunction: resolvedPreModifierFunction,
     postModifierFunction: resolvedPostModifierFunction,
-    postModifierOperation: resolvedPostModifierFunction ? undefined : resolvedPostModifierOperation,
   };
 }
 
 type SdfModifierPresetFunctions = {
   preModifierFunction?: string;
   postModifierFunction?: string;
-  postModifierOperation?: "mix";
 };
 
 function resolveSdfModifierPreset(preset: SdfModifierPreset) {
@@ -973,12 +992,6 @@ return hit.distance * distanceScale;
   if (preset === "postOnion") {
     return {
       postModifierFunction: /* wgsl */ `return abs(hit.distance) - data0.x;`,
-    } satisfies SdfModifierPresetFunctions;
-  }
-
-  if (preset === "postMix") {
-    return {
-      postModifierOperation: "mix",
     } satisfies SdfModifierPresetFunctions;
   }
 

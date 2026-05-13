@@ -249,9 +249,10 @@ Reactで使うSDFプリミティブを定義します。
 - `<SdfGroup />`
 - `<SdfNot />`
 - `<SdfSubtract />`
+- `<SdfMix />`
 - `<SdfModifier />`
 
-各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめた`SdfGroupSceneNode`が親の登録先へ渡されます。primitive / groupの`active` propが`false`の場合は登録済みノードを削除し、scene graph、Storage Buffer、shader展開から完全に除外します。`<SdfModifier active={false} />`は子を外さず、modifier機能を停止した`op="or"` groupとして親へ登録します。
+各プリミティブはDOMを描画しません。代わりに`useEffect`内で`SdfNode`を作り、現在の登録先へ`SdfSceneNode`として登録します。通常は`SceneStore`が登録先ですが、`<SdfGroup />`や`<SdfMix />`配下ではグループ内の一時registryが登録先になり、子ノードをまとめたscene nodeが親の登録先へ渡されます。primitive / group / mixの`active` propが`false`の場合は登録済みノードを削除し、scene graph、Storage Buffer、shader展開から完全に除外します。`<SdfModifier active={false} />`は子を外さず、modifier機能を停止した`op="or"` groupとして親へ登録します。
 
 `<SdfFunction />`は、WGSLのSDF関数を文字列として渡す汎用プリミティブです。`data0`、`data1`、`data2`は`Vec4`として受け取り、GPU側の`object.data0`、`object.data1`、`object.data2`へそのまま渡されます。渡した関数には、オブジェクトの`position`と`rotation`を適用済みのローカル座標`point`と、`data0-2`が渡されます。
 
@@ -277,7 +278,16 @@ Reactで使うSDFプリミティブを定義します。
 
 現在のグループ実装はGPU上でグループ命令列を解釈しません。React側で作られたシーン木を`scenePipelineCompiler.ts` / `sceneShaderCompiler.ts`がWGSLの`mapSceneDistance()`と`mapSceneEval()`へ展開し、primitiveデータだけをStorage Bufferへ詰めます。これにより、数十オブジェクト規模ではグループ用のループ、stack、動的op分岐を避けられます。
 
-`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"preScale"`、`"postInflate"`、`"postOnion"`、`"postMix"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`"preScale"`は`point / data0.xyz`でXYZ軸ごとのscaleを適用し、postで距離に最小scaleを掛けてレイマーチング安全側に補正します。`"postMix"`は先頭2 childrenを個別評価し、`data0.x`をratioとしてdistanceを線形補間する組み込みpost operationです。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
+`<SdfMix />`は2つの子SDFを`ratio`で線形補間するscene graph nodeです。distance pathでは2つのdistanceとsmoothnessをmixし、eval pathでは色もmixします。materialとlocalPointは`ratio < 0.5`なら1つ目、`ratio >= 0.5`なら2つ目の子を採用します。補間後の結果は保守的にgradient無効として扱います。
+
+```tsx
+<SdfMix ratio={0.35}>
+  <SdfSphere radius={0.8} />
+  <SdfBox size={[1.2, 1.2, 1.2]} />
+</SdfMix>
+```
+
+`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"preScale"`、`"postInflate"`、`"postOnion"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`"preScale"`は`point / data0.xyz`でXYZ軸ごとのscaleを適用し、postで距離に最小scaleを掛けてレイマーチング安全側に補正します。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
 
 ```tsx
 <SdfModifier
@@ -378,7 +388,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - bind group 0 に camera buffer、object buffer、`sampler0-3`、`texture0-3`を束ねる
 - `ResizeObserver`と毎フレームの`resize()`で、CSSサイズ、`devicePixelRatio`、`resolutionScale`から実描画解像度を決め、変化した場合は`NexusRenderStats.canvasPixelSize`として通知する
 - requestAnimationFrameの進みからFPSを500msごとに集計し、`NexusRenderStats.fps`として通知する
-- `setScene(snapshot)`で`SceneSnapshot.sceneNodes`からprimitive / group / modifierのレコード列を作り、最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
+- `setScene(snapshot)`で`SceneSnapshot.sceneNodes`からprimitive / group / modifier / mixのレコード列を作り、最大`MAX_SDF_OBJECTS`件までStorage Bufferへアップロードする
 - `scenePipelineCompiler.ts`で`SceneSnapshot.sceneNodes`をWGSLの`mapSceneDistance()`と`mapSceneEval()`へ展開し、custom WGSL関数、topology signature、compile profile、動的kind IDをまとめたshader planを作る
 - `SdfFunction`の関数文字列セット、またはシーン木のtopologyが変わった場合は、custom SDF関数と展開済みscene mapを差し込んだShader Module / Render Pipelineを作り直す
 - `SdfModifier`のpre/post関数文字列セット、またはmodifier topologyが変わった場合もShader Module / Render Pipelineを作り直す。modifierの`data0-2`だけが変わる場合はStorage Buffer更新だけで済む
@@ -390,7 +400,7 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
 
-Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ32個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。primitiveとgroupは`materialInfo.x`へmaterial ID、`materialUniform`へmaterial用の追加値を格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。`SdfGroup`もboolean合成時の`smoothness`とmaterialを動的に読むため、補助レコードとして同じbufferへ入ります。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`がシーン木をたどり、primitive、group、modifierの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
+Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ32個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。primitiveとgroupは`materialInfo.x`へmaterial ID、`materialUniform`へmaterial用の追加値を格納します。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。`SdfMix`は`data0.x`だけをratioとして使う補助レコードとして入ります。`SdfGroup`もboolean合成時の`smoothness`とmaterialを動的に読むため、補助レコードとして同じbufferへ入ります。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`がシーン木をたどり、primitive、group、modifier、mixの出現順に`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
 
 scene textureは`SceneStore`や`SceneSnapshot`には含めません。SDF topologyやStorage Bufferの値ではなく、`NexusCanvas`からrendererへ直接渡す描画リソースとして扱います。textureのURLやsampler設定が変わった場合は、Render Pipelineは再生成せず、GPUTexture / GPUSamplerとbind groupだけを更新します。WGSL側のbinding名は固定で、`sampler0`と`texture0`、`sampler1`と`texture1`のように同じindex同士を組み合わせて使います。
 
@@ -582,13 +592,13 @@ fn customSdfFunctionN(point: vec3<f32>, data0: vec4<f32>, data1: vec4<f32>, data
 
 `SdfFunction`が`SceneEval`を返す場合、distance pathでは`sceneDistanceFromEval(customSdfFunctionN(...))`として距離だけを取り出します。そのため、`SceneEval`内で重いgradient計算を行うとraymarch中にもその計算が走ります。`SceneEval`は、距離計算とgradient計算の中間値を共有できる場合や、解析的gradientが十分軽い場合に使う想定です。
 
-組み込みprimitiveは`mapSceneEval()`側で解析的gradientを返します。`or`、`and`、`subtract`、`not`は選ばれた側のgradientを継承し、smooth合成では両側のgradientが有効な場合だけ補間します。`SdfFunction`が`f32`または`SceneHit`を返す場合、あるいは`SdfModifier`のpre/postを通った場合はgradient無効として扱われ、必要に応じて`estimateNormalFromHit()`または`estimateNormal()`が`mapSceneDistance()`の有限差分へfallbackします。
+組み込みprimitiveは`mapSceneEval()`側で解析的gradientを返します。`or`、`and`、`subtract`、`not`は選ばれた側のgradientを継承し、smooth合成では両側のgradientが有効な場合だけ補間します。`SdfFunction`が`f32`または`SceneHit`を返す場合、`SdfModifier`のpre/postを通った場合、あるいは`SdfMix`を通った場合はgradient無効として扱われ、必要に応じて`estimateNormalFromHit()`または`estimateNormal()`が`mapSceneDistance()`の有限差分へfallbackします。
 
 `bounds`はグループのbounding sphere計算に使うCPU側メタデータです。現在の展開型scene mapではboundsによるGPU枝刈りはまだ行っていませんが、グループ木には保持しておき、将来の展開コード内bounds skipや空間分割へ使えるようにしています。
 
 ### SdfSceneNode
 
-`SceneStore`は、root要素として`SdfSceneNode`の配列を保持します。単体primitiveは`SdfPrimitiveSceneNode`、`<SdfGroup />`は`SdfGroupSceneNode`、`<SdfModifier />`は`SdfModifierSceneNode`として表現されます。
+`SceneStore`は、root要素として`SdfSceneNode`の配列を保持します。単体primitiveは`SdfPrimitiveSceneNode`、`<SdfGroup />`は`SdfGroupSceneNode`、`<SdfModifier />`は`SdfModifierSceneNode`、`<SdfMix />`は`SdfMixSceneNode`として表現されます。
 
 ```ts
 type SdfPrimitiveSceneNode = {
@@ -614,8 +624,14 @@ type SdfModifierSceneNode = {
   type: "modifier";
   preModifierFunction?: string;
   postModifierFunction?: string;
-  postModifierOperation?: "mix";
   data: SdfData;
+  children: readonly SdfSceneNode[];
+  bounds: SdfBoundingSphere;
+};
+
+type SdfMixSceneNode = {
+  type: "mix";
+  ratio: number;
   children: readonly SdfSceneNode[];
   bounds: SdfBoundingSphere;
 };
@@ -623,7 +639,8 @@ type SdfModifierSceneNode = {
 type SdfSceneNode =
   | SdfPrimitiveSceneNode
   | SdfGroupSceneNode
-  | SdfModifierSceneNode;
+  | SdfModifierSceneNode
+  | SdfMixSceneNode;
 ```
 
 `SceneSnapshot`には互換・custom SDF収集用のフラットな`nodes`と、レンダラが`mapSceneDistance()` / `mapSceneEval()`展開に使う`sceneNodes`の両方が含まれます。
@@ -669,7 +686,7 @@ materialInfo = [materialId, 0, 0, 0]
 materialUniform = [materialUniform.x, materialUniform.y, materialUniform.z, materialUniform.w]
 ```
 
-`SdfGroup`の補助レコードでは`positionKind.xyz`と`rotation`にgroup transform、`colorSmooth.w`にグループsmoothness、`materialInfo.x`にgroup material ID、`materialUniform`にgroup material用の値を入れます。`SdfModifier`の補助レコードでは`data0-2`だけを使います。
+`SdfGroup`の補助レコードでは`positionKind.xyz`と`rotation`にgroup transform、`colorSmooth.w`にグループsmoothness、`materialInfo.x`にgroup material ID、`materialUniform`にgroup material用の値を入れます。`SdfModifier`の補助レコードでは`data0-2`だけを使います。`SdfMix`の補助レコードでは`data0.x`にratioを入れます。
 
 `WebGpuSdfRenderer.uploadObjects()`がこのレイアウトへ詰め替えます。`SdfFunction`もGPU側のレコード構造は変えず、`kind`だけを動的kind IDにして、`data0-2`をcustom SDF関数の引数として使います。
 
