@@ -1,5 +1,5 @@
 import { SDF_PRIMITIVE_KIND_IDS } from "../sdfKinds";
-import type { SdfBooleanOperation, SdfGroupSceneNode, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
+import type { SdfBooleanOperation, SdfGroupSceneNode, SdfMixSceneNode, SdfModifierSceneNode, SdfNode, SdfSceneNode } from "../types";
 import {
   createSdfModifierFunctionKey,
   type CustomSdfFunctionNameMap,
@@ -43,6 +43,10 @@ export type SceneCompileProfile = {
     total: number;
     withPre: number;
     withPost: number;
+    invalidatesGrad: number;
+  };
+  mixes: {
+    total: number;
     invalidatesGrad: number;
   };
   gradient: {
@@ -157,6 +161,10 @@ export function createSceneCompileProfile(
       withPost: 0,
       invalidatesGrad: 0,
     },
+    mixes: {
+      total: 0,
+      invalidatesGrad: 0,
+    },
     gradient: {
       analyticPrimitiveCalcsPerMapDistance: 0,
       analyticPrimitiveCalcsPerMapEval: 0,
@@ -213,12 +221,20 @@ function accumulateSceneCompileProfile(
     if (node.postModifierFunction) {
       profile.modifiers.withPost += 1;
     }
-    if (node.postModifierOperation) {
-      profile.modifiers.withPost += 1;
-    }
-    if (node.preModifierFunction || node.postModifierFunction || node.postModifierOperation) {
+    if (node.preModifierFunction || node.postModifierFunction) {
       profile.modifiers.invalidatesGrad += 1;
     }
+
+    for (const child of node.children) {
+      accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
+    }
+
+    return;
+  }
+
+  if (node.type === "mix") {
+    profile.mixes.total += 1;
+    profile.mixes.invalidatesGrad += 1;
 
     for (const child of node.children) {
       accumulateSceneCompileProfile(child, customSdfFunctionNames, profile);
@@ -281,6 +297,17 @@ function compileExpandedSceneNode(
 
   if (node.type === "modifier") {
     return compileExpandedModifierNode(
+      node,
+      state,
+      customSdfFunctionNames,
+      customModifierFunctionNames,
+      pointExpression,
+      mode,
+    );
+  }
+
+  if (node.type === "mix") {
+    return compileExpandedMixNode(
       node,
       state,
       customSdfFunctionNames,
@@ -414,7 +441,7 @@ function compileExpandedModifierNode(
   const lines: string[] = [];
   let childPointExpression = pointExpression;
 
-  if (preCallSpec || postCallSpec || node.postModifierOperation) {
+  if (preCallSpec || postCallSpec) {
     lines.push(`  let ${modifierObjectName} = objects[${modifierObjectIndex}u];`);
   }
 
@@ -423,49 +450,6 @@ function compileExpandedModifierNode(
     lines.push(
       `  let ${childPointExpression} = ${preCallSpec.functionName}(${pointExpression}, ${formatSdfDataArgs(modifierObjectName)});`,
     );
-  }
-
-  if (node.postModifierOperation === "mix" && !postCallSpec) {
-    if (node.children.length !== 2) {
-      throw new Error("SdfModifier preset=\"postMix\" requires exactly two children.");
-    }
-
-    const firstChildResult = compileExpandedSceneNode(
-      node.children[0],
-      state,
-      customSdfFunctionNames,
-      customModifierFunctionNames,
-      childPointExpression,
-      mode,
-    );
-    const secondChildResult = compileExpandedSceneNode(
-      node.children[1],
-      state,
-      customSdfFunctionNames,
-      customModifierFunctionNames,
-      childPointExpression,
-      mode,
-    );
-    const hitName = nextTempName("mixedHit", state);
-    const ratioName = nextTempName("mixRatio", state);
-    lines.push(firstChildResult.code, secondChildResult.code);
-    lines.push(`  let ${ratioName} = clamp(${modifierObjectName}.data0.x, 0.0, 1.0);`);
-
-    if (mode === "eval") {
-      lines.push(
-        `  let ${hitName} = sceneEvalNoGrad(mix(${firstChildResult.hitName}.distance, ${secondChildResult.hitName}.distance, ${ratioName}), mix(${firstChildResult.hitName}.color, ${secondChildResult.hitName}.color, ${ratioName}), mix(${firstChildResult.hitName}.smoothness, ${secondChildResult.hitName}.smoothness, ${ratioName}), select(${firstChildResult.hitName}.localPoint, ${secondChildResult.hitName}.localPoint, vec3<bool>(${ratioName} >= 0.5)), select(${firstChildResult.hitName}.materialId, ${secondChildResult.hitName}.materialId, ${ratioName} >= 0.5), select(${firstChildResult.hitName}.materialUniform, ${secondChildResult.hitName}.materialUniform, vec4<bool>(${ratioName} >= 0.5)));`,
-      );
-    } else {
-      lines.push(
-        `  let ${hitName} = sceneDistance(mix(${firstChildResult.hitName}.distance, ${secondChildResult.hitName}.distance, ${ratioName}), mix(${firstChildResult.hitName}.smoothness, ${secondChildResult.hitName}.smoothness, ${ratioName}));`,
-      );
-    }
-
-    return {
-      code: lines.join("\n"),
-      hitName,
-      smoothnessExpression: `${hitName}.smoothness`,
-    };
   }
 
   const childResult = compileExpandedSceneNode(
@@ -516,6 +500,65 @@ function compileExpandedModifierNode(
         ? `sceneDistanceFromHit(${customCall})`
         : `sceneDistance(${customCall}, ${childResult.hitName}.smoothness)`;
   lines.push(`  let ${hitName} = ${hitExpression};`);
+
+  return {
+    code: lines.join("\n"),
+    hitName,
+    smoothnessExpression: `${hitName}.smoothness`,
+  };
+}
+
+/** mix nodeを評価し、2つの子SDFをratioで線形補間する。 */
+function compileExpandedMixNode(
+  node: SdfMixSceneNode,
+  state: ExpandedSceneCompileState,
+  customSdfFunctionNames: CustomSdfFunctionNameMap,
+  customModifierFunctionNames: CustomSdfModifierFunctionNameMap,
+  pointExpression: string,
+  mode: SceneCompileMode,
+): ExpandedSceneCompileResult {
+  const mixObjectIndex = state.objectIndex;
+  const mixObjectName = nextTempName("mixObject", state);
+  state.objectIndex += 1;
+
+  if (node.children.length !== 2) {
+    throw new Error("SdfMix requires exactly two children.");
+  }
+
+  const firstChildResult = compileExpandedSceneNode(
+    node.children[0],
+    state,
+    customSdfFunctionNames,
+    customModifierFunctionNames,
+    pointExpression,
+    mode,
+  );
+  const secondChildResult = compileExpandedSceneNode(
+    node.children[1],
+    state,
+    customSdfFunctionNames,
+    customModifierFunctionNames,
+    pointExpression,
+    mode,
+  );
+  const hitName = nextTempName("mixedHit", state);
+  const ratioName = nextTempName("mixRatio", state);
+  const lines = [
+    `  let ${mixObjectName} = objects[${mixObjectIndex}u];`,
+    firstChildResult.code,
+    secondChildResult.code,
+    `  let ${ratioName} = clamp(${mixObjectName}.data0.x, 0.0, 1.0);`,
+  ];
+
+  if (mode === "eval") {
+    lines.push(
+      `  let ${hitName} = sceneEvalNoGrad(mix(${firstChildResult.hitName}.distance, ${secondChildResult.hitName}.distance, ${ratioName}), mix(${firstChildResult.hitName}.color, ${secondChildResult.hitName}.color, ${ratioName}), mix(${firstChildResult.hitName}.smoothness, ${secondChildResult.hitName}.smoothness, ${ratioName}), select(${firstChildResult.hitName}.localPoint, ${secondChildResult.hitName}.localPoint, vec3<bool>(${ratioName} >= 0.5)), select(${firstChildResult.hitName}.materialId, ${secondChildResult.hitName}.materialId, ${ratioName} >= 0.5), select(${firstChildResult.hitName}.materialUniform, ${secondChildResult.hitName}.materialUniform, vec4<bool>(${ratioName} >= 0.5)));`,
+    );
+  } else {
+    lines.push(
+      `  let ${hitName} = sceneDistance(mix(${firstChildResult.hitName}.distance, ${secondChildResult.hitName}.distance, ${ratioName}), mix(${firstChildResult.hitName}.smoothness, ${secondChildResult.hitName}.smoothness, ${ratioName}));`,
+    );
+  }
 
   return {
     code: lines.join("\n"),
@@ -717,9 +760,13 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
   }
 
   if (node.type === "modifier") {
-    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}:${node.postModifierOperation ?? ""}(${node.children
+    return `modifier:${node.preModifierFunction ?? ""}:${node.postModifierFunction ?? ""}(${node.children
       .map(createSceneNodeTopologySignature)
       .join(",")})`;
+  }
+
+  if (node.type === "mix") {
+    return `mix(${node.children.map(createSceneNodeTopologySignature).join(",")})`;
   }
 
   const rotationSignature = node.hasRotation ? "rotated" : "unrotated";

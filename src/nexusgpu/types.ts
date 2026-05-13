@@ -218,8 +218,15 @@ export type SdfGroupProps = {
   children?: ReactNode;
 };
 
+/** 2つの子SDFをratioで線形補間するcomponentのprops。 */
+export type SdfMixProps = {
+  active?: boolean;
+  ratio?: number;
+  children?: ReactNode;
+};
+
 /** SDF modifierの組み込みプリセット。1つのpresetがpre/postの両方を持つ場合がある。 */
-export type SdfModifierPreset = "twistY" | "preRepeat" | "preScale" | "postInflate" | "postOnion" | "postMix";
+export type SdfModifierPreset = "twistY" | "preRepeat" | "preScale" | "postInflate" | "postOnion";
 
 /** 子SDFの評価前後にWGSL modifierを差し込むコンポーネントのprops。 */
 export type SdfModifierProps = {
@@ -286,13 +293,19 @@ export type SdfModifierSceneNode = {
   type: "modifier";
   preModifierFunction?: string;
   postModifierFunction?: string;
-  postModifierOperation?: "mix";
   data: SdfData;
   children: readonly SdfSceneNode[];
   bounds: SdfBoundingSphere;
 };
 
-export type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode | SdfModifierSceneNode;
+export type SdfMixSceneNode = {
+  type: "mix";
+  ratio: number;
+  children: readonly SdfSceneNode[];
+  bounds: SdfBoundingSphere;
+};
+
+export type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode | SdfModifierSceneNode | SdfMixSceneNode;
 
 /** SceneStoreからレンダラへ渡す一貫したシーン状態。 */
 export type SceneSnapshot = {

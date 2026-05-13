@@ -6,6 +6,12 @@
     "module": "./SimpleScene.tsx"
   },
   {
+    "id": "added-primitives",
+    "title": "Added Primitives",
+    "description": "A sample scene showing cone, capsule, flat-ended capsule, and regular polyhedra primitives.",
+    "module": "./AddedPrimitivesScene.tsx"
+  },
+  {
     "id": "animated-sdf",
     "title": "AnimatedSdfScene",
     "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
@@ -46,5 +52,11 @@
     "title": "SDF boid test",
     "description": "Scene for testing SDF boids ",
     "module": "./BoidsSpheresScene.tsx"
+  },
+  {
+    "id": "mod-test",
+    "title": "modifier test",
+    "description": "Scene copied from spheres.",
+    "module": "./ModTestScene.tsx"
   }
 ]

@@ -25,6 +25,7 @@
 - `SdfGroup`: 子SDFをboolean演算で合成するgroup。
 - `SdfNot`: `SdfGroup op="not"` のショートハンド。
 - `SdfSubtract`: `SdfGroup op="subtract"` のショートハンド。
+- `SdfMix`: 2つの子SDFをratioで線形補間するcomponent。
 - `SdfModifier`: 子SDFの評価前後にWGSL modifierを差し込むcomponent。
 - `SDF_PRIMITIVE_KIND_IDS`: built-in primitive名とGPU側kind IDの対応表。
 - `type Vec3`, `Vec4`, `Quaternion`: 座標、色、GPU vec4、回転で使う基本tuple型。
@@ -33,7 +34,7 @@
 - `type NexusTextureSource`, `NexusTextureCrossOrigin`: scene texture指定の型。
 - `type NexusMaterialPreset`, `NexusMaterialRef`: built-in / custom material指定の型。
 - `type Sdf*Props`: 各SDF componentのprops型。
-- `type SdfBooleanOperation`, `SdfModifierPreset`, `SdfPrimitiveKind`, `SdfBoundingSphere`, `SdfData`: scene graph / rendererが使うSDF関連型。
+- `type SdfBooleanOperation`, `SdfMixProps`, `SdfModifierPreset`, `SdfPrimitiveKind`, `SdfBoundingSphere`, `SdfData`: scene graph / rendererが使うSDF関連型。
 
 ## src/nexusgpu/NexusCanvas.tsx
 
@@ -96,6 +97,7 @@
 - `SdfGroup`: 子SDFをboolean演算単位にまとめる。transform、smoothness、material overrideも保持する。
 - `SdfNot`: `SdfGroup op="not"` のショートハンド。
 - `SdfSubtract`: `SdfGroup op="subtract"` のショートハンド。
+- `SdfMix`: 2つの子SDFをratioで線形補間する。
 - `SdfModifier`: 子SDFの評価前後にcustom / preset modifier WGSLを差し込む。
 - `useStableId`: React再レンダーをまたいで同じsymbol IDを保つ。
 - `useSdfSceneNodeTarget`: 現在の登録先をContextまたはSceneStoreから取得する。
@@ -110,8 +112,8 @@
 - `rotateVec3ByQuaternion`: Vec3をQuaternionで回転する。
 - `createModifierBounds`: modifier nodeのboundsを子boundsまたは明示propsから作る。
 - `resolveSdfModifierFunctions`: presetと直接指定からpre / post modifier WGSLを解決する。
-- `type SdfModifierPresetFunctions`: presetが提供するpre / post modifier WGSLと特殊operationの入れ物。
-- `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion`, `postMix` をWGSL bodyへ変換する。
+- `type SdfModifierPresetFunctions`: presetが提供するpre / post modifier WGSLの入れ物。
+- `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。
 - `subtractVec3`, `lengthVec3`, `normalizeRadii`: bounds計算用の小さなmath helper。
 
 ## src/nexusgpu/types.ts
@@ -140,6 +142,7 @@
 - `type SdfPrimitiveProps`: primitive共通props。`active`, `position`, `rotation`, `color`, `smoothness`, `material`, `materialUniform`。
 - `type SdfSphereProps`, `SdfBoxProps`, `SdfCylinderProps`, `SdfConeProps`, `SdfCapsuleProps`, `SdfTorusProps`, `SdfEllipsoidProps`, `SdfRegularPolyhedronProps`, `SdfFunctionProps`: 各primitive props。
 - `type SdfGroupProps`: group component props。
+- `type SdfMixProps`: mix component props。
 - `type SdfModifierPreset`: built-in modifier preset名。
 - `type SdfModifierProps`: modifier component props。
 - `type NexusCanvasProps`: `NexusCanvas` が受け取る公開props。
