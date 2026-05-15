@@ -1,4 +1,5 @@
 export const raymarchShader = /* wgsl */ `
+
 // レイを少しずつ進め、距離場にヒットするまで探索する。
 fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
   var depth = 0.0;
@@ -113,4 +114,26 @@ fn raymarch(origin: vec3<f32>, direction: vec3<f32>) -> RaymarchHit {
 
   return RaymarchHit(-1.0, color, 0.0, vec3<f32>(0.0), vec4<f32>(0.0), 0.0, vec4<f32>(0.0));
 }
+  // 影判定専用の軽量レイマーチ。遮蔽の有無だけを見るため、色やmaterial評価は行わない。
+fn raymarchShadow(origin: vec3<f32>, direction: vec3<f32>, maxShadowDistance: f32) -> f32 {
+  var depth = camera.objectInfo.y * 2.0;
+  let surfaceEpsilon = camera.objectInfo.y;
+  let maxSteps = 100;
+
+  for (var i = 0; i < maxSteps; i = i + 1) {
+    if (depth > maxShadowDistance) {
+      break;
+    }
+
+    let hit = mapSceneDistance(origin + direction * depth);
+    if (hit.distance < surfaceEpsilon) {
+      return 0.0;
+    }
+
+    depth = depth + max(abs(hit.distance), surfaceEpsilon * 2.0);
+  }
+
+  return 1.0;
+}
+
 `;

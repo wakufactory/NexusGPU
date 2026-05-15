@@ -450,9 +450,8 @@ fn materialDefault(input: MaterialInput) -> vec3<f32> {
 
   if (shadowsEnabled) {
     let shadowPoint = input.worldPoint + input.normal * 0.015;
-    let shadowHit = raymarch(shadowPoint, normalize(camera.lightInfo.xyz));
-    let shadowed = shadowHit.distance > 0.0 && shadowHit.distance < min(8.0, camera.renderInfo.y);
-    shadow = select(1.0, 0.38, shadowed);
+    let shadowVisibility = raymarchShadow(shadowPoint, lightDirection, min(8.0, camera.renderInfo.y));
+    shadow = mix(0.38, 1.0, shadowVisibility);
   }
 
   return input.color * ambient + input.color * lightColor * diffuse * shadow + rim * vec3<f32>(0.45, 0.75, 0.86);
@@ -521,9 +520,8 @@ fn materialPbr(input: MaterialInput) -> vec3<f32> {
   var shadow = 1.0;
   if (camera.renderInfo.z > 0.5) {
     let shadowPoint = input.worldPoint + normal * 0.015;
-    let shadowHit = raymarch(shadowPoint, lightDirection);
-    let shadowed = shadowHit.distance > 0.0 && shadowHit.distance < min(8.0, camera.renderInfo.y);
-    shadow = select(1.0, 0.32, shadowed);
+    let shadowVisibility = raymarchShadow(shadowPoint, lightDirection, min(8.0, camera.renderInfo.y));
+    shadow = mix(0.32, 1.0, shadowVisibility);
   }
 
   let direct = (diffuseTerm + specularTerm) * lightRadiance * nDotL * shadow;
