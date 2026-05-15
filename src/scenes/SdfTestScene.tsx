@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NexusCanvas, SdfBox, SdfFunction, SdfGroup, useFrame } from "../nexusgpu";
-import { defineSceneParameters, defineSceneSliderParameters } from "./types";
+import { defineSceneParameters, defineSceneRenderSettings, defineSceneSliderParameters } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
 export const initialParameters = defineSceneParameters({
@@ -8,6 +8,10 @@ export const initialParameters = defineSceneParameters({
   experimentFrequency: 3.6,
   experimentSpeed: 1.2,
   experimentThickness: 0.025,
+});
+
+export const initialRenderSettings = defineSceneRenderSettings({
+  maxDistance: 120,
 });
 
 export type SdfTestSceneParameters = typeof initialParameters;
@@ -88,8 +92,8 @@ function SdfTestSceneContent({ parameters }: SdfTestSceneContentProps) {
   });
 
   return (
-    <SdfGroup op="and" smoothness={0.}>
-    <SdfFunction
+    <SdfGroup op="and" smoothness={0.} >
+    <SdfFunction 
       sdfFunction={EXPERIMENT_SDF}
       // data0は形状の大きさ、変形量、厚みを渡す。
       data0={[0.5, 0.5, parameters.experimentAmplitude, parameters.experimentThickness]}
@@ -100,7 +104,6 @@ function SdfTestSceneContent({ parameters }: SdfTestSceneContentProps) {
       position={[0, -1.3, 0.1]}
       color={[0.18, 0.62, 0.95]}
       smoothness={0.5}
-      bounds={{ radius: 18 }}
     />
 
     <SdfBox position={[0, -1.3, 0]} size={[50, 50, 50]} color={[0.95, 0.55, 0.18]} smoothness={0.1}/>

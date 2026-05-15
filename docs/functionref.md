@@ -88,11 +88,10 @@
 - `DEFAULT_ROTATION`: 回転未指定時のQuaternion。
 - `DEFAULT_DATA`: `SdfFunction` / `SdfModifier` 用data vec4の既定値。
 - `DEFAULT_MATERIAL_UNIFORM`: material uniformの既定値。
-- `EMPTY_GROUP_BOUNDS`: 有効boundsを持たないgroupを表すsentinel。
 - `type SdfSceneNodeListener`: group / modifier registryが子ノード配列を通知するcallback。
 - `type SdfSceneNodeTarget`: scene nodeを追加/更新/削除できる登録先interface。
 - `type SdfPrimitiveNodeOptions`: `useSdfPrimitiveNode` へ渡すprimitive共通props。
-- `type SdfPrimitiveNodeFields`: primitive固有の `data` / `bounds` / `sdfFunction`。
+- `type SdfPrimitiveNodeFields`: primitive固有の `data` / `sdfFunction`。
 - `SdfSceneNodeTargetContext`: group / modifier配下の子ノード登録先を切り替えるContext。
 - `SdfSphere`: React propsから球primitive nodeを登録する。
 - `SdfBox`: React propsからbox primitive nodeを登録する。`size` は半径ベクトルへ変換される。
@@ -104,7 +103,7 @@
 - `SdfTetrahedron`, `SdfOctahedron`, `SdfDodecahedron`, `SdfIcosahedron`: 正多面体primitive nodeを登録する。
 - `SdfRegularPolyhedronPrimitive`: 正多面体component共通の内部実装。
 - `SdfFunction`: WGSL SDF関数文字列を持つcustom primitive nodeを登録する。
-- `SdfGroup`: 子SDFをboolean演算単位にまとめる。transform、smoothness、material overrideも保持する。
+- `SdfGroup`: 子SDFをboolean演算単位にまとめる。transform、smoothness、material override、明示boundsも保持する。
 - `SdfNot`: `SdfGroup op="not"` のショートハンド。
 - `SdfSubtract`: `SdfGroup op="subtract"` のショートハンド。
 - `SdfMix`: 2つの子SDFをratioで線形補間する。
@@ -115,12 +114,7 @@
 - `class SdfGroupRegistry`: group / modifier内の子ノードを集約して親へmicrotask単位で通知するregistry。
 - `createSdfData`: `data0-2` を `SdfData` tupleへまとめる。
 - `toHalfSize`: boxのfull size propsをSDF用半径ベクトルへ変換する。
-- `createSphereBounds`, `createBoxBounds`, `createCylinderBounds`, `createConeBounds`, `createCapsuleBounds`, `createTorusBounds`, `createEllipsoidBounds`, `createFunctionBounds`: primitive用bounding sphereを作る。
-- `createGroupBounds`: boolean op、子bounds、smoothnessからgroup boundsを作る。
-- `mergeBoundingSpheres`: 2つのbounding sphereを包含するsphereを作る。
-- `inflateBounds`: bounds半径をsmoothness分だけ膨らませる。
-- `createTransformedGroupBounds`: groupのposition / rotationをboundsへ反映する。
-- `createModifierBounds`: modifier nodeのboundsを子boundsまたは明示propsから作る。
+- `createExplicitBounds`: `SdfFunction.bounds` / `SdfGroup.bounds` propを正規化し、枝刈り用bounding sphereを作る。
 - `resolveSdfModifierFunctions`: presetと直接指定からpre / post modifier WGSLを解決する。
 - `type SdfModifierPresetFunctions`: presetが提供するpre / post modifier WGSLの入れ物。
 - `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。

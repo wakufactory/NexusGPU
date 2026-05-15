@@ -28,6 +28,7 @@ struct SdfObject {
   rotation: vec4<f32>,
   materialInfo: vec4<f32>,
   materialUniform: vec4<f32>,
+  boundsInfo: vec4<f32>,
 };
 
 // 距離場を評価した公開結果。smoothnessはこのhitがsmooth unionに参加できる幅。

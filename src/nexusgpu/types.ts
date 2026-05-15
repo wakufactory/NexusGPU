@@ -16,6 +16,11 @@ export type SdfBoundingSphere = {
   radius: number;
 };
 
+export type SdfBoundsProp = {
+  center?: Vec3;
+  radius: number;
+};
+
 /** SDFノード同士のCSG/boolean合成演算。 */
 export type SdfBooleanOperation = "or" | "and" | "subtract" | "not";
 
@@ -203,7 +208,7 @@ export type SdfFunctionProps = SdfPrimitiveProps & {
   data0?: Vec4;
   data1?: Vec4;
   data2?: Vec4;
-  bounds?: Partial<SdfBoundingSphere>;
+  bounds?: SdfBoundsProp;
 };
 
 /** グループコンポーネントのprops。position/rotationは子SDF全体の評価空間を動かす。 */
@@ -215,6 +220,7 @@ export type SdfGroupProps = {
   smoothness?: number;
   material?: NexusMaterialRef;
   materialUniform?: Vec4;
+  bounds?: SdfBoundsProp;
   children?: ReactNode;
 };
 
@@ -237,7 +243,6 @@ export type SdfModifierProps = {
   data0?: Vec4;
   data1?: Vec4;
   data2?: Vec4;
-  bounds?: Partial<SdfBoundingSphere>;
   children?: ReactNode;
 };
 
@@ -266,14 +271,13 @@ export type SdfNode = {
   smoothness: number;
   material?: NexusMaterialRef;
   materialUniform: Vec4;
-  bounds: SdfBoundingSphere;
+  bounds?: SdfBoundingSphere;
   sdfFunction?: string;
 };
 
 export type SdfPrimitiveSceneNode = {
   type: "primitive";
   node: SdfNode;
-  bounds: SdfBoundingSphere;
 };
 
 export type SdfGroupSceneNode = {
@@ -286,7 +290,7 @@ export type SdfGroupSceneNode = {
   material?: NexusMaterialRef;
   materialUniform: Vec4;
   children: readonly SdfSceneNode[];
-  bounds: SdfBoundingSphere;
+  bounds?: SdfBoundingSphere;
 };
 
 export type SdfModifierSceneNode = {
@@ -295,14 +299,12 @@ export type SdfModifierSceneNode = {
   postModifierFunction?: string;
   data: SdfData;
   children: readonly SdfSceneNode[];
-  bounds: SdfBoundingSphere;
 };
 
 export type SdfMixSceneNode = {
   type: "mix";
   ratio: number;
   children: readonly SdfSceneNode[];
-  bounds: SdfBoundingSphere;
 };
 
 export type SdfSceneNode = SdfPrimitiveSceneNode | SdfGroupSceneNode | SdfModifierSceneNode | SdfMixSceneNode;

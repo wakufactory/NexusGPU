@@ -2,7 +2,7 @@ import { MAX_SDF_OBJECTS } from "../sdfShader";
 import { collectSceneNodesPreOrder, countSceneNodes } from "../sceneTraversal";
 import type { SdfData, SdfGroupSceneNode, SdfNode, SdfSceneNode } from "../types";
 
-export const OBJECT_STRIDE_FLOATS = 32;
+export const OBJECT_STRIDE_FLOATS = 36;
 export const OBJECT_BUFFER_SIZE = MAX_SDF_OBJECTS * OBJECT_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 
 type SdfRecord = number[];
@@ -36,22 +36,24 @@ function createSceneObjectRecord(
   getMaterialId: GetMaterialId,
 ): SdfRecord {
   if (node.type === "primitive") {
-    return createPrimitiveRecord(node.node, getSdfKindId(node.node), getMaterialId(node.node));
+    return validateRecord(createPrimitiveRecord(node.node, getSdfKindId(node.node), getMaterialId(node.node)), node.type);
   }
 
   if (node.type === "modifier") {
-    return createModifierRecord(node.data);
+    return validateRecord(createModifierRecord(node.data), node.type);
   }
 
   if (node.type === "mix") {
-    return createMixRecord(node.ratio);
+    return validateRecord(createMixRecord(node.ratio), node.type);
   }
 
-  return createGroupRecord(node, getMaterialId(node));
+  return validateRecord(createGroupRecord(node, getMaterialId(node)), node.type);
 }
 
 /** SdfNodeをWGSL側のSdfObject構造体と同じ固定長f32配列へ詰める。 */
 function createPrimitiveRecord(node: SdfNode, kindId: number, materialId: number): SdfRecord {
+  const bounds = node.bounds;
+
   return [
     node.position[0],
     node.position[1],
@@ -73,6 +75,10 @@ function createPrimitiveRecord(node: SdfNode, kindId: number, materialId: number
     0,
     0,
     ...node.materialUniform,
+    bounds?.center[0] ?? 0,
+    bounds?.center[1] ?? 0,
+    bounds?.center[2] ?? 0,
+    bounds?.radius ?? -1,
   ];
 }
 
@@ -102,6 +108,10 @@ function createModifierRecord(data: SdfData): SdfRecord {
     0,
     0,
     0,
+    0,
+    0,
+    0,
+    -1,
   ];
 }
 
@@ -140,11 +150,17 @@ function createMixRecord(ratio: number): SdfRecord {
     0,
     0,
     0,
+    0,
+    0,
+    0,
+    -1,
   ];
 }
 
 /** Groupはtransform、動的smoothness、materialを同じSdfObjectレイアウトへ補助レコードとして詰める。 */
 function createGroupRecord(node: SdfGroupSceneNode, materialId: number): SdfRecord {
+  const bounds = node.bounds;
+
   return [
     node.position[0],
     node.position[1],
@@ -175,5 +191,17 @@ function createGroupRecord(node: SdfGroupSceneNode, materialId: number): SdfReco
     0,
     0,
     ...node.materialUniform,
+    bounds?.center[0] ?? 0,
+    bounds?.center[1] ?? 0,
+    bounds?.center[2] ?? 0,
+    bounds?.radius ?? -1,
   ];
+}
+
+function validateRecord(record: SdfRecord, type: SdfSceneNode["type"]): SdfRecord {
+  if (record.length !== OBJECT_STRIDE_FLOATS) {
+    throw new Error(`Invalid ${type} SdfObject record length: expected ${OBJECT_STRIDE_FLOATS}, got ${record.length}.`);
+  }
+
+  return record;
 }
