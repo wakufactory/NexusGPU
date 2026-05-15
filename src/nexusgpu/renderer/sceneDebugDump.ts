@@ -47,7 +47,7 @@ function appendSceneObjectDumpRow(
       data0: formatVec(object.data[0]),
       data1: formatVec(object.data[1]),
       data2: formatVec(object.data[2]),
-      bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+      boundsInfo: object.bounds ? formatVec([...object.bounds.center, object.bounds.radius]) : formatVec([0, 0, 0, -1]),
       sdfFunction: object.sdfFunction ? previewSource(object.sdfFunction) : "",
     });
     return;
@@ -66,7 +66,6 @@ function appendSceneObjectDumpRow(
       data0: formatVec(node.data[0]),
       data1: formatVec(node.data[1]),
       data2: formatVec(node.data[2]),
-      bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
       preModifier: node.preModifierFunction ? previewSource(node.preModifierFunction) : "",
       postModifier: node.postModifierFunction ? previewSource(node.postModifierFunction) : "",
     });
@@ -86,7 +85,6 @@ function appendSceneObjectDumpRow(
       data0: formatVec([node.ratio, 0, 0, 0]),
       data1: formatVec([0, 0, 0, 0]),
       data2: formatVec([0, 0, 0, 0]),
-      bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
     });
     return;
   }
@@ -105,7 +103,8 @@ function appendSceneObjectDumpRow(
     data0: formatVec([0, 0, 0, 0]),
     data1: formatVec([0, 0, 0, 0]),
     data2: formatVec([0, 0, 0, 0]),
-    bounds: `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}`,
+    boundsInfo: node.bounds ? formatVec([...node.bounds.center, node.bounds.radius]) : formatVec([0, 0, 0, -1]),
+    bounds: node.bounds ? `center=${formatVec(node.bounds.center)} radius=${formatNumber(node.bounds.radius)}` : "",
   });
 }
 

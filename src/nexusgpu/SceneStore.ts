@@ -56,7 +56,7 @@ export class SceneStore {
 
   /** SDFプリミティブを追加または更新する。React側のprops変更はこの経路でGPU同期候補になる。 */
   upsertNode(node: SdfNode) {
-    this.upsertSceneNode(node.id, { type: "primitive", node, bounds: node.bounds });
+    this.upsertSceneNode(node.id, { type: "primitive", node });
   }
 
   /** primitive/groupを問わず、レンダラが評価するシーン木のroot要素を更新する。 */

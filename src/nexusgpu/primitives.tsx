@@ -1,16 +1,13 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import {
   clamp,
-  lengthVec3,
   normalizeQuaternion,
   normalizeVec3,
-  rotateVec3ByQuaternion,
-  subtractVec3,
 } from "./math";
 import { useSceneStore } from "./SceneContext";
 import type {
-  SdfBooleanOperation,
   SdfBoundingSphere,
+  SdfBoundsProp,
   SdfBoxProps,
   SdfCapsuleProps,
   SdfConeProps,
@@ -37,7 +34,6 @@ const DEFAULT_POSITION = [0, 0, 0] as const;
 const DEFAULT_ROTATION = [0, 0, 0, 1] as const;
 const DEFAULT_DATA = [0, 0, 0, 0] as const;
 const DEFAULT_MATERIAL_UNIFORM = [0, 0, 0, 0] as const;
-const EMPTY_GROUP_BOUNDS: SdfBoundingSphere = { center: [0, 0, 0], radius: -1 };
 
 type SdfSceneNodeListener = (nodes: readonly SdfSceneNode[]) => void;
 
@@ -76,7 +72,6 @@ export function SdfSphere({
     { active, kind: "sphere", position, rotation, color, smoothness, material, materialUniform },
     () => ({
       data: createSdfData([Math.max(0.001, radius), 0, 0, 0]),
-      bounds: createSphereBounds(position, radius),
     }),
     [radius],
   );
@@ -100,7 +95,6 @@ export function SdfBox({
     { active, kind: "box", position, rotation, color, smoothness, material, materialUniform },
     () => ({
       data: createSdfData([...toHalfSize(size), 0]),
-      bounds: createBoxBounds(position, size),
     }),
     [size],
   );
@@ -128,7 +122,6 @@ export function SdfCylinder({
 
       return {
         data: createSdfData([normalizedRadius, halfHeight, 0, 0]),
-        bounds: createCylinderBounds(position, normalizedRadius, halfHeight),
       };
     },
     [height, radius],
@@ -159,7 +152,6 @@ export function SdfCone({
 
       return {
         data: createSdfData([normalizedTopRadius, normalizedBottomRadius, halfHeight, 0]),
-        bounds: createConeBounds(position, normalizedTopRadius, normalizedBottomRadius, halfHeight),
       };
     },
     [bottomRadius, height, topRadius],
@@ -191,7 +183,6 @@ export function SdfCapsule({
 
       return {
         data: createSdfData([...normalizedTop, normalizedRadius], [...normalizedBottom, Math.max(0, round)]),
-        bounds: createCapsuleBounds(position, rotation, normalizedTop, normalizedBottom, normalizedRadius),
       };
     },
     [bottom, radius, round, top],
@@ -220,7 +211,6 @@ export function SdfTorus({
 
       return {
         data: createSdfData([normalizedMajorRadius, normalizedMinorRadius, 0, 0]),
-        bounds: createTorusBounds(position, normalizedMajorRadius, normalizedMinorRadius),
       };
     },
     [majorRadius, minorRadius],
@@ -247,7 +237,6 @@ export function SdfEllipsoid({
 
       return {
         data: createSdfData([...normalizedRadii, 0]),
-        bounds: createEllipsoidBounds(position, normalizedRadii),
       };
     },
     [radii],
@@ -290,7 +279,6 @@ function SdfRegularPolyhedronPrimitive({
 
       return {
         data: createSdfData([normalizedRadius, 0, 0, 0]),
-        bounds: createSphereBounds(position, normalizedRadius),
       };
     },
     [radius],
@@ -318,7 +306,7 @@ export function SdfFunction({
     { active, kind: "function", position, rotation, color, smoothness, material, materialUniform },
     () => ({
       data: createSdfData(data0, data1, data2),
-      bounds: createFunctionBounds(position, data0, bounds),
+      bounds: createExplicitBounds(bounds),
       sdfFunction,
     }),
     [bounds, data0, data1, data2, sdfFunction],
@@ -327,7 +315,7 @@ export function SdfFunction({
   return null;
 }
 
-/** 子SDFを1つのboolean演算単位にまとめ、boundsで評価スキップできるようにする。 */
+/** 子SDFを1つのboolean演算単位にまとめる。bounds指定時だけdistance pathで評価スキップできる。 */
 export function SdfGroup({
   active = true,
   op = "or",
@@ -336,6 +324,7 @@ export function SdfGroup({
   smoothness = 0,
   material,
   materialUniform = DEFAULT_MATERIAL_UNIFORM,
+  bounds,
   children,
 }: SdfGroupProps) {
   const target = useSdfSceneNodeTarget();
@@ -360,16 +349,12 @@ export function SdfGroup({
         material,
         materialUniform,
         children: childNodes,
-        bounds: createTransformedGroupBounds(
-          createGroupBounds(op, childNodes, normalizedSmoothness),
-          position,
-          rotation,
-        ),
+        bounds: createExplicitBounds(bounds),
       };
 
       target.upsertSceneNode(id, groupNode);
     });
-  }, [active, id, material, materialUniform, normalizedSmoothness, op, position, registry, rotation, target]);
+  }, [active, bounds, id, material, materialUniform, normalizedSmoothness, op, position, registry, rotation, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -412,7 +397,6 @@ export function SdfMix({ active = true, ratio = 0.5, children }: SdfMixProps) {
         type: "mix",
         ratio: normalizedRatio,
         children: childNodes,
-        bounds: createGroupBounds("or", childNodes, 0),
       });
     });
   }, [active, id, normalizedRatio, registry, target]);
@@ -424,7 +408,7 @@ export function SdfMix({ active = true, ratio = 0.5, children }: SdfMixProps) {
   return <SdfSceneNodeTargetContext.Provider value={registry}>{children}</SdfSceneNodeTargetContext.Provider>;
 }
 
-/** 子SDFの評価前後にWGSL関数を差し込むmodifier。boundsは保持だけ行い、現状は枝刈りしない。 */
+/** 子SDFの評価前後にWGSL関数を差し込むmodifier。 */
 export function SdfModifier({
   active = true,
   preset,
@@ -433,7 +417,6 @@ export function SdfModifier({
   data0 = DEFAULT_DATA,
   data1 = DEFAULT_DATA,
   data2 = DEFAULT_DATA,
-  bounds,
   children,
 }: SdfModifierProps) {
   const target = useSdfSceneNodeTarget();
@@ -461,7 +444,6 @@ export function SdfModifier({
           smoothness: 0,
           materialUniform: DEFAULT_MATERIAL_UNIFORM,
           children: childNodes,
-          bounds: createGroupBounds("or", childNodes, 0),
         });
         return;
       }
@@ -472,10 +454,9 @@ export function SdfModifier({
         postModifierFunction: resolvedFunctions.postModifierFunction,
         data: createSdfData(data0, data1, data2),
         children: childNodes,
-        bounds: createModifierBounds(childNodes, bounds),
       });
     });
-  }, [active, bounds, data0, data1, data2, id, registry, resolvedFunctions, target]);
+  }, [active, data0, data1, data2, id, registry, resolvedFunctions, target]);
 
   useEffect(() => {
     return () => target.removeSceneNode(id);
@@ -528,7 +509,7 @@ function useSdfPrimitiveNode(
       sdfFunction: fields.sdfFunction,
     };
 
-    target.upsertSceneNode(id, { type: "primitive", node, bounds: node.bounds });
+    target.upsertSceneNode(id, { type: "primitive", node });
   }, [active, color, id, kind, material, materialUniform, position, rotation, smoothness, target, ...dependencies]);
 
   useEffect(() => {
@@ -597,186 +578,14 @@ function toHalfSize(size: Vec3 | undefined): Vec3 {
   ];
 }
 
-function createSphereBounds(position: Vec3 | undefined, radius: number): SdfBoundingSphere {
-  return {
-    center: normalizeVec3(position, DEFAULT_POSITION),
-    radius: Math.max(0.001, radius),
-  };
-}
-
-function createBoxBounds(position: Vec3 | undefined, size: Vec3 | undefined): SdfBoundingSphere {
-  return {
-    center: normalizeVec3(position, DEFAULT_POSITION),
-    radius: lengthVec3(toHalfSize(size)),
-  };
-}
-
-function createCylinderBounds(
-  position: Vec3 | undefined,
-  radius: number,
-  halfHeight: number,
-): SdfBoundingSphere {
-  return {
-    center: normalizeVec3(position, DEFAULT_POSITION),
-    radius: Math.hypot(radius, halfHeight),
-  };
-}
-
-function createConeBounds(
-  position: Vec3 | undefined,
-  topRadius: number,
-  bottomRadius: number,
-  halfHeight: number,
-): SdfBoundingSphere {
-  return {
-    center: normalizeVec3(position, DEFAULT_POSITION),
-    radius: Math.hypot(Math.max(topRadius, bottomRadius), halfHeight),
-  };
-}
-
-function createCapsuleBounds(
-  position: Vec3 | undefined,
-  rotation: Quaternion | undefined,
-  top: Vec3,
-  bottom: Vec3,
-  radius: number,
-): SdfBoundingSphere {
-  const center: Vec3 = [
-    (top[0] + bottom[0]) * 0.5,
-    (top[1] + bottom[1]) * 0.5,
-    (top[2] + bottom[2]) * 0.5,
-  ];
-  const normalizedPosition = normalizeVec3(position, DEFAULT_POSITION);
-  const normalizedRotation = normalizeQuaternion(rotation, DEFAULT_ROTATION);
-  const rotatedCenter = rotation ? rotateVec3ByQuaternion(center, normalizedRotation) : center;
-
-  return {
-    center: [
-      rotatedCenter[0] + normalizedPosition[0],
-      rotatedCenter[1] + normalizedPosition[1],
-      rotatedCenter[2] + normalizedPosition[2],
-    ],
-    radius: lengthVec3(subtractVec3(top, bottom)) * 0.5 + radius,
-  };
-}
-
-function createTorusBounds(
-  position: Vec3 | undefined,
-  majorRadius: number,
-  minorRadius: number,
-): SdfBoundingSphere {
-  return {
-    center: normalizeVec3(position, DEFAULT_POSITION),
-    radius: majorRadius + minorRadius,
-  };
-}
-
-function createEllipsoidBounds(position: Vec3 | undefined, radii: Vec3): SdfBoundingSphere {
-  return {
-    center: normalizeVec3(position, DEFAULT_POSITION),
-    radius: Math.max(radii[0], radii[1], radii[2]),
-  };
-}
-
-function createFunctionBounds(
-  position: Vec3 | undefined,
-  data0: Vec4,
-  bounds: Partial<SdfBoundingSphere> | undefined,
-): SdfBoundingSphere {
-  // 任意WGSLは形状推定できないため、未指定時はdata0.xyzを保守的な半径ヒントとして使う。
-  const hintedRadius = Math.max(lengthVec3([data0[0], data0[1], data0[2]]), 1);
-
-  return {
-    center: normalizeVec3(bounds?.center ?? position, DEFAULT_POSITION),
-    radius: Math.max(0.001, bounds?.radius ?? hintedRadius),
-  };
-}
-
-function createGroupBounds(
-  op: SdfBooleanOperation,
-  children: readonly SdfSceneNode[],
-  smoothness: number,
-): SdfBoundingSphere {
-  const boundedChildren = children.map((child) => child.bounds).filter((bounds) => bounds.radius >= 0);
-
-  if (boundedChildren.length === 0) {
-    return EMPTY_GROUP_BOUNDS;
+function createExplicitBounds(bounds: SdfBoundsProp | undefined): SdfBoundingSphere | undefined {
+  if (!bounds || !Number.isFinite(bounds.radius) || bounds.radius <= 0) {
+    return undefined;
   }
 
-  if (op === "subtract" || op === "not") {
-    return inflateBounds(boundedChildren[0], smoothness);
-  }
-
-  if (op === "and") {
-    return inflateBounds(
-      boundedChildren.reduce((smallest, current) => (current.radius < smallest.radius ? current : smallest)),
-      smoothness,
-    );
-  }
-
-  return inflateBounds(boundedChildren.reduce(mergeBoundingSpheres), smoothness);
-}
-
-function mergeBoundingSpheres(a: SdfBoundingSphere, b: SdfBoundingSphere): SdfBoundingSphere {
-  const delta = subtractVec3(b.center, a.center);
-  const distance = lengthVec3(delta);
-
-  if (a.radius >= distance + b.radius) {
-    return a;
-  }
-
-  if (b.radius >= distance + a.radius) {
-    return b;
-  }
-
-  const radius = (distance + a.radius + b.radius) * 0.5;
-  const t = distance <= 0.0001 ? 0 : (radius - a.radius) / distance;
-
   return {
-    center: [a.center[0] + delta[0] * t, a.center[1] + delta[1] * t, a.center[2] + delta[2] * t],
-    radius,
-  };
-}
-
-function inflateBounds(bounds: SdfBoundingSphere, amount: number): SdfBoundingSphere {
-  return {
-    center: bounds.center,
-    radius: bounds.radius < 0 ? bounds.radius : bounds.radius + Math.max(0, amount),
-  };
-}
-
-function createTransformedGroupBounds(
-  bounds: SdfBoundingSphere,
-  position: Vec3 | undefined,
-  rotation: Quaternion | undefined,
-): SdfBoundingSphere {
-  if (bounds.radius < 0) {
-    return bounds;
-  }
-
-  const normalizedPosition = normalizeVec3(position, DEFAULT_POSITION);
-  const normalizedRotation = normalizeQuaternion(rotation, DEFAULT_ROTATION);
-  const rotatedCenter = rotation ? rotateVec3ByQuaternion(bounds.center, normalizedRotation) : bounds.center;
-
-  return {
-    center: [
-      rotatedCenter[0] + normalizedPosition[0],
-      rotatedCenter[1] + normalizedPosition[1],
-      rotatedCenter[2] + normalizedPosition[2],
-    ],
-    radius: bounds.radius,
-  };
-}
-
-function createModifierBounds(
-  children: readonly SdfSceneNode[],
-  bounds: Partial<SdfBoundingSphere> | undefined,
-): SdfBoundingSphere {
-  const childBounds = createGroupBounds("or", children, 0);
-
-  return {
-    center: normalizeVec3(bounds?.center ?? childBounds.center, DEFAULT_POSITION),
-    radius: Math.max(0.001, bounds?.radius ?? childBounds.radius),
+    center: normalizeVec3(bounds.center ?? DEFAULT_POSITION, DEFAULT_POSITION),
+    radius: Math.max(0.001, bounds.radius),
   };
 }
 

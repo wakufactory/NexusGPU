@@ -322,15 +322,30 @@ function compileExpandedSceneNode(
       customSdfFunctionNames,
       mode,
     );
+    const canPruneByBounds = mode === "distance" && node.node.kind === "function" && node.node.bounds !== undefined;
 
     state.objectIndex += 1;
 
+    const lines = [
+      `  let ${objectName} = objects[${objectIndex}u];`,
+      `  let ${localPointName} = ${createLocalPointExpression(node.node, objectName, pointExpression)};`,
+    ];
+
+    if (canPruneByBounds) {
+      const boundDistanceName = nextTempName("boundDistance", state);
+      lines.push(`  var ${hitName}: SceneDistance;`);
+      lines.push(`  let ${boundDistanceName} = length(${localPointName} - ${objectName}.boundsInfo.xyz) - ${objectName}.boundsInfo.w;`);
+      lines.push(`  if (${boundDistanceName} > camera.objectInfo.y) {`);
+      lines.push(`    ${hitName} = sceneDistance(${boundDistanceName}, 0.0);`);
+      lines.push("  } else {");
+      lines.push(`    ${hitName} = ${hitExpression};`);
+      lines.push("  }");
+    } else {
+      lines.push(`  let ${hitName} = ${hitExpression};`);
+    }
+
     return {
-      code: [
-        `  let ${objectName} = objects[${objectIndex}u];`,
-        `  let ${localPointName} = ${createLocalPointExpression(node.node, objectName, pointExpression)};`,
-        `  let ${hitName} = ${hitExpression};`,
-      ].join("\n"),
+      code: lines.join("\n"),
       hitName,
       smoothnessExpression: `${hitName}.smoothness`,
     };
@@ -358,13 +373,15 @@ function compileExpandedSceneNode(
     );
   }
 
+  const canPruneByBounds = mode === "distance" && node.op !== "not" && node.bounds !== undefined;
   const groupObjectIndex = state.objectIndex;
-  const groupObjectName = useDynamicGroupSmoothness ? nextTempName("groupObject", state) : "";
-  if (useDynamicGroupSmoothness) {
+  const usesGroupObject = useDynamicGroupSmoothness || canPruneByBounds;
+  const groupObjectName = usesGroupObject ? nextTempName("groupObject", state) : "";
+  if (usesGroupObject) {
     state.objectIndex += 1;
   }
-  const groupLocalPointName = useDynamicGroupSmoothness ? nextTempName("groupLocalPoint", state) : "";
-  const childPointExpression = useDynamicGroupSmoothness ? groupLocalPointName : pointExpression;
+  const groupLocalPointName = usesGroupObject ? nextTempName("groupLocalPoint", state) : "";
+  const childPointExpression = usesGroupObject ? groupLocalPointName : pointExpression;
   const children = node.children.map((child) =>
     compileExpandedSceneNode(child, state, customSdfFunctionNames, customModifierFunctionNames, childPointExpression, mode),
   );
@@ -373,7 +390,7 @@ function compileExpandedSceneNode(
   const smoothness = useDynamicGroupSmoothness
     ? `${groupObjectName}.colorSmooth.w`
     : formatWgslFloat(node.smoothness);
-  const groupTransformLines = useDynamicGroupSmoothness
+  const groupTransformLines = usesGroupObject
     ? [
         `  let ${groupObjectName} = objects[${groupObjectIndex}u];`,
         `  let ${groupLocalPointName} = ${createGroupLocalPointExpression(node, groupObjectName, pointExpression)};`,
@@ -413,23 +430,37 @@ function compileExpandedSceneNode(
     };
   }
 
-  const lines = [...groupTransformLines, ...children.map((child) => child.code)];
-  lines.push(`  var ${hitName} = ${children[0].hitName};`);
+  const childLines = [...children.map((child) => child.code)];
+  childLines.push(canPruneByBounds ? `  ${hitName} = ${children[0].hitName};` : `  var ${hitName} = ${children[0].hitName};`);
 
   for (const child of children.slice(1)) {
     if (node.op === "and") {
-      lines.push(`  ${hitName} = ${mode === "eval" ? "intersectHit" : "intersectDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
+      childLines.push(`  ${hitName} = ${mode === "eval" ? "intersectHit" : "intersectDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
     } else if (node.op === "subtract") {
-      lines.push(`  ${hitName} = ${mode === "eval" ? "subtractHit" : "subtractDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
+      childLines.push(`  ${hitName} = ${mode === "eval" ? "subtractHit" : "subtractDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
     } else {
-      lines.push(`  ${hitName} = ${mode === "eval" ? "unionHit" : "unionDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
+      childLines.push(`  ${hitName} = ${mode === "eval" ? "unionHit" : "unionDistance"}(${hitName}, ${child.hitName}, ${smoothness});`);
     }
   }
 
   const materialHitName = nextGroupMaterialHitName(node.material !== undefined && mode === "eval", state);
   const sourceHitName = transformedHitName || hitName;
-  lines.push(...createGroupTransformLines(transformedHitName, hitName, groupObjectName));
-  lines.push(...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, sourceHitName, groupObjectName));
+  childLines.push(...createGroupTransformLines(transformedHitName, hitName, groupObjectName));
+  childLines.push(...createGroupMaterialOverrideLines(node.material !== undefined && mode === "eval", materialHitName, sourceHitName, groupObjectName));
+
+  const lines = [...groupTransformLines];
+  if (canPruneByBounds) {
+    const boundDistanceName = nextTempName("groupBoundDistance", state);
+    lines.push(`  var ${hitName}: SceneDistance;`);
+    lines.push(`  let ${boundDistanceName} = length(${childPointExpression} - ${groupObjectName}.boundsInfo.xyz) - ${groupObjectName}.boundsInfo.w;`);
+    lines.push(`  if (${boundDistanceName} > camera.objectInfo.y) {`);
+    lines.push(`    ${hitName} = sceneDistance(${boundDistanceName}, 0.0);`);
+    lines.push("  } else {");
+    lines.push(...indentWgslLines(childLines, "  "));
+    lines.push("  }");
+  } else {
+    lines.push(...childLines);
+  }
 
   return {
     code: lines.join("\n"),
@@ -618,7 +649,6 @@ function createImplicitUnionGroup(children: readonly SdfSceneNode[]): SdfSceneNo
     smoothness: 0,
     materialUniform: [0, 0, 0, 0],
     children,
-    bounds: { center: [0, 0, 0], radius: -1 },
   };
 }
 
@@ -725,9 +755,10 @@ export function createSceneTopologySignature(sceneNodes: readonly SdfSceneNode[]
 function createSceneNodeTopologySignature(node: SdfSceneNode): string {
   if (node.type === "primitive") {
     const rotationSignature = node.node.hasRotation ? "rotated" : "unrotated";
+    const boundsSignature = node.node.bounds ? "bounded" : "unbounded";
 
     return node.node.kind === "function"
-      ? `function:${rotationSignature}:${node.node.sdfFunction ?? ""}`
+      ? `function:${rotationSignature}:${boundsSignature}:${node.node.sdfFunction ?? ""}`
       : `${node.node.kind}:${rotationSignature}`;
   }
 
@@ -742,8 +773,9 @@ function createSceneNodeTopologySignature(node: SdfSceneNode): string {
   }
 
   const rotationSignature = node.hasRotation ? "rotated" : "unrotated";
+  const boundsSignature = node.bounds ? "bounded" : "unbounded";
 
-  return `group:${node.op}:${rotationSignature}(${node.children
+  return `group:${node.op}:${rotationSignature}:${boundsSignature}(${node.children
     .map(createSceneNodeTopologySignature)
     .join(",")})`;
 }
@@ -798,4 +830,8 @@ function formatWgslFloat(value: number) {
 
 function formatSdfDataArgs(objectName: string) {
   return `${objectName}.data0, ${objectName}.data1, ${objectName}.data2`;
+}
+
+function indentWgslLines(lines: readonly string[], indent: string) {
+  return lines.map((line) => `${indent}${line}`);
 }
