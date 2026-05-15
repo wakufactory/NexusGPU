@@ -92,19 +92,19 @@ function SdfExperimentSceneContent({ parameters }: SdfExperimentSceneContentProp
   });
 
   return (
-    <SdfFunction
-      sdfFunction={EXPERIMENT_SDF}
-      // data0は形状の大きさ、変形量、厚みを渡す。
-      data0={[12, 12, parameters.experimentAmplitude, parameters.experimentThickness]}
-      // data1は主に周期性とアニメーション位相を渡す。
-      data1={[parameters.experimentFrequency, parameters.experimentFrequency * 0.72, phase, 0]}
-      // data2はWGSL実験時の予備スロットとして空けておく。
-      data2={[0, 0, 0, 0]}
-      position={[0, 0, 0]}
-      color={[0.18, 0.62, 0.95]}
-      smoothness={0}
+      <SdfFunction
+        sdfFunction={EXPERIMENT_SDF}
+        // data0は形状の大きさ、変形量、厚みを渡す。
+        data0={[12, 12, parameters.experimentAmplitude, parameters.experimentThickness]}
+        // data1は主に周期性とアニメーション位相を渡す。
+        data1={[parameters.experimentFrequency, parameters.experimentFrequency * 0.72, phase, 0]}
+        // data2はWGSL実験時の予備スロットとして空けておく。
+        data2={[0, 0, 0, 0]}
+        position={[0, 0, 0]}
+        color={[0.18, 0.62, 0.95]}
+        smoothness={0}
       bounds={{ radius: 18 }}
-    />
+      />
   );
 }
 

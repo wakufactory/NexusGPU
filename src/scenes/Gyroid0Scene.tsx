@@ -68,18 +68,19 @@ function OrbitalForgeContent({ parameters }: { parameters: Gyroid0SceneParameter
 
   return (
     <>
-      <SdfModifier preset="postOnion" data0={[parameters.shell, 0, 0, 0]}>
-        <SdfFunction
-          rotation={axisAngleToQuaternion([0, 1, 0], phase * 0.)}
-          sdfFunction={GYROID_CORE_SDF}
-          data0={[4.7, 0.86 + Math.sin(phase * 2.0) * parameters.pulse, 0.155, phase]}
-          color={[0.3, 0.9, 0.96]}
-          smoothness={0.04}
-          material="pbr"
-          materialUniform={[0.0, 0.18, 0.9, 0.24]}
-          bounds={{ radius: 1.2 }}
-        />
-      </SdfModifier>
+      <SdfGroup bounds={{ radius: 1.2}}>
+        <SdfModifier preset="postOnion" data0={[parameters.shell, 0, 0, 0]}>
+          <SdfFunction
+            rotation={axisAngleToQuaternion([0, 1, 0], phase * 0.)}
+            sdfFunction={GYROID_CORE_SDF}
+            data0={[4.7, 0.86 + Math.sin(phase * 2.0) * parameters.pulse, 0.155, phase]}
+            color={[0.3, 0.9, 0.96]}
+            smoothness={0.04}
+            material="pbr"
+            materialUniform={[0.0, 0.18, 0.9, 0.24]}
+          />
+        </SdfModifier>
+      </SdfGroup>
     </>
   );
 }

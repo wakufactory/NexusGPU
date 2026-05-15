@@ -42,6 +42,12 @@
     "module": "./Noise0Scene.tsx"
   },
   {
+    "id": "gyroid0",
+    "title": "gyroid 0",
+    "description": "Gyroid test scene ",
+    "module": "./Gyroid0Scene.tsx"
+  },
+  {
     "id": "tex-test",
     "title": "texture test",
     "description": "Scene for testing texture sampling in SDFs ",
