@@ -82,7 +82,6 @@ function NeonGardenContent({ parameters }: { parameters: ShowcaseNeonGardenScene
             return SceneHit(hit.distance / max(stretch, 1.0) - data0.y * 0.2, painted, hit.smoothness, hit.localPoint);
           `}
           data0={[parameters.twist, parameters.bloom, 0, 0]}
-          bounds={{ radius: 8 }}
         >
           <SdfGroup
             op="or"

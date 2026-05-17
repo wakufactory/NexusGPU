@@ -42,12 +42,6 @@
     "module": "./Noise0Scene.tsx"
   },
   {
-    "id": "gyroid0",
-    "title": "gyroid 0",
-    "description": "Gyroid test scene ",
-    "module": "./Gyroid0Scene.tsx"
-  },
-  {
     "id": "tex-test",
     "title": "texture test",
     "description": "Scene for testing texture sampling in SDFs ",
@@ -112,5 +106,11 @@
     "title": "modifier test",
     "description": "Scene copied from spheres.",
     "module": "./ModTestScene.tsx"
+  },
+  {
+    "id": "gyroid1",
+    "title": "Gyroid 1",
+    "description": "Gyroid set",
+    "module": "./Gyroid1Scene.tsx"
   }
 ]
