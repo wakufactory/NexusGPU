@@ -16,6 +16,11 @@ struct CameraUniform {
   stereoInfo: vec4<f32>,
   backgroundYPositive: vec4<f32>,
   backgroundYNegative: vec4<f32>,
+  projectionInfo: vec4<f32>,
+  inverseProjection0: vec4<f32>,
+  inverseProjection1: vec4<f32>,
+  inverseProjection2: vec4<f32>,
+  inverseProjection3: vec4<f32>,
 };
 
 // 1つのSDFオブジェクトをStorage Buffer内で表す固定長レコード。

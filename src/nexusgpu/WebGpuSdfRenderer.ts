@@ -34,8 +34,38 @@ import type {
   Vec3,
 } from "./types";
 
-const CAMERA_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
+const CAMERA_BASE_FLOATS = 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4;
+const CAMERA_PROJECTION_FLOATS = 4 + 16;
+const CAMERA_FLOATS = CAMERA_BASE_FLOATS + CAMERA_PROJECTION_FLOATS;
 const CAMERA_BUFFER_SIZE = CAMERA_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+const IDENTITY_MATRIX_4X4 = new Float32Array([
+  1, 0, 0, 0,
+  0, 1, 0, 0,
+  0, 0, 1, 0,
+  0, 0, 0, 1,
+]);
+
+type NexusRenderTargetView = {
+  view: GPUTextureView;
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  clearValue?: GPUColor;
+};
+
+type NexusRenderCamera = {
+  width: number;
+  height: number;
+  viewportOrigin: readonly [number, number];
+  position: Vec3;
+  forward: Vec3;
+  right: Vec3;
+  up: Vec3;
+  fov: number;
+  projectionMode: "fov" | "inverseProjection";
+  inverseProjection: Float32Array;
+};
 
 /** UIから省略された描画設定に使う初期値。 */
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
@@ -423,25 +453,40 @@ export class WebGpuSdfRenderer {
     return SDF_PRIMITIVE_KIND_IDS[node.kind];
   }
 
-  /** カメラベクトルとデバッグ設定をUniform Bufferへ書き込み、シェーダから参照できるようにする。 */
-  private uploadCamera(snapshot: SceneSnapshot) {
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+  /** SceneStoreのカメラから、通常Canvas描画用のFOVベースカメラを作る。 */
+  private createCanvasRenderCamera(snapshot: SceneSnapshot): NexusRenderCamera {
     const position = snapshot.camera.position;
     const target = snapshot.camera.target;
     const forward = normalizeDirectionVec3(subtractVec3(target, position));
     const worldUp: Vec3 = [0, 1, 0];
     const right = normalizeDirectionVec3(crossVec3(forward, worldUp));
     const up = normalizeDirectionVec3(crossVec3(right, forward));
+
+    return {
+      width: this.canvas.width,
+      height: this.canvas.height,
+      viewportOrigin: [0, 0],
+      position,
+      forward,
+      right,
+      up,
+      fov: snapshot.camera.fov,
+      projectionMode: "fov",
+      inverseProjection: IDENTITY_MATRIX_4X4,
+    };
+  }
+
+  /** カメラベクトルとデバッグ設定をUniform Bufferへ書き込み、シェーダから参照できるようにする。 */
+  private uploadCamera(snapshot: SceneSnapshot, renderCamera: NexusRenderCamera, now: number) {
     const mainLight = snapshot.lighting.mainLight;
     const lightDirection = normalizeDirectionVec3(mainLight.direction, [-0.45, 0.85, 0.35]);
-    const time = (performance.now() - this.startTime) / 1000;
+    const time = (now - this.startTime) / 1000;
 
-    this.cameraData.set([width, height, time, snapshot.camera.fov], 0);
-    this.cameraData.set([...position, 0], 4);
-    this.cameraData.set([...forward, 0], 8);
-    this.cameraData.set([...right, 0], 12);
-    this.cameraData.set([...up, 0], 16);
+    this.cameraData.set([renderCamera.width, renderCamera.height, time, renderCamera.fov], 0);
+    this.cameraData.set([...renderCamera.position, 0], 4);
+    this.cameraData.set([...renderCamera.forward, 0], 8);
+    this.cameraData.set([...renderCamera.right, 0], 12);
+    this.cameraData.set([...renderCamera.up, 0], 16);
     this.cameraData.set(
       [
         Math.min(countSceneObjectRecords(snapshot.sceneNodes), MAX_SDF_OBJECTS),
@@ -473,6 +518,16 @@ export class WebGpuSdfRenderer {
     );
     this.cameraData.set([...snapshot.background.yPositive, 0], 40);
     this.cameraData.set([...snapshot.background.yNegative, 0], 44);
+    this.cameraData.set(
+      [
+        renderCamera.projectionMode === "inverseProjection" ? 1 : 0,
+        renderCamera.viewportOrigin[0],
+        renderCamera.viewportOrigin[1],
+        0,
+      ],
+      48,
+    );
+    this.cameraData.set(renderCamera.inverseProjection, 52);
 
     this.device.queue.writeBuffer(this.cameraBuffer, 0, this.cameraData);
   }
@@ -528,27 +583,51 @@ export class WebGpuSdfRenderer {
       return;
     }
 
-    this.uploadCamera(this.snapshot);
+    const renderCamera = this.createCanvasRenderCamera(this.snapshot);
+    const renderTarget = {
+      view: this.context.getCurrentTexture().createView(),
+      x: 0,
+      y: 0,
+      width: this.canvas.width,
+      height: this.canvas.height,
+      clearValue: { r: 0.02, g: 0.025, b: 0.028, a: 1 },
+    };
 
+    this.renderToTargetView(this.snapshot, renderTarget, renderCamera, now);
+  }
+
+  /** texture viewを描画先として受け取り、SDF passを1回実行する。WebXR layer描画もこの形へ接続する。 */
+  private renderToTargetView(
+    snapshot: SceneSnapshot,
+    target: NexusRenderTargetView,
+    renderCamera: NexusRenderCamera,
+    now: number,
+  ) {
+    this.uploadCamera(snapshot, renderCamera, now);
     const encoder = this.device.createCommandEncoder({ label: "NexusGPU Frame Encoder" });
+    this.encodeSdfPass(encoder, target);
+    this.device.queue.submit([encoder.finish()]);
+  }
+
+  /** command encoderへSDF描画passだけを積む。提出タイミングは呼び出し側が制御する。 */
+  private encodeSdfPass(encoder: GPUCommandEncoder, target: NexusRenderTargetView) {
     const pass = encoder.beginRenderPass({
       label: "NexusGPU SDF Pass",
       colorAttachments: [
         {
-          view: this.context.getCurrentTexture().createView(),
-          clearValue: { r: 0.02, g: 0.025, b: 0.028, a: 1 },
+          view: target.view,
+          clearValue: target.clearValue ?? { r: 0.02, g: 0.025, b: 0.028, a: 1 },
           loadOp: "clear",
           storeOp: "store",
         },
       ],
     });
 
+    pass.setViewport(target.x ?? 0, target.y ?? 0, target.width, target.height, 0, 1);
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
     pass.draw(3);
     pass.end();
-
-    this.device.queue.submit([encoder.finish()]);
   }
 }
 

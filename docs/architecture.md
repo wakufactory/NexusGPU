@@ -415,8 +415,8 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 - `SdfModifier`のpre/post関数文字列セット、またはmodifier topologyが変わった場合もShader Module / Render Pipelineを作り直す。modifierの`data0-2`だけが変わる場合はStorage Buffer更新だけで済む
 - `setRenderSettings(settings)`でUI由来の設定を`normalizeRenderSettings()`に通し、シェーダが想定する範囲へ丸める
 - `setTextures(textures)`で`NexusCanvas`から渡された最大4枚の画像を読み込み、textureごとのsampler設定と一緒にbind groupを更新する
-- 毎フレーム`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定、背景色をUniform Bufferへアップロードする
-- フルスクリーン三角形を`draw(3)`し、実際の形状評価はFragment Shaderに任せる
+- 毎フレーム`createCanvasRenderCamera()`で通常Canvas用のFOVベースcameraを作り、`uploadCamera()`でカメラベクトル、時刻、オブジェクト数、描画設定、ライト方向、ステレオSBS設定、背景色、projection ray生成用情報をUniform Bufferへアップロードする
+- `renderToTargetView()`で描画先`GPUTextureView`、viewport、cameraを受け取り、`encodeSdfPass()`でフルスクリーン三角形を`draw(3)`する。通常Canvasでは`context.getCurrentTexture().createView()`を描画先にするが、WebXR対応時は`XRProjectionLayer`から得たeyeごとのtexture viewを同じ経路へ渡す想定
 - `destroy()`で`requestAnimationFrame`、`ResizeObserver`、GPU Bufferを解放する
 
 開発用console出力は`src/nexusgpu/renderer/debugFlags.ts`でコードレベルに切り替えます。現在のフラグは次の通りです。
@@ -428,7 +428,11 @@ WebGPUの低レベル処理を担当します。ReactやJSXには依存せず、
 
 profileとobject dumpの整形処理は`renderer/sceneDebugDump.ts`に分離し、`WebGpuSdfRenderer.ts`本体はフラグを見て呼び出すだけにしています。`DEBUG_SCENE_COMPILE_PROFILE`と`DEBUG_SCENE_OBJECTS_DUMP`は独立しているため、compile統計だけを見る、object buffer詰め順だけを見る、といった使い分けができます。
 
-ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量ですが、mesh、post process、WebXRなど複数の描画パスが入る場合は、将来的に`RenderEyeView[]`のようなeye単位のview情報へ分離し、eyeごとにviewportとcamera uniformを切り替える構造へ拡張する想定です。
+描画先は`NexusRenderTargetView`相当の内部構造で扱います。現在の通常Canvas pathではviewport原点は`[0, 0]`、サイズは`canvas.width` / `canvas.height`です。将来のWebXR pathでは、eyeごとのsub image viewportを`target.x` / `target.y` / `target.width` / `target.height`として渡し、`CameraUniform.projectionInfo.yz`へviewport原点を入れます。Fragment Shaderは`@builtin(position)`からviewport原点を引いてlocal UVを作るため、texture全体の一部だけへ描く場合もray生成範囲をviewport内に限定できます。
+
+カメラは`NexusRenderCamera`相当の内部構造で扱います。通常Canvasでは`SceneSnapshot.camera`の`position` / `target` / `fov`から`forward`、`right`、`up`を作り、従来通りFOVベースでrayを生成します。一方で、XR向けに`projectionMode: "inverseProjection"`と`inverseProjection`行列をUniformへ渡せるようにしてあります。このmodeではFragment ShaderがNDC座標を逆projection行列でview space方向へ戻し、`right` / `up` / `forward`でworld space rayへ変換します。現在の通常Canvas pathは`projectionMode: "fov"`なので見え方は従来と同じです。
+
+ステレオSBSは現在、1枚のcanvasをFragment Shader内で左右半分に分割し、左eye / 右eyeのレイ原点だけを`camera.right`方向へずらして描画します。これはSDFのフルスクリーン三角形パスでは軽量なプレビュー機能です。WebXRではSBSを使わず、`XRFrame.getViewerPose(referenceSpace).views`からdevice APIが与えるeyeごとのpose、projection、viewportを受け取り、eyeごとに`renderToTargetView()`へ異なるtexture viewと`NexusRenderCamera`を渡す方針です。
 
 Storage Bufferへの詰め替えは、WGSL側の`SdfObject`と同じ36個の`f32`レコードに合わせています。組み込みプリミティブの`kind`は`SDF_PRIMITIVE_KIND_IDS`の値として`positionKind.w`へ格納します。`SdfFunction`の場合は、同じ関数文字列ごとに割り当てた動的kind IDを格納します。primitiveとgroupは`materialInfo.x`へmaterial ID、`materialUniform`へmaterial用の追加値を格納します。`boundsInfo`には明示boundsの`[center.x, center.y, center.z, radius]`を入れ、未指定時は`[0, 0, 0, -1]`を入れます。`SdfModifier`は`data0-2`だけを使う補助レコードとして同じbufferへ入ります。`SdfMix`は`data0.x`だけをratioとして使う補助レコードとして入ります。`SdfGroup`もboolean合成時の`smoothness`とmaterialを動的に読むため、補助レコードとして同じbufferへ入ります。`sceneBuffers.ts`は`sceneTraversal.ts`のpre-order走査で、primitive、group、modifier、mixの出現順にレコードを作ります。`scenePipelineCompiler.ts`と`sceneShaderCompiler.ts`も同じpre-order前提で`objects[0]`、`objects[1]`のような参照を使う`mapSceneDistance()`と`mapSceneEval()`を生成します。`WebGpuSdfRenderer`は生成済みshader planのsignatureを比較し、必要な場合だけShader Module / Render Pipelineを作り直します。
 
@@ -537,7 +541,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `raymarchShader.ts`: `mapSceneDistance()`でレイを進め、hit確定時だけ`mapSceneEval()`を呼び、`RaymarchHit`を返す`raymarch`を定義する
 - `lightingShader.ts`: `estimateNormal`、`estimateNormalFromHit`、未ヒット時の`background`を定義する
 - `renderer/materialShaderCompiler.ts`: primitive/groupごとのmaterial presetとcustom WGSLを集め、`shadeMaterial`とdispatcherを生成する
-- `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す
+- `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す。ray生成は`createCameraRay()`に分離され、通常Canvas用のFOVベースrayと、XR向けの逆projection行列ベースrayを切り替えられる
 
 primitiveまたはgroupごとにmaterialを差し替える場合は、`material="normal"`や`material="pbr"`のようなpreset、または`material={{ wgsl }}`で`fn anyName(input: MaterialInput) -> vec3<f32>`を定義します。`MaterialInput`には`color`、`normal`、`cam`、`localPoint`、`worldPoint`、`rayDirection`、`distance`、`materialUniform`が入ります。`pbr` presetでは`materialUniform`を`[metallic, roughness, specular, ambient]`として扱います。
 
@@ -561,6 +565,7 @@ scene textureを使うcustom WGSLでは、`shaderLayout.ts`で定義された固
 - `estimateNormal`: `SceneEval.gradInfo`が有効なら解析的gradientを使い、無効なら`mapSceneDistance()`の有限差分で法線を近似
 - `estimateNormalFromHit`: `RaymarchHit.gradInfo`が有効ならraymarch時に回収済みのgradientを使い、無効なら有限差分へfallbackする
 - `background`: 未ヒット時の背景色を返す
+- `createCameraRay`: viewport-local UV、aspect、SBS用eye signからray origin / directionを作る。`projectionInfo.x`が0なら従来の`fov`、1なら`inverseProjection`を使う
 - `fragmentMain`: ピクセルごとの最終色を計算
 
 ## データ構造
@@ -737,6 +742,11 @@ struct CameraUniform {
   stereoInfo: vec4<f32>,
   backgroundYPositive: vec4<f32>,
   backgroundYNegative: vec4<f32>,
+  projectionInfo: vec4<f32>,
+  inverseProjection0: vec4<f32>,
+  inverseProjection1: vec4<f32>,
+  inverseProjection2: vec4<f32>,
+  inverseProjection3: vec4<f32>,
 };
 ```
 
@@ -779,6 +789,21 @@ w = 未使用
 ```text
 rgb = Y軸方向の上下背景色
 a   = 未使用
+```
+
+`projectionInfo`:
+
+```text
+x  = projection mode: 0 はFOVベース、1 はinverseProjectionベース
+yz = viewport origin。通常Canvasでは[0, 0]、XR sub imageではviewportの左上
+w  = 未使用
+```
+
+`inverseProjection0-3`:
+
+```text
+projection modeが1の場合に使う4x4 inverse projection matrixの各column
+projection modeが0の場合はidentityを入れる
 ```
 
 UniformはWebGPUのアライメント制約が厳しいため、`vec4`境界に揃える設計にしています。
@@ -932,7 +957,7 @@ sequenceDiagram
   end
 ```
 
-1. `fragmentMain()`がピクセル座標からカメラレイを作る
+1. `fragmentMain()`がピクセル座標をviewport-local UVへ変換し、`createCameraRay()`でカメラレイを作る
 2. `raymarch()`がレイ上の現在位置を計算する
 3. `mapSceneDistance()`が展開済みのシーン木に従ってSDF距離を評価する
 4. 最短距離ぶんレイを前進させる
@@ -946,7 +971,9 @@ sequenceDiagram
 
 デフォルトmaterialでは、`raymarch()`がhit確定時に回収した`RaymarchHit.gradInfo`を`estimateNormalFromHit()`へ渡します。gradientが有効ならそれをnormalizeして使い、無効なら`normalEpsilon`幅の四面体サンプルで`mapSceneDistance()`を4回呼びます。互換用の`estimateNormal(point)`は`mapSceneEval(point).gradInfo`を確認してから同じfallbackを使います。raymarch本体とshadow rayはdistance-only pathを使うため、組み込みprimitiveのgradient関数はstep中には走りません。
 
-`stereoSbs`が有効な場合、`fragmentMain()`はcanvas全体の`screenUv`から左右どちらのviewportかを判定し、片目ごとのローカルUVへ変換します。左eye / 右eyeは`stereoBase`の半分だけ`camera.right`方向にずらした`rayOrigin`を使います。`stereoSwapEyes`が有効な場合は左右の割り当てを反転し、交差法向けのSBS表示にします。
+`createCameraRay()`は2つのray生成modeを持ちます。通常Canvasでは`projectionInfo.x = 0`で、従来通り`fov`、`aspect`、`forward`、`right`、`up`からray directionを作ります。XR向けには`projectionInfo.x = 1`を使い、NDC座標`[x, y, 1, 1]`を`inverseProjection`でview spaceへ戻してから、`right`、`up`、`forward`でworld space directionへ変換します。これにより、XR device APIが返す左右eyeごとの非対称projectionをFOVへ近似せずに扱えます。
+
+`stereoSbs`が有効な場合、`fragmentMain()`はviewport-localな`screenUv`から左右どちらのSBS領域かを判定し、片目ごとのローカルUVへ変換します。左eye / 右eyeは`stereoBase`の半分だけ`camera.right`方向にずらした`rayOrigin`を使います。`stereoSwapEyes`が有効な場合は左右の割り当てを反転し、交差法向けのSBS表示にします。
 
 このSBS実装は通常カメラから左右eyeを疑似生成するプレビュー用です。WebXRでは`XRFrame.getViewerPose(referenceSpace).views`からdevice APIが与えるeyeごとのpose、projection、viewportを受け取り、同じレイ生成の入力を`RenderEyeView`相当の構造から供給する方針です。
 
