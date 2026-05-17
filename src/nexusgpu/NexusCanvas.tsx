@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SceneStore } from "./SceneStore";
 import { SceneContext } from "./SceneContext";
 import { WebGpuSdfRenderer } from "./WebGpuSdfRenderer";
-import { DEFAULT_BACKGROUND } from "./defaults";
+import { DEFAULT_BACKGROUND, DEFAULT_CAMERA } from "./defaults";
 import { useOrbitCameraControls } from "./useOrbitCameraControls";
-import type { NexusBackground, NexusCanvasProps, SceneSnapshot } from "./types";
+import type { NexusBackground, NexusCamera, NexusCanvasProps, SceneSnapshot } from "./types";
 
 /**
  * ReactツリーとWebGPUレンダラを接続するルートコンポーネント。
@@ -28,11 +28,18 @@ export function NexusCanvas({
   const elapsedRef = useRef(0);
   const renderSettingsRef = useRef(renderSettings);
   const texturesRef = useRef(textures);
+  const cameraRef = useRef(camera);
   const renderingEnabledRef = useRef(renderingEnabled);
   const xrRequestIdRef = useRef(xrRequestId);
+  const xrActiveRef = useRef(false);
+  const lastFrameTimeRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
   const lightingKey = JSON.stringify(lighting ?? null);
+
+  useEffect(() => {
+    cameraRef.current = camera;
+  }, [camera]);
 
   useOrbitCameraControls({
     canvasRef,
@@ -70,6 +77,16 @@ export function NexusCanvas({
     rendererRef.current?.setRenderingEnabled(renderingEnabled);
   }, [renderingEnabled]);
 
+  const advanceSceneFrame = (time: number) => {
+    lastFrameTimeRef.current ??= time;
+
+    const delta = Math.min((time - lastFrameTimeRef.current) / 1000, 0.1);
+    lastFrameTimeRef.current = time;
+    elapsedRef.current += delta;
+
+    store.advanceFrame({ time, elapsed: elapsedRef.current, delta });
+  };
+
   useEffect(() => {
     texturesRef.current = textures;
     rendererRef.current?.setTextures(textures);
@@ -82,16 +99,11 @@ export function NexusCanvas({
     }
 
     let frameId = 0;
-    let lastTime: number | null = null;
 
     const tick = (time: number) => {
-      lastTime ??= time;
-
-      const delta = Math.min((time - lastTime) / 1000, 0.1);
-      lastTime = time;
-      elapsedRef.current += delta;
-
-      store.advanceFrame({ time, elapsed: elapsedRef.current, delta });
+      if (!xrActiveRef.current) {
+        advanceSceneFrame(time);
+      }
       frameId = requestAnimationFrame(tick);
     };
 
@@ -109,7 +121,15 @@ export function NexusCanvas({
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
-    WebGpuSdfRenderer.create(canvas, { onRenderStatsChange })
+    WebGpuSdfRenderer.create(canvas, {
+      onRenderStatsChange,
+      onXrFrame: (time) => {
+        if (renderingEnabledRef.current) {
+          advanceSceneFrame(time);
+        }
+      },
+      getXrBaseCamera: () => resolveCamera(cameraRef.current),
+    })
       .then((renderer) => {
         if (cancelled) {
           renderer.destroy();
@@ -117,7 +137,10 @@ export function NexusCanvas({
         }
 
         rendererRef.current = renderer;
-        renderer.setXrStateChangeHandler(onXrStateChange);
+        renderer.setXrStateChangeHandler((state) => {
+          xrActiveRef.current = state.active;
+          onXrStateChange?.(state);
+        });
         renderer.setRenderSettings(renderSettingsRef.current);
         renderer.setRenderingEnabled(renderingEnabledRef.current);
         renderer.setTextures(texturesRef.current);
@@ -136,10 +159,13 @@ export function NexusCanvas({
       rendererRef.current?.destroy();
       rendererRef.current = null;
     };
-  }, [onRenderStatsChange, store]);
+  }, [onRenderStatsChange, onXrStateChange, store]);
 
   useEffect(() => {
-    rendererRef.current?.setXrStateChangeHandler(onXrStateChange);
+    rendererRef.current?.setXrStateChangeHandler((state) => {
+      xrActiveRef.current = state.active;
+      onXrStateChange?.(state);
+    });
   }, [onXrStateChange]);
 
   useEffect(() => {
@@ -174,6 +200,14 @@ export function NexusCanvas({
       {children}
     </SceneContext.Provider>
   );
+}
+
+function resolveCamera(camera: NexusCamera | undefined): Required<NexusCamera> {
+  return {
+    position: camera?.position ?? DEFAULT_CAMERA.position,
+    target: camera?.target ?? DEFAULT_CAMERA.target,
+    fov: camera?.fov ?? DEFAULT_CAMERA.fov,
+  };
 }
 
 function resolveBackground(background: NexusBackground | undefined): Required<NexusBackground> {

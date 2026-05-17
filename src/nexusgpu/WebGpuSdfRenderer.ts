@@ -28,6 +28,7 @@ import { logSceneCompileProfile, logSceneObjectsDump } from "./renderer/sceneDeb
 import { WebXrSessionManager } from "./renderer/webXrSession";
 import type { NexusRenderCamera, NexusRenderTargetView } from "./renderer/renderTypes";
 import type {
+  NexusCamera,
   NexusRenderSettings,
   NexusRenderStats,
   NexusTextureSource,
@@ -102,7 +103,11 @@ export class WebGpuSdfRenderer {
     private readonly canvas: HTMLCanvasElement,
     private readonly device: GPUDevice,
     xrCompatibleDevice: boolean,
-    private readonly onRenderStatsChange?: (stats: NexusRenderStats) => void,
+    private readonly options: {
+      onRenderStatsChange?: (stats: NexusRenderStats) => void;
+      onXrFrame?: (time: DOMHighResTimeStamp) => void;
+      getXrBaseCamera?: () => Required<NexusCamera>;
+    },
   ) {
     const context = canvas.getContext("webgpu");
     if (!context) {
@@ -180,8 +185,10 @@ export class WebGpuSdfRenderer {
       getColorFormat: () => this.format,
       setColorFormat: (format) => this.setOutputFormat(format),
       getSnapshot: () => this.snapshot,
+      getBaseCamera: () => this.options.getXrBaseCamera?.(),
       isRenderingEnabled: () => this.renderingEnabled,
       onFrameStats: (time) => this.updateFps(time),
+      onFrame: (time) => this.options.onXrFrame?.(time),
       onSessionStart: () => {
         cancelAnimationFrame(this.frameId);
         this.frameId = 0;
@@ -210,7 +217,11 @@ export class WebGpuSdfRenderer {
   /** WebGPUアダプタとデバイスを確保し、レンダラを初期化するファクトリ。 */
   static async create(
     canvas: HTMLCanvasElement,
-    options: { onRenderStatsChange?: (stats: NexusRenderStats) => void } = {},
+    options: {
+      onRenderStatsChange?: (stats: NexusRenderStats) => void;
+      onXrFrame?: (time: DOMHighResTimeStamp) => void;
+      getXrBaseCamera?: () => Required<NexusCamera>;
+    } = {},
   ) {
     if (!navigator.gpu) {
       throw new Error("WebGPU is not enabled. Use a current Chromium, Edge, or Safari Technology Preview build.");
@@ -240,7 +251,11 @@ export class WebGpuSdfRenderer {
     }
 
     const device = await adapter.requestDevice();
-    return new WebGpuSdfRenderer(canvas, device, xrCompatibleDevice, options.onRenderStatsChange);
+    return new WebGpuSdfRenderer(canvas, device, xrCompatibleDevice, {
+      onRenderStatsChange: options.onRenderStatsChange,
+      onXrFrame: options.onXrFrame,
+      getXrBaseCamera: options.getXrBaseCamera,
+    });
   }
 
   /** 新しいシーンスナップショットを受け取り、SDFオブジェクト用Storage Bufferを更新する。 */
@@ -359,7 +374,7 @@ export class WebGpuSdfRenderer {
   /** 統計情報を部分更新し、購読側へ最新値を通知する。 */
   private setRenderStats(stats: Partial<NexusRenderStats>) {
     this.renderStats = { ...this.renderStats, ...stats };
-    this.onRenderStatsChange?.(this.renderStats);
+    this.options.onRenderStatsChange?.(this.renderStats);
   }
 
   /** 500msごとに平均FPSを再計算し、UI更新頻度を抑える。 */

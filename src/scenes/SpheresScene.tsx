@@ -63,11 +63,12 @@ function getOrbitPosition({ center, basisA, basisB, distance, period, phase }: O
   const x = Math.cos(angle) * distance;
   const y = Math.sin(angle) * distance;
 
-  return [
+  const ret = [
     center[0] + basisA[0] * x + basisB[0] * y,
     center[1] + basisA[1] * x + basisB[1] * y,
     center[2] + basisA[2] * x + basisB[2] * y,
   ];
+  return [ret[0]/10, ret[1]/10, ret[2]/10];
 }
 
 function getSphereProps(
@@ -77,7 +78,7 @@ function getSphereProps(
 ): SphereRenderProps {
   return {
     position: getOrbitPosition(sphere, elapsed),
-    radius: sphere.radius,
+    radius: sphere.radius/10,
     color: sphere.color,
     smoothness: parameters.sphereSmoothness,
   };
@@ -97,8 +98,8 @@ export const { initialParameters, parameterControls } = defineSceneParameterCont
       key: "sphereSmoothness",
       name: "Sphere smoothness",
       min: 0,
-      max: 1.5,
-      step: 0.05,
+      max: 0.15,
+      step: 0.005,
     },
   ],
 );
@@ -108,9 +109,6 @@ type SpheresSceneProps = {
   parameters: SpheresSceneParameters;
   canvasProps: NexusSceneCanvasProps;
 };
-const textures:NexusTextureSource[] = [
-  { src: `${import.meta.env.BASE_URL}assets/tex1024.png`, magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat"  },
-]
 
 /** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
 function SpheresSceneContent({ parameters }: { parameters: SpheresSceneParameters }) {
@@ -126,11 +124,10 @@ function SpheresSceneContent({ parameters }: { parameters: SpheresSceneParameter
     <>
       <SdfBox
         position={[0, -0.06, 0]}
-        size={[4.4, 0.12, 3.2]}
+        size={[0.4, 0.012, 0.32]}
         color={[0.2, 0.23, 0.28]}
         smoothness={0.}
       />
-      <SdfGroup op="subtract" smoothness={parameters.sphereSmoothness}>
         <SdfGroup op="or" smoothness={parameters.sphereSmoothness} material={"pbr"} materialUniform={[0.1,0.5,0.5,0.2]} >
           {spherePropsList.map((sphereProps, index) => (
             <SdfSphere
@@ -142,8 +139,7 @@ function SpheresSceneContent({ parameters }: { parameters: SpheresSceneParameter
             />
           ))}
         </SdfGroup>
-      </SdfGroup>
-    </>
+   </>
   );
 }
 
@@ -151,10 +147,9 @@ export function Scene({ parameters, canvasProps }: SpheresSceneProps) {
   return (
     <NexusCanvas
       {...canvasProps}
-      camera={{ position: [0, 3.7, 5.2], target: [0, 0, 0], fov: 48 }}
+      camera={{ position: [0, 0.37, 0.52], target: [0, 0, 0], fov: 48 }}
       lighting={{ direction: [0.25, 0.85, 0.35],color:[1,1,1]}}
       orbitControls
-      textures={textures}
     >
       <SpheresSceneContent parameters={parameters} />
     </NexusCanvas>

@@ -1,5 +1,5 @@
-import { clamp, normalizeDirectionVec3 } from "../math";
-import type { NexusRenderSettings, NexusXrState, SceneSnapshot, Vec3 } from "../types";
+import { clamp, crossVec3, normalizeDirectionVec3, subtractVec3 } from "../math";
+import type { NexusCamera, NexusRenderSettings, NexusXrState, SceneSnapshot, Vec3 } from "../types";
 import type { NexusRenderCamera, NexusRenderTargetView } from "./renderTypes";
 
 type XrSessionLike = {
@@ -45,8 +45,10 @@ type WebXrSessionManagerOptions = {
   getColorFormat: () => GPUTextureFormat;
   setColorFormat: (format: GPUTextureFormat) => void;
   getSnapshot: () => SceneSnapshot | null;
+  getBaseCamera: () => Required<NexusCamera> | undefined;
   isRenderingEnabled: () => boolean;
   onFrameStats: (time: DOMHighResTimeStamp) => void;
+  onFrame: (time: DOMHighResTimeStamp) => void;
   onSessionStart: () => void;
   onSessionEnd: () => void;
   renderView: (
@@ -269,6 +271,7 @@ export class WebXrSessionManager {
 
     this.frameId = session.requestAnimationFrame(this.frame);
     this.options.onFrameStats(time);
+    this.options.onFrame(time);
 
     const snapshot = this.options.getSnapshot();
     if (!snapshot) {
@@ -293,7 +296,7 @@ export class WebXrSessionManager {
           height: viewport.height,
           clearValue: { r: 0.02, g: 0.025, b: 0.028, a: 1 },
         },
-        createXrRenderCamera(view, viewport),
+        createXrRenderCamera(this.options.getBaseCamera() ?? snapshot.camera, view, viewport),
         time,
       );
     }
@@ -301,18 +304,24 @@ export class WebXrSessionManager {
 }
 
 function createXrRenderCamera(
+  baseCamera: Required<NexusCamera>,
   view: XrViewLike,
   viewport: { x: number; y: number; width: number; height: number },
 ): NexusRenderCamera {
   const matrix = view.transform.matrix;
-  const position: Vec3 = [
+  const baseCameraFrame = createBaseCameraFrame(baseCamera);
+  const localPosition: Vec3 = [
     matrix[12] ?? view.transform.position?.x ?? 0,
     matrix[13] ?? view.transform.position?.y ?? 0,
     matrix[14] ?? view.transform.position?.z ?? 0,
   ];
-  const right: Vec3 = normalizeDirectionVec3([matrix[0] ?? 1, matrix[1] ?? 0, matrix[2] ?? 0]);
-  const up: Vec3 = normalizeDirectionVec3([matrix[4] ?? 0, matrix[5] ?? 1, matrix[6] ?? 0]);
-  const forward: Vec3 = normalizeDirectionVec3([-(matrix[8] ?? 0), -(matrix[9] ?? 0), -(matrix[10] ?? 1)]);
+  const localRight: Vec3 = [matrix[0] ?? 1, matrix[1] ?? 0, matrix[2] ?? 0];
+  const localUp: Vec3 = [matrix[4] ?? 0, matrix[5] ?? 1, matrix[6] ?? 0];
+  const localForward: Vec3 = [-(matrix[8] ?? 0), -(matrix[9] ?? 0), -(matrix[10] ?? 1)];
+  const position = addVec3(baseCameraFrame.position, mapXrLocalVector(localPosition, baseCameraFrame));
+  const right = normalizeDirectionVec3(mapXrLocalVector(localRight, baseCameraFrame), baseCameraFrame.right);
+  const up = normalizeDirectionVec3(mapXrLocalVector(localUp, baseCameraFrame), baseCameraFrame.up);
+  const forward = normalizeDirectionVec3(mapXrLocalVector(localForward, baseCameraFrame), baseCameraFrame.forward);
 
   return {
     width: viewport.width,
@@ -326,6 +335,31 @@ function createXrRenderCamera(
     projectionMode: "inverseProjection",
     inverseProjection: invertMatrix4(view.projectionMatrix),
   };
+}
+
+function createBaseCameraFrame(camera: Required<NexusCamera>) {
+  const position = camera.position;
+  const forward = normalizeDirectionVec3(subtractVec3(camera.target, position));
+  const worldUp: Vec3 = [0, 1, 0];
+  const right = normalizeDirectionVec3(crossVec3(forward, worldUp), [1, 0, 0]);
+  const up = normalizeDirectionVec3(crossVec3(right, forward), [0, 1, 0]);
+
+  return { position, forward, right, up };
+}
+
+function mapXrLocalVector(
+  vector: Vec3,
+  baseCamera: { right: Vec3; up: Vec3; forward: Vec3 },
+): Vec3 {
+  return [
+    baseCamera.right[0] * vector[0] + baseCamera.up[0] * vector[1] - baseCamera.forward[0] * vector[2],
+    baseCamera.right[1] * vector[0] + baseCamera.up[1] * vector[1] - baseCamera.forward[1] * vector[2],
+    baseCamera.right[2] * vector[0] + baseCamera.up[2] * vector[1] - baseCamera.forward[2] * vector[2],
+  ];
+}
+
+function addVec3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 }
 
 function invertMatrix4(matrix: Float32Array | number[]) {
