@@ -249,7 +249,8 @@ select {
 }
 
 .fullscreen-toggle,
-.render-toggle {
+.render-toggle,
+.xr-toggle {
   position: absolute;
   z-index: 2;
   top: 30px;
@@ -276,14 +277,27 @@ select {
   padding: 0 12px;
 }
 
-.render-toggle span {
+.xr-toggle {
+  right: 126px;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.render-toggle span,
+.xr-toggle span {
   font-size: 13px;
   line-height: 1;
 }
 
 .fullscreen-toggle:hover,
-.render-toggle:hover {
+.render-toggle:hover,
+.xr-toggle:hover {
   background: rgba(23, 27, 29, 0.86);
+}
+
+.xr-toggle:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .nexus-canvas {
@@ -345,6 +359,11 @@ select {
 .app-shell.is-fullscreen .render-toggle {
   top: 12px;
   right: 60px;
+}
+
+.app-shell.is-fullscreen .xr-toggle {
+  top: 12px;
+  right: 108px;
 }
 
 .app-shell.is-fullscreen .nexus-canvas,
@@ -473,6 +492,13 @@ select {
     padding: 0 10px;
   }
 
+  .xr-toggle {
+    top: 21px;
+    right: 109px;
+    height: 32px;
+    padding: 0 10px;
+  }
+
   .nexus-canvas,
   .nexus-fallback {
     height: calc(100vh - 18px);
@@ -513,6 +539,11 @@ select {
   .render-toggle {
     top: 30px;
     right: 78px;
+  }
+
+  .xr-toggle {
+    top: 30px;
+    right: 126px;
   }
 
   .app-shell.is-fullscreen .nexus-canvas,

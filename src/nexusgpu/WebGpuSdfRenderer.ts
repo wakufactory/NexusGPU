@@ -25,10 +25,13 @@ import {
   DEBUG_SCENE_OBJECTS_DUMP,
 } from "./renderer/debugFlags";
 import { logSceneCompileProfile, logSceneObjectsDump } from "./renderer/sceneDebugDump";
+import { WebXrSessionManager } from "./renderer/webXrSession";
+import type { NexusRenderCamera, NexusRenderTargetView } from "./renderer/renderTypes";
 import type {
   NexusRenderSettings,
   NexusRenderStats,
   NexusTextureSource,
+  NexusXrState,
   SceneSnapshot,
   SdfNode,
   Vec3,
@@ -44,28 +47,6 @@ const IDENTITY_MATRIX_4X4 = new Float32Array([
   0, 0, 1, 0,
   0, 0, 0, 1,
 ]);
-
-type NexusRenderTargetView = {
-  view: GPUTextureView;
-  x?: number;
-  y?: number;
-  width: number;
-  height: number;
-  clearValue?: GPUColor;
-};
-
-type NexusRenderCamera = {
-  width: number;
-  height: number;
-  viewportOrigin: readonly [number, number];
-  position: Vec3;
-  forward: Vec3;
-  right: Vec3;
-  up: Vec3;
-  fov: number;
-  projectionMode: "fov" | "inverseProjection";
-  inverseProjection: Float32Array;
-};
 
 /** UIから省略された描画設定に使う初期値。 */
 const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
@@ -88,7 +69,7 @@ const DEFAULT_RENDER_SETTINGS: Required<NexusRenderSettings> = {
  */
 export class WebGpuSdfRenderer {
   private readonly context: GPUCanvasContext;
-  private readonly format: GPUTextureFormat;
+  private format: GPUTextureFormat;
   private readonly cameraBuffer: GPUBuffer;
   private readonly objectBuffer: GPUBuffer;
   private readonly sceneBindGroupLayout: GPUBindGroupLayout;
@@ -115,10 +96,12 @@ export class WebGpuSdfRenderer {
   private lastRenderTime = 0;
   private renderingEnabled = true;
   private pendingRenderOnceFrameId = 0;
+  private readonly xrSessionManager: WebXrSessionManager;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly device: GPUDevice,
+    xrCompatibleDevice: boolean,
     private readonly onRenderStatsChange?: (stats: NexusRenderStats) => void,
   ) {
     const context = canvas.getContext("webgpu");
@@ -190,6 +173,33 @@ export class WebGpuSdfRenderer {
     const pipelineState = this.createPipeline([], createEmptyMapSceneBody(), createMaterialShaderPlan([]).shader);
     this.pipeline = pipelineState.pipeline;
     this.bindGroup = pipelineState.bindGroup;
+    this.xrSessionManager = new WebXrSessionManager({
+      device,
+      xrCompatibleDevice,
+      getRenderSettings: () => this.renderSettings,
+      getColorFormat: () => this.format,
+      setColorFormat: (format) => this.setOutputFormat(format),
+      getSnapshot: () => this.snapshot,
+      isRenderingEnabled: () => this.renderingEnabled,
+      onFrameStats: (time) => this.updateFps(time),
+      onSessionStart: () => {
+        cancelAnimationFrame(this.frameId);
+        this.frameId = 0;
+        this.lastRenderTime = 0;
+        this.framesSinceFpsSample = 0;
+        this.lastFpsSampleTime = performance.now();
+      },
+      onSessionEnd: () => {
+        this.setOutputFormat(navigator.gpu.getPreferredCanvasFormat());
+        if (this.renderingEnabled && this.frameId === 0) {
+          this.lastRenderTime = 0;
+          this.frame();
+        }
+      },
+      renderView: (snapshot, target, camera, time) => {
+        this.renderToTargetView(snapshot, target, camera, time);
+      },
+    });
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -206,7 +216,22 @@ export class WebGpuSdfRenderer {
       throw new Error("WebGPU is not enabled. Use a current Chromium, Edge, or Safari Technology Preview build.");
     }
 
-    const adapter = await navigator.gpu.requestAdapter({
+    const xrCompatibleAdapterOptions = {
+      powerPreference: "high-performance",
+      xrCompatible: true,
+    } as GPURequestAdapterOptions & { xrCompatible: boolean };
+
+    let xrCompatibleDevice = true;
+    let adapter: GPUAdapter | null = null;
+    try {
+      adapter = await navigator.gpu.requestAdapter(xrCompatibleAdapterOptions);
+    } catch {
+      xrCompatibleDevice = false;
+    }
+    if (!adapter) {
+      xrCompatibleDevice = false;
+    }
+    adapter ??= await navigator.gpu.requestAdapter({
       powerPreference: "high-performance",
     });
 
@@ -215,7 +240,7 @@ export class WebGpuSdfRenderer {
     }
 
     const device = await adapter.requestDevice();
-    return new WebGpuSdfRenderer(canvas, device, options.onRenderStatsChange);
+    return new WebGpuSdfRenderer(canvas, device, xrCompatibleDevice, options.onRenderStatsChange);
   }
 
   /** 新しいシーンスナップショットを受け取り、SDFオブジェクト用Storage Bufferを更新する。 */
@@ -233,6 +258,7 @@ export class WebGpuSdfRenderer {
   setRenderSettings(settings: NexusRenderSettings | undefined) {
     this.renderSettings = normalizeRenderSettings(settings);
     this.resize();
+    this.xrSessionManager.recreateProjectionLayer();
 
     if (!this.renderingEnabled) {
       this.scheduleRenderOnce();
@@ -260,6 +286,10 @@ export class WebGpuSdfRenderer {
     this.pendingRenderOnceFrameId = 0;
     this.lastRenderTime = 0;
     this.lastFpsSampleTime = performance.now();
+    if (this.xrSessionManager.active) {
+      this.xrSessionManager.resumeFrameLoop();
+      return;
+    }
     this.frame();
   }
 
@@ -267,6 +297,7 @@ export class WebGpuSdfRenderer {
   destroy() {
     cancelAnimationFrame(this.frameId);
     cancelAnimationFrame(this.pendingRenderOnceFrameId);
+    void this.xrSessionManager.stopSession();
     this.resizeObserver.disconnect();
     this.cameraBuffer.destroy();
     this.objectBuffer.destroy();
@@ -280,6 +311,30 @@ export class WebGpuSdfRenderer {
         this.scheduleRenderOnce();
       }
     });
+  }
+
+  setXrStateChangeHandler(handler: ((state: NexusXrState) => void) | undefined) {
+    this.xrSessionManager.setStateChangeHandler(handler);
+  }
+
+  async toggleXr() {
+    await this.xrSessionManager.toggle();
+  }
+
+  private setOutputFormat(format: GPUTextureFormat) {
+    if (this.format === format) {
+      return;
+    }
+
+    this.format = format;
+    this.context.configure({
+      device: this.device,
+      format: this.format,
+      alphaMode: "opaque",
+    });
+    const pipelineState = this.recreatePipelineForCurrentFormat();
+    this.pipeline = pipelineState.pipeline;
+    this.bindGroup = pipelineState.bindGroup;
   }
 
   /** CSSサイズ、devicePixelRatio、解像度スケールから実際の描画ピクセル数を決める。 */
@@ -436,6 +491,18 @@ export class WebGpuSdfRenderer {
     });
   }
 
+  private recreatePipelineForCurrentFormat() {
+    if (!this.snapshot) {
+      return this.createPipeline([], createEmptyMapSceneBody(), createMaterialShaderPlan([]).shader);
+    }
+
+    const shaderPlan = createSceneShaderPlan(this.snapshot);
+    this.shaderSignature = shaderPlan.signature;
+    this.customSdfKindIds = new Map(shaderPlan.customSdfKindIds);
+    this.customMaterialIds = new Map(shaderPlan.customMaterialIds);
+    return this.createPipeline(shaderPlan.customShaders, shaderPlan.mapSceneBody, shaderPlan.materialSection);
+  }
+
   private createSceneBindGroupEntries(): GPUBindGroupEntry[] {
     return [
       { binding: 0, resource: { buffer: this.cameraBuffer } },
@@ -507,9 +574,11 @@ export class WebGpuSdfRenderer {
     );
     this.cameraData.set([...lightDirection, getLightTypeId(mainLight.type)], 28);
     this.cameraData.set([...mainLight.color, mainLight.intensity], 32);
+    const stereoSbsEnabled =
+      renderCamera.projectionMode === "fov" && this.renderSettings.stereoSbs;
     this.cameraData.set(
       [
-        this.renderSettings.stereoSbs ? 1 : 0,
+        stereoSbsEnabled ? 1 : 0,
         this.renderSettings.stereoBase,
         this.renderSettings.stereoSwapEyes ? 1 : 0,
         0,
@@ -534,7 +603,7 @@ export class WebGpuSdfRenderer {
 
   /** 毎フレームの描画ループ。フルスクリーン三角形を1枚描き、Fragment ShaderでSDFを評価する。 */
   private frame = () => {
-    if (!this.renderingEnabled) {
+    if (!this.renderingEnabled || this.xrSessionManager.active) {
       return;
     }
 
@@ -564,7 +633,7 @@ export class WebGpuSdfRenderer {
   /** 停止中のカメラ操作や設定変更に反応して、連続ループなしで1フレームだけ描画する。 */
   private renderOnce() {
     this.resize();
-    if (!this.snapshot) {
+    if (!this.snapshot || this.xrSessionManager.active) {
       return;
     }
 
@@ -573,6 +642,10 @@ export class WebGpuSdfRenderer {
 
   /** カメラUniformを更新し、現在のpipelineでフルスクリーン三角形を1回描画する。 */
   private renderFrame(now: number, updateStats: boolean) {
+    if (this.xrSessionManager.active) {
+      return;
+    }
+
     if (updateStats) {
       this.updateFps(now);
     }

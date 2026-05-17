@@ -16,6 +16,8 @@ export function NexusCanvas({
   background,
   textures,
   orbitControls = false,
+  xrRequestId = 0,
+  onXrStateChange,
   renderingEnabled = true,
   renderSettings,
   onRenderStatsChange,
@@ -27,6 +29,7 @@ export function NexusCanvas({
   const renderSettingsRef = useRef(renderSettings);
   const texturesRef = useRef(textures);
   const renderingEnabledRef = useRef(renderingEnabled);
+  const xrRequestIdRef = useRef(xrRequestId);
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
   const lightingKey = JSON.stringify(lighting ?? null);
@@ -114,6 +117,7 @@ export function NexusCanvas({
         }
 
         rendererRef.current = renderer;
+        renderer.setXrStateChangeHandler(onXrStateChange);
         renderer.setRenderSettings(renderSettingsRef.current);
         renderer.setRenderingEnabled(renderingEnabledRef.current);
         renderer.setTextures(texturesRef.current);
@@ -133,6 +137,21 @@ export function NexusCanvas({
       rendererRef.current = null;
     };
   }, [onRenderStatsChange, store]);
+
+  useEffect(() => {
+    rendererRef.current?.setXrStateChangeHandler(onXrStateChange);
+  }, [onXrStateChange]);
+
+  useEffect(() => {
+    if (xrRequestId === xrRequestIdRef.current) {
+      return;
+    }
+
+    xrRequestIdRef.current = xrRequestId;
+    if (xrRequestId > 0) {
+      rendererRef.current?.toggleXr();
+    }
+  }, [xrRequestId]);
 
   if (error) {
     return (

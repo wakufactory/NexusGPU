@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Layers3, Maximize2, Minimize2, Pause, Play, Sparkles } from "lucide-react";
+import { Glasses, Layers3, Maximize2, Minimize2, Pause, Play, Sparkles } from "lucide-react";
 import { INITIAL_RENDER_SETTINGS } from "./app/renderSettings";
 import { useFullscreenViewport } from "./app/useFullscreenViewport";
 import { RenderSettingsPanel } from "./panels/RenderSettingsPanel";
 import { SceneParametersPanel } from "./panels/SceneParametersPanel";
 import { DEFAULT_SCENE_ID, getSceneDefinition, SCENES } from "virtual:nexusgpu-scene-registry";
-import type { NexusRenderSettings, NexusRenderStats } from "./nexusgpu";
+import type { NexusRenderSettings, NexusRenderStats, NexusXrState } from "./nexusgpu";
 import type { AnyNexusSceneDefinition } from "./scenes/types";
 import type { SceneId } from "virtual:nexusgpu-scene-registry";
 
@@ -21,6 +21,8 @@ type SceneCanvasProps = {
   parameters: object;
   renderingEnabled: boolean;
   renderSettings: NexusRenderSettings;
+  xrRequestId: number;
+  onXrStateChange: (state: NexusXrState) => void;
   onRenderStatsChange: (stats: NexusRenderStats) => void;
 };
 
@@ -29,6 +31,8 @@ function SceneCanvas({
   parameters,
   renderingEnabled,
   renderSettings,
+  xrRequestId,
+  onXrStateChange,
   onRenderStatsChange,
 }: SceneCanvasProps) {
   const SceneComponent = scene.Component;
@@ -39,6 +43,8 @@ function SceneCanvas({
       canvasProps={{
         renderingEnabled,
         renderSettings,
+        xrRequestId,
+        onXrStateChange,
         onRenderStatsChange,
       }}
     />
@@ -169,6 +175,12 @@ export function App() {
   const [renderSettings, setRenderSettings] = useState(() => getInitialRenderSettings(activeSceneId));
   const [renderingEnabled, setRenderingEnabled] = useState(true);
   const [renderStats, setRenderStats] = useState<NexusRenderStats | null>(null);
+  const [xrState, setXrState] = useState<NexusXrState>({
+    supported: false,
+    active: false,
+    pending: true,
+  });
+  const [xrRequestId, setXrRequestId] = useState(0);
   const activeScene = getSceneDefinition(activeSceneId);
   const [sceneParameters, setSceneParameters] = useState<object>(() =>
     getStoredSceneParameters(activeSceneId),
@@ -237,12 +249,27 @@ export function App() {
         >
           {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
         </button>
+        {xrState.supported && (
+          <button
+            className="xr-toggle"
+            type="button"
+            aria-label={xrState.active ? "Exit XR" : "Enter XR"}
+            aria-pressed={xrState.active}
+            disabled={xrState.pending}
+            onClick={() => setXrRequestId((current) => current + 1)}
+          >
+            <Glasses size={18} />
+            <span>{xrState.active ? "Exit XR" : "XR"}</span>
+          </button>
+        )}
         <SceneCanvas
           key={activeScene.id}
           scene={activeScene}
           parameters={sceneParameters}
           renderingEnabled={renderingEnabled}
           renderSettings={renderSettings}
+          xrRequestId={xrRequestId}
+          onXrStateChange={setXrState}
           onRenderStatsChange={setRenderStats}
         />
       </section>

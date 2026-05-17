@@ -131,6 +131,14 @@ export type NexusRenderStats = {
   fps: number;
 };
 
+/** WebXR sessionの利用可否と実行状態。 */
+export type NexusXrState = {
+  supported: boolean;
+  active: boolean;
+  pending: boolean;
+  error?: string;
+};
+
 /** NexusCanvasのフレームループからReact側へ渡す時刻情報。 */
 export type NexusFrameState = {
   /** requestAnimationFrameから渡された高精度タイムスタンプ。 */
@@ -253,6 +261,8 @@ export type NexusCanvasProps = {
   background?: NexusBackground;
   textures?: readonly NexusTextureSource[];
   orbitControls?: boolean;
+  xrRequestId?: number;
+  onXrStateChange?: (state: NexusXrState) => void;
   renderingEnabled?: boolean;
   renderSettings?: NexusRenderSettings;
   onRenderStatsChange?: (stats: NexusRenderStats) => void;

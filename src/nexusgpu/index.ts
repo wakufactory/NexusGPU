@@ -35,6 +35,7 @@ export type {
   NexusMaterialRef,
   NexusRenderSettings,
   Quaternion,
+  NexusXrState,
   NexusTextureCrossOrigin,
   NexusTextureSource,
   SdfBooleanOperation,
