@@ -24,6 +24,12 @@
     "module": "./SdfExperimentScene.tsx"
   },
   {
+    "id": "fuji-height-map",
+    "title": "Fuji Height Map",
+    "description": "A 20km Mt. Fuji terrain scene using public/fuji-gsj-z13-20km.png as an RGB height map.",
+    "module": "./FujiHeightMapScene.tsx"
+  },
+  {
     "id": "sdf-function-test",
     "title": "SDF function test",
     "description": "Scene for testing SDF functions with a variety of primitives and operations.",
