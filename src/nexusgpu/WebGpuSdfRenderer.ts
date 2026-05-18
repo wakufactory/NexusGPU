@@ -636,7 +636,7 @@ function normalizeRenderSettings(settings: NexusRenderSettings | undefined): Req
   return {
     maxFps: Math.round(clamp(settings?.maxFps ?? DEFAULT_RENDER_SETTINGS.maxFps, 1, 240)),
     resolutionScale: clamp(settings?.resolutionScale ?? DEFAULT_RENDER_SETTINGS.resolutionScale, 0.25, 1),
-    maxSteps: Math.round(clamp(settings?.maxSteps ?? DEFAULT_RENDER_SETTINGS.maxSteps, 16, 160)),
+    maxSteps: Math.round(clamp(settings?.maxSteps ?? DEFAULT_RENDER_SETTINGS.maxSteps, 16, 300)),
     maxDistance: clamp(settings?.maxDistance ?? DEFAULT_RENDER_SETTINGS.maxDistance, 8, 120),
     shadows: settings?.shadows ?? DEFAULT_RENDER_SETTINGS.shadows,
     normalEpsilon: clamp(settings?.normalEpsilon ?? DEFAULT_RENDER_SETTINGS.normalEpsilon, 0.0008, 0.01),
