@@ -24,6 +24,18 @@
     "module": "./SdfExperimentScene.tsx"
   },
   {
+    "id": "mandelbulb",
+    "title": "MandelBulb",
+    "description": "A custom SdfFunction scene using a Mandelbulb distance estimator.",
+    "module": "./MandelBulbScene.tsx"
+  },
+  {
+    "id": "affine-fold-tree",
+    "title": "Affine Fold Tree",
+    "description": "A lightweight fractal tree using affine domain folding inside one custom SdfFunction.",
+    "module": "./AffineFoldTreeScene.tsx"
+  },
+  {
     "id": "fuji-height-map",
     "title": "Fuji Height Map",
     "description": "A 20km Mt. Fuji terrain scene using public/fuji-gsj-z13-20km.png as an RGB height map.",
