@@ -543,7 +543,7 @@ createShaderConstants(MAX_SDF_OBJECTS)
 - `renderer/materialShaderCompiler.ts`: primitive/groupごとのmaterial presetとcustom WGSLを集め、`shadeMaterial`とdispatcherを生成する
 - `fragmentShader.ts`: ピクセル座標からカメラレイを作り、`raymarch`結果にambient / diffuse / shadow / vignetteを適用して最終色を返す。ray生成は`createCameraRay()`に分離され、通常Canvas用のFOVベースrayと、XR向けの逆projection行列ベースrayを切り替えられる
 
-primitiveまたはgroupごとにmaterialを差し替える場合は、`material="normal"`や`material="pbr"`のようなpreset、または`material={{ wgsl }}`で`fn anyName(input: MaterialInput) -> vec3<f32>`を定義します。`MaterialInput`には`color`、`normal`、`cam`、`localPoint`、`worldPoint`、`rayDirection`、`distance`、`materialUniform`が入ります。`pbr` presetでは`materialUniform`を`[metallic, roughness, specular, ambient]`として扱います。
+primitiveまたはgroupごとにmaterialを差し替える場合は、`material="normal"`や`material="pbr"`のようなpreset、または`material={{ wgsl }}`で`fn anyName(input: MaterialInput) -> vec3<f32>`を定義します。`MaterialInput`には`color`、`normal`、`cam`、`localPoint`、`worldPoint`、`rayDirection`、`distance`、`materialUniform`が入ります。`default` presetでは`materialUniform`を`[ambient, rim, 0, 0]`として扱い、`pbr` presetでは`[metallic, roughness, specular, ambient]`として扱います。
 
 scene textureを使うcustom WGSLでは、`shaderLayout.ts`で定義された固定名を参照できます。`sampler0-3`はtextureごとのfilter / address modeを持ち、`texture0-3`は画像データ本体です。たとえばfragment shader内では`let albedo = textureSampleLevel(texture0, sampler0, uv, 0.0).rgb;`のように使います。未指定slotや読み込みに失敗したslotはfallbackの白1px textureを指すため、常に4slotすべてを参照できます。
 

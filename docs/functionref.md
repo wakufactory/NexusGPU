@@ -378,7 +378,7 @@
 - `WGSL fn smoothMin`: 2つの距離を滑らかに結合する。
 - `WGSL fn rotateByQuaternion`: Vec3をQuaternionで回転する。
 - `WGSL fn simplexMod289Vec3`, `simplexMod289Vec4`, `simplexPermute`, `simplexTaylorInvSqrt`, `simplexGrad4`, `simplexNoise3d`, `simplexNoise4d`, `simplexNoise`: simplex noise helper。
-- `WGSL fn materialDefault`: 既定のdiffuse / ambient / shadow material色を返す。
+- `WGSL fn materialDefault`: 既定のdiffuse / ambient / shadow / rim material色を返す。`materialUniform.x`でambient、`materialUniform.y`でrim強度を調整する。
 - `WGSL fn materialNormal`: normalをRGBとして可視化する。
 - `WGSL fn materialPbrFresnelSchlick`, `materialPbrDistributionGgx`, `materialPbrGeometrySchlickGgx`, `materialPbrGeometrySmith`, `materialPbr`: 軽量Cook-Torrance風material。
 - `WGSL fn materialTexture0Color`: texture0をlocalPoint.xzでsampleして色に使う。

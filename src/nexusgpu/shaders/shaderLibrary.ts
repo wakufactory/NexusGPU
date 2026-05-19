@@ -438,13 +438,17 @@ fn simplexNoise(point: vec3<f32>) -> f32 {
 }
 `,
   // Default lit material with ambient, diffuse, optional shadow, and rim terms.
+  // materialUniform: x=ambient strength, y=rim strength.
   "material/default": /* wgsl */ `
 fn materialDefault(input: MaterialInput) -> vec3<f32> {
   let lightDirection = normalize(camera.lightInfo.xyz);
   let lightColor = camera.lightColorInfo.rgb * camera.lightColorInfo.a;
   let diffuse = max(dot(input.normal, lightDirection), 0.0);
-  let rim = 0.0 * pow(max(0.0, 1.0 - dot(input.normal, -input.rayDirection)), 3.0);
-  let ambient = 0.54 + 0.1 * input.normal.y;
+  let ambientInput = select(input.materialUniform.x, 0.54, abs(input.materialUniform.x) <= 0.0001);
+  let ambientStrength = clamp(ambientInput, 0.0, 1.0);
+  let rimStrength = clamp(input.materialUniform.y, 0.0, 2.0);
+  let rim = rimStrength * pow(max(0.0, 1.0 - dot(input.normal, -input.rayDirection)), 3.0);
+  let ambient = max(ambientStrength + 0.1 * input.normal.y, 0.0);
   let shadowsEnabled = camera.renderInfo.z > 0.5;
   var shadow = 1.0;
 
