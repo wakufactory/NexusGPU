@@ -71,7 +71,7 @@ function NeonGardenContent({ parameters }: { parameters: ShowcaseNeonGardenScene
         material="pbr"
         materialUniform={[0.25, 0.72, 0.35, 0.2]}
       />
-      <SdfModifier preset="preRepeat" data0={[parameters.repeatCell, 100, parameters.repeatCell, 0]}>
+      <SdfModifier preset="preRepeat" data0={[parameters.repeatCell, 100, parameters.repeatCell, 1 ]}>
         <SdfModifier
           preset="twistY"
           postModifierFunction={/* wgsl */ `

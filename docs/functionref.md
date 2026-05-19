@@ -117,7 +117,7 @@
 - `createExplicitBounds`: `SdfFunction.bounds` / `SdfGroup.bounds` propを正規化し、枝刈り用bounding sphereを作る。
 - `resolveSdfModifierFunctions`: presetと直接指定からpre / post modifier WGSLを解決する。
 - `type SdfModifierPresetFunctions`: presetが提供するpre / post modifier WGSLの入れ物。
-- `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。
+- `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。`preRepeat`は`data0.w > 0.5`でmirror repeatに切り替える。
 - `normalizeRadii`: ellipsoid radii propsを正規化する。
 
 ## src/nexusgpu/types.ts

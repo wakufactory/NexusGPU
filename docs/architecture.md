@@ -290,7 +290,7 @@ Reactで使うSDFプリミティブを定義します。
 </SdfMix>
 ```
 
-`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"preScale"`、`"postInflate"`、`"postOnion"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`"preScale"`は`point / data0.xyz`でXYZ軸ごとのscaleを適用し、postで距離に最小scaleを掛けてレイマーチング安全側に補正します。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
+`<SdfModifier />`は子SDFの評価前後に任意WGSLを差し込むscene graph nodeです。`preModifierFunction`は子を評価する前の`point`を加工して`vec3<f32>`を返し、`postModifierFunction`は子の評価結果`hit`を加工して`f32`または`SceneHit`を返します。`preset`には`"twistY"`、`"preRepeat"`、`"preScale"`、`"postInflate"`、`"postOnion"`、またはそれらの配列を渡せます。presetはpre/postの片方だけでなく両方を持てます。`"twistY"`はpreでY軸twistを適用し、postで距離を変形率に合わせて控えめに補正します。`"preRepeat"`は`data0.xyz`をcellサイズとして空間を繰り返し、`data0.w > 0.5`なら隣接cellを交互にmirrorして境界の局所座標を連続させます。`"preScale"`は`point / data0.xyz`でXYZ軸ごとのscaleを適用し、postで距離に最小scaleを掛けてレイマーチング安全側に補正します。`preModifierFunction`または`postModifierFunction`を明示した場合は、同じ位置のpresetより明示関数を優先します。
 
 ```tsx
 <SdfModifier

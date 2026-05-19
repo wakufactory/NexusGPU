@@ -497,12 +497,20 @@ fn shell(
 | preset | 種類 | 内容 | 主なdata |
 | --- | --- | --- | --- |
 | `"twistY"` | pre + post | Y軸方向にtwistし、postで距離を変形率に合わせて補正する | `data0.x`: twist強度 |
-| `"preRepeat"` | pre | 空間を繰り返す。cellサイズが0の軸は繰り返さない | `data0.xyz`: cellサイズ |
+| `"preRepeat"` | pre | 空間を繰り返す。cellサイズが0の軸は繰り返さない。`data0.w > 0.5`で隣接cellを交互にmirrorする | `data0.xyz`: cellサイズ、`data0.w`: mirror有効化 |
 | `"preScale"` | pre + post | 子SDFへ渡す評価点をXYZ軸ごとにスケーリングし、postで距離を安全側に補正する | `data0.xyz`: scale |
 | `"postInflate"` | post | 距離を外側へ膨らませる | `data0.x`: 膨張量 |
 | `"postOnion"` | post | 表面を殻状にする | `data0.x`: 厚み |
 
 `"preScale"`は`point / data0.xyz`で子SDFを評価します。たとえば`data0={[2, 1, 1, 0]}`ならX方向に2倍へ伸びた形状になります。uniform scaleではpost補正後の距離も厳密です。非一様scaleでは完全なSDF距離には戻らないため、postでは`min(abs(data0.x), abs(data0.y), abs(data0.z))`を掛けてレイマーチング安全側に補正します。
+
+`"preRepeat"`は`data0.xyz`をcellサイズとして空間を繰り返します。`data0.w`を`1`にすると、cell番号の偶奇に応じて局所座標を反転するmirror repeatになります。隣のcellへ移る境界で局所座標が同じ向きにつながるため、通常repeatのように境界でパターンが反転せず、連続した繰り返しを作りやすくなります。
+
+```tsx
+<SdfModifier preset="preRepeat" data0={[1.2, 1.2, 1.2, 1]}>
+  <SdfBox size={[0.8, 0.8, 0.8]} />
+</SdfModifier>
+```
 
 `SdfMix`はchildrenがちょうど2つ必要です。`ratio`を`clamp(..., 0.0, 1.0)`した値として、distance pathでは`mix(child0.distance, child1.distance, ratio)`を返します。eval pathでは色とsmoothnessも同じratioでmixし、materialとlocalPointはratioが0.5未満なら1つ目、0.5以上なら2つ目を使います。
 
