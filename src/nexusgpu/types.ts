@@ -253,6 +253,8 @@ export type NexusCanvasProps = {
   background?: NexusBackground;
   textures?: readonly NexusTextureSource[];
   orbitControls?: boolean;
+  wasdControls?: boolean;
+  wasdMovementSpeed?: number;
   renderingEnabled?: boolean;
   renderSettings?: NexusRenderSettings;
   onRenderStatsChange?: (stats: NexusRenderStats) => void;

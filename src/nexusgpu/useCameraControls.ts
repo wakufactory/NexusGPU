@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { DEFAULT_CAMERA } from "./defaults";
-import { clamp } from "./math";
+import { clamp, lengthVec3, normalizeDirectionVec3, subtractVec3 } from "./math";
 import type { SceneStore } from "./SceneStore";
 import type { NexusCamera, Vec3 } from "./types";
 
@@ -9,8 +9,9 @@ const MIN_POLAR_ANGLE = -Math.PI / 2 + 0.05;
 const MAX_POLAR_ANGLE = Math.PI / 2 - 0.05;
 const ORBIT_ROTATE_SPEED = 0.005;
 const ORBIT_ZOOM_SPEED = 0.001;
+const DEFAULT_WASD_MOVEMENT_SPEED = 3;
 
-type OrbitCameraState = {
+type CameraControlState = {
   target: Vec3;
   fov: number;
   radius: number;
@@ -18,26 +19,33 @@ type OrbitCameraState = {
   pitch: number;
 };
 
-type OrbitCameraControlsOptions = {
+type CameraControlsOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   camera: NexusCamera | undefined;
-  enabled: boolean;
+  orbitEnabled: boolean;
+  wasdEnabled: boolean;
+  wasdMovementSpeed: number | undefined;
   store: SceneStore;
 };
 
-export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: OrbitCameraControlsOptions) {
-  const orbitStateRef = useRef<OrbitCameraState | null>(null);
+export function useCameraControls({
+  canvasRef,
+  camera,
+  orbitEnabled,
+  wasdEnabled,
+  wasdMovementSpeed,
+  store,
+}: CameraControlsOptions) {
+  const controlStateRef = useRef<CameraControlState | null>(null);
   const cameraRef = useRef<NexusCamera | undefined>(camera);
 
   useEffect(() => {
     cameraRef.current = camera;
   }, [camera]);
 
-  // カメラpropsが変わったらSceneStoreへ反映し、レンダラのUniform更新につなげる。
+  // camera propsは初期値またはscene切り替えの入力として扱い、実際の操作状態はSceneStoreのcameraに同期する。
   useEffect(() => {
-    const initialCamera = resolveCamera(camera);
-    orbitStateRef.current = createOrbitCameraState(initialCamera);
-    store.setCamera(initialCamera);
+    store.setCamera(resolveCamera(camera));
   }, [
     camera?.fov,
     camera?.position?.[0],
@@ -49,10 +57,16 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
     store,
   ]);
 
+  useEffect(() => {
+    return store.subscribe((snapshot) => {
+      controlStateRef.current = createCameraControlState(snapshot.camera);
+    });
+  }, [store]);
+
   // Canvas上のドラッグ、ホイール、ピンチを、SDFレンダラ用のカメラpropsへ変換する。
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !enabled) {
+    if (!canvas || !orbitEnabled) {
       return;
     }
 
@@ -60,9 +74,9 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
     let activeDragPointerId: number | null = null;
     let previousPinchDistance: number | null = null;
 
-    const applyOrbitState = (state: OrbitCameraState) => {
-      orbitStateRef.current = state;
-      store.setCamera(createCameraFromOrbitState(state));
+    const applyControlState = (state: CameraControlState) => {
+      controlStateRef.current = state;
+      store.setCamera(createCameraFromControlState(state));
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -70,6 +84,7 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
         return;
       }
 
+      canvas.focus();
       activePointers.set(event.pointerId, event);
       activeDragPointerId = activePointers.size === 1 ? event.pointerId : null;
       previousPinchDistance = getPointerDistance(activePointers);
@@ -83,14 +98,14 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
         return;
       }
 
-      const state = orbitStateRef.current ?? createOrbitCameraState(resolveCamera(cameraRef.current));
+      const state = controlStateRef.current ?? createCameraControlState(resolveCamera(cameraRef.current));
       activePointers.set(event.pointerId, event);
 
       if (activePointers.size >= 2) {
         const pinchDistance = getPointerDistance(activePointers);
         if (pinchDistance !== null && previousPinchDistance !== null && pinchDistance > 0) {
           const radius = clamp(state.radius * (previousPinchDistance / pinchDistance), 1.2, 80);
-          applyOrbitState({ ...state, radius });
+          applyControlState({ ...state, radius });
         }
         previousPinchDistance = pinchDistance;
         activeDragPointerId = null;
@@ -104,7 +119,7 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
         return;
       }
 
-      applyOrbitState({
+      applyControlState({
         ...state,
         yaw: state.yaw - event.movementX * ORBIT_ROTATE_SPEED,
         pitch: clamp(state.pitch + event.movementY * ORBIT_ROTATE_SPEED, MIN_POLAR_ANGLE, MAX_POLAR_ANGLE),
@@ -129,9 +144,9 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
     };
 
     const handleWheel = (event: WheelEvent) => {
-      const state = orbitStateRef.current ?? createOrbitCameraState(resolveCamera(cameraRef.current));
+      const state = controlStateRef.current ?? createCameraControlState(resolveCamera(cameraRef.current));
       const radius = clamp(state.radius * Math.exp(event.deltaY * ORBIT_ZOOM_SPEED), 1.2, 80);
-      applyOrbitState({ ...state, radius });
+      applyControlState({ ...state, radius });
       event.preventDefault();
     };
 
@@ -157,11 +172,82 @@ export function useOrbitCameraControls({ canvasRef, camera, enabled, store }: Or
       canvas.removeEventListener("pointercancel", stopOrbiting);
       canvas.removeEventListener("wheel", handleWheel);
     };
-  }, [
-    canvasRef,
-    enabled,
-    store,
-  ]);
+  }, [canvasRef, orbitEnabled, store]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !wasdEnabled) {
+      return;
+    }
+
+    const activeKeys = new Set<string>();
+    const movementSpeed = wasdMovementSpeed ?? DEFAULT_WASD_MOVEMENT_SPEED;
+    let frameId = 0;
+    let lastTime: number | null = null;
+
+    const isCanvasFocused = () => document.activeElement === canvas;
+
+    const handlePointerDown = () => {
+      canvas.focus();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isCanvasFocused() || !isMovementKey(event.code)) {
+        return;
+      }
+
+      activeKeys.add(event.code);
+      event.preventDefault();
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!activeKeys.delete(event.code)) {
+        return;
+      }
+
+      event.preventDefault();
+    };
+
+    const clearKeys = () => {
+      activeKeys.clear();
+    };
+
+    const tick = (time: number) => {
+      lastTime ??= time;
+      const delta = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      if (activeKeys.size > 0 && isCanvasFocused()) {
+        const state = controlStateRef.current ?? createCameraControlState(resolveCamera(cameraRef.current));
+        const movement = getWasdMovement(state, activeKeys, movementSpeed * delta);
+        if (movement) {
+          const nextState = {
+            ...state,
+            target: addVec3(state.target, movement),
+          };
+          controlStateRef.current = nextState;
+          store.setCamera(createCameraFromControlState(nextState));
+        }
+      }
+
+      frameId = requestAnimationFrame(tick);
+    };
+
+    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("blur", clearKeys);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    frameId = requestAnimationFrame(tick);
+
+    return () => {
+      activeKeys.clear();
+      cancelAnimationFrame(frameId);
+      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("blur", clearKeys);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [canvasRef, store, wasdEnabled, wasdMovementSpeed]);
 }
 
 function resolveCamera(camera: NexusCamera | undefined): Required<NexusCamera> {
@@ -181,22 +267,20 @@ function getPointerDistance(activePointers: Map<number, PointerEvent>): number |
   return Math.hypot(firstPointer.clientX - secondPointer.clientX, firstPointer.clientY - secondPointer.clientY);
 }
 
-function createOrbitCameraState(camera: Required<NexusCamera>): OrbitCameraState {
-  const offsetX = camera.position[0] - camera.target[0];
-  const offsetY = camera.position[1] - camera.target[1];
-  const offsetZ = camera.position[2] - camera.target[2];
-  const radius = Math.max(Math.hypot(offsetX, offsetY, offsetZ), 0.001);
+function createCameraControlState(camera: Required<NexusCamera>): CameraControlState {
+  const offset = subtractVec3(camera.position, camera.target);
+  const radius = Math.max(lengthVec3(offset), 0.001);
 
   return {
     target: camera.target,
     fov: camera.fov,
     radius,
-    yaw: Math.atan2(offsetX, offsetZ),
-    pitch: clamp(Math.asin(offsetY / radius), MIN_POLAR_ANGLE, MAX_POLAR_ANGLE),
+    yaw: Math.atan2(offset[0], offset[2]),
+    pitch: clamp(Math.asin(offset[1] / radius), MIN_POLAR_ANGLE, MAX_POLAR_ANGLE),
   };
 }
 
-function createCameraFromOrbitState(state: OrbitCameraState): Required<NexusCamera> {
+function createCameraFromControlState(state: CameraControlState): Required<NexusCamera> {
   const cosPitch = Math.cos(state.pitch);
 
   return {
@@ -208,4 +292,54 @@ function createCameraFromOrbitState(state: OrbitCameraState): Required<NexusCame
       state.target[2] + Math.cos(state.yaw) * cosPitch * state.radius,
     ],
   };
+}
+
+function isMovementKey(code: string) {
+  return code === "KeyW" || code === "KeyA" || code === "KeyS" || code === "KeyD" || code === "KeyQ" || code === "KeyE";
+}
+
+function getWasdMovement(state: CameraControlState, activeKeys: Set<string>, distance: number): Vec3 | null {
+  const horizontalForward = normalizeDirectionVec3([Math.sin(state.yaw), 0, Math.cos(state.yaw)], [0, 0, -1]);
+  const right = normalizeDirectionVec3([horizontalForward[2], 0, -horizontalForward[0]], [1, 0, 0]);
+  let x = 0;
+  let y = 0;
+  let z = 0;
+
+  if (activeKeys.has("KeyW")) {
+    x -= horizontalForward[0];
+    z -= horizontalForward[2];
+  }
+  if (activeKeys.has("KeyS")) {
+    x += horizontalForward[0];
+    z += horizontalForward[2];
+  }
+  if (activeKeys.has("KeyD")) {
+    x += right[0];
+    z += right[2];
+  }
+  if (activeKeys.has("KeyA")) {
+    x -= right[0];
+    z -= right[2];
+  }
+  if (activeKeys.has("KeyE")) {
+    y += 1;
+  }
+  if (activeKeys.has("KeyQ")) {
+    y -= 1;
+  }
+
+  const direction = normalizeDirectionVec3([x, y, z], [0, 0, 0]);
+  if (lengthVec3(direction) <= 0.00001) {
+    return null;
+  }
+
+  return scaleVec3(direction, distance);
+}
+
+function addVec3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function scaleVec3(value: Vec3, scalar: number): Vec3 {
+  return [value[0] * scalar, value[1] * scalar, value[2] * scalar];
 }

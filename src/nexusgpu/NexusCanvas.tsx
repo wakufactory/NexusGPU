@@ -3,7 +3,7 @@ import { SceneStore } from "./SceneStore";
 import { SceneContext } from "./SceneContext";
 import { WebGpuSdfRenderer } from "./WebGpuSdfRenderer";
 import { DEFAULT_BACKGROUND } from "./defaults";
-import { useOrbitCameraControls } from "./useOrbitCameraControls";
+import { useCameraControls } from "./useCameraControls";
 import type { NexusBackground, NexusCanvasProps, SceneSnapshot } from "./types";
 
 /**
@@ -16,6 +16,8 @@ export function NexusCanvas({
   background,
   textures,
   orbitControls = false,
+  wasdControls,
+  wasdMovementSpeed,
   renderingEnabled = true,
   renderSettings,
   onRenderStatsChange,
@@ -30,11 +32,14 @@ export function NexusCanvas({
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
   const lightingKey = JSON.stringify(lighting ?? null);
+  const wasdControlsEnabled = wasdControls ?? orbitControls;
 
-  useOrbitCameraControls({
+  useCameraControls({
     canvasRef,
     camera,
-    enabled: orbitControls,
+    orbitEnabled: orbitControls,
+    wasdEnabled: wasdControlsEnabled,
+    wasdMovementSpeed,
     store,
   });
 
@@ -149,12 +154,34 @@ export function NexusCanvas({
     <SceneContext.Provider value={store}>
       <canvas
         ref={canvasRef}
-        className={orbitControls ? "nexus-canvas has-orbit-controls" : "nexus-canvas"}
+        className={getCanvasClassName({ orbitControls, wasdControls: wasdControlsEnabled })}
+        tabIndex={wasdControlsEnabled ? 0 : undefined}
         aria-label="NexusGPU viewport"
       />
       {children}
     </SceneContext.Provider>
   );
+}
+
+function getCanvasClassName({
+  orbitControls,
+  wasdControls,
+}: {
+  orbitControls: boolean;
+  wasdControls: boolean;
+}) {
+  const classNames = ["nexus-canvas"];
+  if (orbitControls || wasdControls) {
+    classNames.push("has-camera-controls");
+  }
+  if (orbitControls) {
+    classNames.push("has-orbit-controls");
+  }
+  if (wasdControls) {
+    classNames.push("has-wasd-controls");
+  }
+
+  return classNames.join(" ");
 }
 
 function resolveBackground(background: NexusBackground | undefined): Required<NexusBackground> {

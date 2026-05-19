@@ -280,7 +280,21 @@ export function Scene({ canvasProps }: MySceneProps) {
 }
 ```
 
-継続的にカメラを動かすsceneでは、ユーザー操作用の`orbitControls`と制御が競合しやすくなります。スクリプトでカメラを制御するsceneでは、基本的に`orbitControls={false}`にします。
+`useCamera()`で更新したcameraはユーザー操作用のcontrolにも同期されます。スクリプト制御を止めた後は、最後のcamera位置から`orbitControls`や`wasdControls`で操作を続けられます。スクリプト制御とユーザー操作を同時に走らせる場合は、最後にcameraを更新した側の結果が表示に反映されます。
+
+`orbitControls`が有効なsceneでは、WASD移動も既定で有効になります。canvasをクリックしてfocusした後、`W` / `A` / `S` / `D`で現在の向きに対して水平移動し、`Q` / `E`で下 / 上へ移動できます。移動速度は`wasdMovementSpeed`で調整できます。orbitだけにしたい場合は`wasdControls={false}`を渡します。
+
+```tsx
+<NexusCanvas
+  {...canvasProps}
+  camera={{ position: [0, 1.4, 5], target: [0, 0, 0], fov: 48 }}
+  orbitControls
+  wasdControls
+  wasdMovementSpeed={3}
+>
+  <SceneContent />
+</NexusCanvas>
+```
 
 `App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて書けます。
 
@@ -690,7 +704,7 @@ samplerはtextureごとに独立しています。`texture0`をlinear repeat、`
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
+sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`、必要なら`wasdControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
 
 ```tsx
 import { NexusCanvas, SdfBox, SdfSphere } from "../nexusgpu";

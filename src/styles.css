@@ -302,6 +302,11 @@ select {
   user-select: none;
 }
 
+.nexus-canvas.has-camera-controls:focus-visible {
+  outline: 2px solid rgba(56, 217, 194, 0.72);
+  outline-offset: 3px;
+}
+
 .nexus-canvas.is-orbiting {
   cursor: grabbing;
 }
