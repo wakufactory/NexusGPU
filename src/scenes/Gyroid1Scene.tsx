@@ -76,17 +76,16 @@ function OrbitalForgeContent({ parameters }: { parameters: Gyroid1SceneParameter
   return (
     <>
 
-      <SdfGroup op="and">
+      <SdfGroup op="and" bounds={{radius:5.5}}>
         <SdfBox size={[7, 4, 7]} color={[0.2, 0.23, 0.28]} />
         <SdfGroup op="or" smoothness={0.1}>
-        <SdfFunction 
-          sdfFunction={`return dot(point,vec3(0,1.,0));`}
-          position={[0, -1, 0]}
-          color={[0.2, 0.23, 0.28]}
-          smoothness={1}
-      />
+          <SdfFunction 
+            sdfFunction={`return dot(point,vec3(0,1.,0));`}
+            position={[0, -1, 0]}
+            color={[0.2, 0.23, 0.28]}
+            smoothness={1}
+          />
           <SdfFunction
-///            rotation={axisAngleToQuaternion([0, 1, 0], phase * 0.1)}
             sdfFunction={GYROID_CORE_SDF}
             data0={[parameters.orbitRadius, parameters.pulse, parameters.shell, phase]}
             data1={[2.5,0,2.5,0]}
