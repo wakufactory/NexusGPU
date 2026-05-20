@@ -4,7 +4,7 @@
 
  - fog support 
  - sdf data 拡張
- - wasd control camera
+ - sdf data を増やす
 
 ## big
 
@@ -19,3 +19,4 @@
  ## done 
 
   - mirror repeat 
+  - wasd control camera
