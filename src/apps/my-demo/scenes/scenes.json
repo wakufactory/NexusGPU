@@ -1,0 +1,152 @@
+[
+  {
+    "id": "simple-scene",
+    "title": "Simple Scene",
+    "description": "A simple scene with basic SDF primitives.",
+    "module": "./SimpleScene.tsx"
+  },
+  {
+    "id": "added-primitives",
+    "title": "Added Primitives",
+    "description": "A sample scene showing cone, capsule, flat-ended capsule, and regular polyhedra primitives.",
+    "module": "./AddedPrimitivesScene.tsx"
+  },
+  {
+    "id": "animated-sdf",
+    "title": "AnimatedSdfScene",
+    "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
+    "module": "./AnimatedSdfScene.tsx"
+  },
+  {
+    "id": "sdf-experiment",
+    "title": "SDF Experiment Template",
+    "description": "Template scene for editing and testing custom SdfFunction WGSL.",
+    "module": "./SdfExperimentScene.tsx"
+  },
+  {
+    "id": "mandelbulb",
+    "title": "MandelBulb",
+    "description": "A custom SdfFunction scene using a Mandelbulb distance estimator.",
+    "module": "./MandelBulbScene.tsx"
+  },
+  {
+    "id": "affine-fold-tree",
+    "title": "Affine Fold Tree",
+    "description": "A lightweight fractal tree using affine domain folding inside one custom SdfFunction.",
+    "module": "./AffineFoldTreeScene.tsx"
+  },
+  {
+    "id": "lissajous-sweep",
+    "title": "Lissajous Sweep",
+    "description": "A custom SdfFunction scene that sweeps a circular profile along a 3D Lissajous path.",
+    "module": "./LissajousSweepScene.tsx"
+  },
+  {
+    "id": "fuji-height-map",
+    "title": "Fuji Height Map",
+    "description": "A 20km Mt. Fuji terrain scene using public/fuji-gsj-z13-20km.png as an RGB height map.",
+    "module": "./FujiHeightMapScene.tsx"
+  },
+  {
+    "id": "noise-terrain",
+    "title": "Noise Terrain",
+    "description": "A procedural height-field terrain scene based on Fuji Height Map, generated from simplex noise instead of height images.",
+    "module": "./NoiseTerrainScene.tsx"
+  },
+  {
+    "id": "sdf-function-test",
+    "title": "SDF function test",
+    "description": "Scene for testing SDF functions with a variety of primitives and operations.",
+    "module": "./SdfTestScene.tsx"
+  },
+  {
+    "id": "sdf-modifier",
+    "title": "SDF modifier test",
+    "description": "Scene for testing SDF modifiers ",
+    "module": "./SdfModifier.tsx"
+  },
+  {
+    "id": "noise0",
+    "title": "noise 0",
+    "description": "Scene for testing noise function ",
+    "module": "./Noise0Scene.tsx"
+  },
+  {
+    "id": "tex-test",
+    "title": "texture test",
+    "description": "Scene for testing texture sampling in SDFs ",
+    "module": "./TexTestScene.tsx"
+  },
+  {
+    "id": "sdf-boids",
+    "title": "SDF boid test",
+    "description": "Scene for testing SDF boids ",
+    "module": "./BoidsSpheresScene.tsx"
+  },
+  {
+    "id": "mat-test",
+    "title": "material test",
+    "description": "Scene copied from texture test.",
+    "module": "./MatTestScene.tsx"
+  },
+  {
+    "id": "spheres",
+    "title": "spheres",
+    "description": "Scene copied from AnimatedSdfScene.",
+    "module": "./SpheresScene.tsx"
+  },
+  {
+    "id": "showcase-neon-garden",
+    "title": "Showcase: Neon Garden",
+    "description": "A repeated, twisted SDF garden using modifiers, smooth unions, PBR, and custom WGSL material bands.",
+    "module": "./ShowcaseNeonGardenScene.tsx"
+  },
+  {
+    "id": "showcase-crystal-reliquary",
+    "title": "Showcase: Crystal Reliquary",
+    "description": "A polished CSG sculpture with subtractive cuts, nested primitives, and adjustable PBR surface response.",
+    "module": "./ShowcaseCrystalReliquaryScene.tsx"
+  },
+  {
+    "id": "showcase-wave-temple",
+    "title": "Showcase: Wave Temple",
+    "description": "An animated SdfFunction water field framed by SDF architecture and metallic trim.",
+    "module": "./ShowcaseWaveTempleScene.tsx"
+  },
+  {
+    "id": "showcase-matcap-gallery",
+    "title": "Showcase: Matcap Gallery",
+    "description": "A moving-camera gallery scene using texture0Matcap, a custom faceted SDF, and dynamic lighting.",
+    "module": "./ShowcaseMatcapGalleryScene.tsx"
+  },
+  {
+    "id": "showcase-orbital-forge",
+    "title": "Showcase: Orbital Forge",
+    "description": "A kinetic gyroid core with onion-shell modifier, animated satellites, rings, and PBR materials.",
+    "module": "./ShowcaseOrbitalForgeScene.tsx"
+  },
+  {
+    "id": "gyroid0",
+    "title": "gyroid0",
+    "description": "Scene copied from Showcase: Orbital Forge.",
+    "module": "./Gyroid0Scene.tsx"
+  },
+  {
+    "id": "mod-test",
+    "title": "modifier test",
+    "description": "Scene copied from spheres.",
+    "module": "./ModTestScene.tsx"
+  },
+  {
+    "id": "gyroid1",
+    "title": "Gyroid 1",
+    "description": "Gyroid set",
+    "module": "./Gyroid1Scene.tsx"
+  },
+  {
+    "id": "noise1",
+    "title": "noise 1",
+    "description": "Scene copied from noise 0.",
+    "module": "./Noise1Scene.tsx"
+  }
+]

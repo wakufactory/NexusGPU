@@ -17,27 +17,28 @@
 
 ```text
 src/
-  App.tsx                    デモアプリの画面構成と状態の配線
-  main.tsx                   Reactエントリポイント
-  styles.css                 画面レイアウトとデバッグUIのスタイル
-  app/
-    renderSettings.ts        デモアプリ用レンダリング設定の初期値
-    useFullscreenViewport.ts フルスクリーン表示とviewport高さ同期のhook
-  panels/
-    SceneParametersPanel.tsx registryのparameterControlsからscene固有sliderを描画する汎用UI
-    RenderSettingsPanel.tsx  レンダリング品質を調整するデバッグUI
-  scenes/
-    AnimatedSdfScene.tsx     デモ用SDFシーンとアニメーション実装
-    BoidsSpheresScene.tsx    boids風の多数球体デモシーン
-    Noise0Scene.tsx          ノイズ系SdfFunctionデモシーン
-    SimpleScene.tsx          基本primitiveを使うシンプルなデモシーン
-    SdfModifier.tsx          SdfModifierの挙動確認用scene
-    SdfExperimentScene.tsx   SdfFunctionで波面を描くデモシーン
-    SdfTestScene.tsx         SdfFunctionのWGSL実験用scene
-    TexTestScene.tsx         scene texture / material確認用scene
-    scenes.json              Appで切り替え可能なscene定義の一覧
-    registry.ts              scenes.jsonとscene moduleを接続するresolver
-    types.ts                 scene registry用の型定義
+  demo/
+    App.tsx                    デモアプリの画面構成と状態の配線
+    main.tsx                   デモ用Reactエントリポイント
+    styles.css                 画面レイアウトとデバッグUIのスタイル
+    app/
+      renderSettings.ts        デモアプリ用レンダリング設定の初期値
+      useFullscreenViewport.ts フルスクリーン表示とviewport高さ同期のhook
+    panels/
+      SceneParametersPanel.tsx registryのparameterControlsからscene固有sliderを描画する汎用UI
+      RenderSettingsPanel.tsx  レンダリング品質を調整するデバッグUI
+    scenes/
+      AnimatedSdfScene.tsx     デモ用SDFシーンとアニメーション実装
+      BoidsSpheresScene.tsx    boids風の多数球体デモシーン
+      Noise0Scene.tsx          ノイズ系SdfFunctionデモシーン
+      SimpleScene.tsx          基本primitiveを使うシンプルなデモシーン
+      SdfModifier.tsx          SdfModifierの挙動確認用scene
+      SdfExperimentScene.tsx   SdfFunctionで波面を描くデモシーン
+      SdfTestScene.tsx         SdfFunctionのWGSL実験用scene
+      TexTestScene.tsx         scene texture / material確認用scene
+      scenes.json              Appで切り替え可能なscene定義の一覧
+      registry.ts              scenes.jsonとscene moduleを接続するresolver
+      types.ts                 scene registry用の型定義
   nexusgpu/
     index.ts                 公開APIの再エクスポート
     types.ts                 React props、シーン、レンダリング設定の型定義
@@ -97,7 +98,7 @@ sceneを切り替えるときは、`activeSceneId`、`renderSettings`、`scenePa
 
 ### scenes/scenes.json / registry.ts / types.ts
 
-`src/scenes/scenes.json`は、アプリで切り替え可能なsceneをまとめる薄い登録ファイルです。`src/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルがexportする`Scene`、任意の`initialParameters`、`initialRenderSettings`、`parameterControls`と結合して`NexusSceneDefinition`へ変換します。`initialParameters`がないsceneは空 object として扱います。`parameterControls`は、参照先keyが`initialParameters`内に存在し、値がnumberであることを検証します。`App.tsx`は個別sceneを直接importせず、registryの定義だけを参照します。
+`src/demo/scenes/scenes.json`は、アプリで切り替え可能なsceneをまとめる薄い登録ファイルです。`src/demo/scenes/registry.ts`はJSONを読み、`module`に対応するtsxファイルを`import.meta.glob`で解決し、sceneファイルがexportする`Scene`、任意の`initialParameters`、`initialRenderSettings`、`parameterControls`と結合して`NexusSceneDefinition`へ変換します。`initialParameters`がないsceneは空 object として扱います。`parameterControls`は、参照先keyが`initialParameters`内に存在し、値がnumberであることを検証します。`App.tsx`は個別sceneを直接importせず、registryの定義だけを参照します。
 
 各scene定義は`NexusSceneDefinition`として次の情報を持ちます。
 
@@ -112,7 +113,7 @@ sceneを切り替えるときは、`activeSceneId`、`renderSettings`、`scenePa
 
 sceneを追加する場合、基本的には`Scene` exportを持つscene本体を作り、`Scene`内の`NexusCanvas`へcamera / lightingを書き、`scenes.json`へ`id`、`title`、`description`、`module`だけを1件追加します。scene固有パラメータがある場合は、`defineSceneParameterControls`で`initialParameters`と`parameterControls`をまとめて定義します。`App.tsx`や`registry.ts`のimport / JSXをsceneごとに書き換える必要はありません。
 
-`vite.config.ts`の`nexusgpu-scene-registry` pluginは、`virtual:nexusgpu-scene-registry`を提供します。通常ビルドでは`src/scenes/registry.ts`をそのまま再エクスポートし、`mode`が`single-scene`の場合は`VITE_NEXUSGPU_SCENE_ID`で指定された1 sceneだけのregistryを生成します。single-scene buildでは`index.html`のtitleも対象sceneのtitleへ差し替えます。
+`vite.config.ts`の`nexusgpu-scene-registry` pluginは、`virtual:nexusgpu-scene-registry`を提供します。通常ビルドでは`src/demo/scenes/registry.ts`をそのまま再エクスポートし、`mode`が`single-scene`の場合は`VITE_NEXUSGPU_SCENE_ID`で指定された1 sceneだけのregistryを生成します。single-scene buildでは`index.html`のtitleも対象sceneのtitleへ差し替えます。
 
 ### app/renderSettings.ts
 
@@ -1031,7 +1032,7 @@ WebGpuSdfRenderer.updateFps()
 
 重い場合は、まず`resolutionScale`を下げ、次に`maxSteps`を下げます。`shadows`は追加のレイマーチを発生させるため、デバッグ中はOFFが基本です。
 
-`src/app/renderSettings.ts`の`INITIAL_RENDER_SETTINGS`はデモアプリの初期UI値です。`NexusCanvas`へ`renderSettings`が渡されない場合は、`WebGpuSdfRenderer.ts`内のレンダラ側fallbackが使われます。アプリごとに初期品質を変えたい場合は、アプリ層の初期値だけを変更します。
+`src/demo/app/renderSettings.ts`の`INITIAL_RENDER_SETTINGS`はデモアプリの初期UI値です。`NexusCanvas`へ`renderSettings`が渡されない場合は、`WebGpuSdfRenderer.ts`内のレンダラ側fallbackが使われます。アプリごとに初期品質を変えたい場合は、アプリ層の初期値だけを変更します。
 
 ## 現在の制約
 

@@ -1,6 +1,6 @@
 # AppからSceneまでのReact構成
 
-このドキュメントは、NexusGPUのデモアプリをReactの使い方の視点で説明します。対象は`src/App.tsx`から`src/scenes/AnimatedSdfScene.tsx`までの組み立て方です。
+このドキュメントは、NexusGPUのデモアプリをReactの使い方の視点で説明します。対象は`src/demo/App.tsx`から`src/demo/scenes/AnimatedSdfScene.tsx`までの組み立て方です。
 
 WebGPU、WGSL、シェーダーの詳細は扱いません。sceneをReactコンポーネントとして作り、stateとpropsで画面に反映する流れを中心にします。
 
@@ -27,7 +27,7 @@ createRoot(...)
 
 ## main.tsx
 
-`src/main.tsx`はReactアプリの入口です。
+`src/demo/main.tsx`はReactアプリの入口です。
 
 ```tsx
 createRoot(document.getElementById("root")!).render(
@@ -41,7 +41,7 @@ createRoot(document.getElementById("root")!).render(
 
 ## App.tsxの役割
 
-`src/App.tsx`はアプリ全体の組み立てとstateの配線を担当します。
+`src/demo/App.tsx`はアプリ全体の組み立てとstateの配線を担当します。
 
 主な責務:
 
@@ -158,7 +158,7 @@ sceneごとの見え方はsceneファイル内の`NexusCanvas` propsで定義し
 
 ## SceneはReact component
 
-`src/scenes/AnimatedSdfScene.tsx`のscene componentは、通常のReact componentとして定義されています。
+`src/demo/scenes/AnimatedSdfScene.tsx`のscene componentは、通常のReact componentとして定義されています。
 
 ```tsx
 type AnimatedSdfSceneProps = {
@@ -384,7 +384,7 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 }
 ```
 
-同じsceneファイルにscene contentを書き、scene固有パラメータがある場合は`defineSceneParameterControls`で`initialParameters`と`parameterControls`を用意します。次に`src/scenes/scenes.json`へ薄いscene定義を追加します。`registry.ts`が`module`を解決するため、`App.tsx`のimportやJSXをsceneごとに差し替える必要はありません。
+同じsceneファイルにscene contentを書き、scene固有パラメータがある場合は`defineSceneParameterControls`で`initialParameters`と`parameterControls`を用意します。次に`src/demo/scenes/scenes.json`へ薄いscene定義を追加します。`registry.ts`が`module`を解決するため、`App.tsx`のimportやJSXをsceneごとに差し替える必要はありません。
 
 ```json
 {

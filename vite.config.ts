@@ -7,6 +7,11 @@ function normalizePath(id: string): string {
   return id.replaceAll("\\", "/");
 }
 
+function isSceneModuleId(id: string): boolean {
+  const normalizedId = normalizePath(id);
+  return normalizedId.includes("/src/demo/scenes/") || /\/src\/apps\/[^/]+\/scenes\//.test(normalizedId);
+}
+
 function minifyNonSceneChunks(): Plugin {
   return {
     name: "minify-non-scene-chunks",
@@ -16,7 +21,7 @@ function minifyNonSceneChunks(): Plugin {
           continue;
         }
 
-        const isSceneChunk = Object.keys(asset.modules).some((id) => normalizePath(id).includes("/src/scenes/"));
+        const isSceneChunk = Object.keys(asset.modules).some(isSceneModuleId);
 
         if (isSceneChunk) {
           continue;
@@ -133,7 +138,7 @@ function getSingleSceneConfig(): SceneJsonConfig {
   }
 
   const scenes = JSON.parse(
-    readFileSync(resolve("src/scenes/scenes.json"), "utf8"),
+    readFileSync(resolve("src/demo/scenes/scenes.json"), "utf8"),
   ) as SceneJsonConfig[];
   const scene = scenes.find((config) => config.id === sceneId);
 
@@ -156,13 +161,13 @@ function sceneRegistryPlugin(mode: string): Plugin {
       }
 
       if (mode !== "single-scene") {
-        return `export { DEFAULT_SCENE_ID, SCENES, getSceneDefinition } from "/src/scenes/registry.ts";`;
+        return `export { DEFAULT_SCENE_ID, SCENES, getSceneDefinition } from "/src/demo/scenes/registry.ts";`;
       }
 
       const scene = getSingleSceneConfig();
 
       return `
-        import * as sceneModule from ${jsonString(`/src/scenes/${scene.module.replace(/^\.\//, "")}`)};
+        import * as sceneModule from ${jsonString(`/src/demo/scenes/${scene.module.replace(/^\.\//, "")}`)};
 
         if (!sceneModule.Scene) {
           throw new Error(${jsonString(`${scene.id}.module must export a Scene component.`)});
@@ -217,6 +222,14 @@ function sceneRegistryPlugin(mode: string): Plugin {
   };
 }
 
+function getBuildInput(mode: string): string | undefined {
+  if (mode === "my-demo") {
+    return resolve("my-demo.html");
+  }
+
+  return undefined;
+}
+
 export default defineConfig(({ mode }) => ({
   base: "./",
   publicDir: false,
@@ -224,6 +237,7 @@ export default defineConfig(({ mode }) => ({
     minify: false,
     cssMinify: true,
     rollupOptions: {
+      input: getBuildInput(mode),
       output: {
         manualChunks(id) {
           const normalizedId = normalizePath(id);
@@ -236,7 +250,7 @@ export default defineConfig(({ mode }) => ({
             return "nexusgpu";
           }
 
-          if (normalizedId.includes("/src/scenes/")) {
+          if (isSceneModuleId(normalizedId)) {
             return "scenes";
           }
         },

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-scene/
+dist-my-demo/
 .DS_Store
 *.local
 test/

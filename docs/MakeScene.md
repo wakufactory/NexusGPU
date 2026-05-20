@@ -16,7 +16,7 @@ import {
   SdfGroup,
   SdfSphere,
   SdfTorus,
-} from "../nexusgpu";
+} from "../../nexusgpu";
 import type { NexusSceneCanvasProps } from "./types";
 
 type SimpleSceneProps = {
@@ -49,7 +49,7 @@ export function Scene({ canvasProps }: SimpleSceneProps) {
 }
 ```
 
-sceneファイルは通常`src/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラ、ライト、背景、必要ならscene固有パラメータを1つのファイルにまとめています。
+sceneファイルは通常`src/demo/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラ、ライト、背景、必要ならscene固有パラメータを1つのファイルにまとめています。
 
 ## 既存のSDF Primitive
 
@@ -120,7 +120,7 @@ primitive固有props:
 `SdfGroup`を使うと、子SDFを1つのCSG/boolean演算としてまとめられます。通常のなめらかな合成は`op="or"`です。
 
 ```tsx
-import { SdfGroup, SdfSphere } from "../nexusgpu";
+import { SdfGroup, SdfSphere } from "../../nexusgpu";
 
 export function SmoothUnionScene() {
   return (
@@ -144,7 +144,7 @@ export function SmoothUnionScene() {
 球で箱をくり抜く場合は、`SdfSubtract`を使うのが一番読みやすいです。
 
 ```tsx
-import { SdfBox, SdfSphere, SdfSubtract } from "../nexusgpu";
+import { SdfBox, SdfSphere, SdfSubtract } from "../../nexusgpu";
 
 export function CutBoxScene() {
   return (
@@ -159,7 +159,7 @@ export function CutBoxScene() {
 `SdfNot`を明示的に使う場合は、`and`と組み合わせるのが基本です。`not`単体は「形状の外側すべて」を表すため、無限に広がる反転空間になります。
 
 ```tsx
-import { SdfBox, SdfGroup, SdfNot, SdfSphere } from "../nexusgpu";
+import { SdfBox, SdfGroup, SdfNot, SdfSphere } from "../../nexusgpu";
 
 export function BoxAndNotSphereScene() {
   return (
@@ -203,8 +203,8 @@ export function BoxAndNotSphereScene() {
 
 ```tsx
 import { useState } from "react";
-import { SdfSphere, useFrame } from "../nexusgpu";
-import type { Vec3 } from "../nexusgpu";
+import { SdfSphere, useFrame } from "../../nexusgpu";
+import type { Vec3 } from "../../nexusgpu";
 
 function FloatingSphere() {
   const [position, setPosition] = useState<Vec3>([0, 0, 0]);
@@ -246,7 +246,7 @@ export type MySceneParameters = typeof initialParameters;
 `useFrame`と組み合わせると、時間に応じてカメラやライトを動かせます。
 
 ```tsx
-import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
+import { SdfSphere, useCamera, useFrame, useLighting } from "../../nexusgpu";
 
 function MovingViewContent() {
   const camera = useCamera();
@@ -316,7 +316,7 @@ smoothness: f32
 短い式や関数bodyだけを渡せます。
 
 ```tsx
-import { SdfFunction } from "../nexusgpu";
+import { SdfFunction } from "../../nexusgpu";
 
 export function CustomSphereScene() {
   return (
@@ -410,7 +410,7 @@ data2: vec4<f32>
 pre modifierは`vec3<f32>`を返します。
 
 ```tsx
-import { SdfModifier, SdfSphere } from "../nexusgpu";
+import { SdfModifier, SdfSphere } from "../../nexusgpu";
 
 export function WavySphereScene() {
   return (
@@ -704,10 +704,10 @@ samplerはtextureごとに独立しています。`texture0`をlinear repeat、`
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`、必要なら`wasdControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
+sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`、必要なら`wasdControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/demo/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
 
 ```tsx
-import { NexusCanvas, SdfBox, SdfSphere } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfSphere } from "../../nexusgpu";
 import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
@@ -762,7 +762,7 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 `background`は未ヒット時の背景色です。`yPositive`がレイ方向のY+側、`yNegative`がY-側の色で、レンダラはこの2色を`direction.y`に応じてグラデーションします。色はprimitiveの`color`と同じRGBの`[r, g, b]`で、各値はおおむね`0.0`から`1.0`で指定します。
 
-作成したsceneをアプリの切り替え対象にするには、`src/scenes/scenes.json`へ追加します。
+作成したsceneをアプリの切り替え対象にするには、`src/demo/scenes/scenes.json`へ追加します。
 
 ```json
 [
@@ -779,9 +779,9 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 scene追加手順は次の通りです。
 
-1. `src/scenes/MyScene.tsx`に`Scene` componentを作る
+1. `src/demo/scenes/MyScene.tsx`に`Scene` componentを作る
 2. 必要なら同じファイルで`defineSceneParameterControls`を使い、`initialParameters`と`parameterControls`をexportする
-3. `src/scenes/scenes.json`へscene定義を1件追加する
+3. `src/demo/scenes/scenes.json`へscene定義を1件追加する
 4. `npm run build`で型とbundleを確認する
 
 ## create-sceneスクリプトでsceneを追加する
@@ -800,8 +800,8 @@ npm run scene:create -- crystal-field "Crystal Field"
 
 このコマンドは、既定では`sdf-experiment`をコピー元にして次の2つを行います。
 
-1. `src/scenes/CrystalFieldScene.tsx`のようなsceneファイルを作成する
-2. `src/scenes/scenes.json`へscene定義を追加する
+1. `src/demo/scenes/CrystalFieldScene.tsx`のようなsceneファイルを作成する
+2. `src/demo/scenes/scenes.json`へscene定義を追加する
 
 コピー元sceneを指定したい場合は`--from`または`-f`を使います。指定値には`scenes.json`の`id`、`title`、`module`、ファイル名、component名ベースの名前を使えます。
 
