@@ -32,7 +32,7 @@ export function NexusCanvas({
   const [error, setError] = useState<string | null>(null);
   const store = useMemo(() => new SceneStore(), []);
   const lightingKey = JSON.stringify(lighting ?? null);
-  const wasdControlsEnabled = wasdControls ?? orbitControls;
+  const wasdControlsEnabled = wasdControls ?? false;
 
   useCameraControls({
     canvasRef,

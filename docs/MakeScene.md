@@ -282,7 +282,7 @@ export function Scene({ canvasProps }: MySceneProps) {
 
 `useCamera()`で更新したcameraはユーザー操作用のcontrolにも同期されます。スクリプト制御を止めた後は、最後のcamera位置から`orbitControls`や`wasdControls`で操作を続けられます。スクリプト制御とユーザー操作を同時に走らせる場合は、最後にcameraを更新した側の結果が表示に反映されます。
 
-`orbitControls`が有効なsceneでは、WASD移動も既定で有効になります。canvasをクリックしてfocusした後、`W` / `A` / `S` / `D`で現在の向きに対して水平移動し、`Q` / `E`で下 / 上へ移動できます。移動速度は`wasdMovementSpeed`で調整できます。orbitだけにしたい場合は`wasdControls={false}`を渡します。
+`orbitControls`のみ有効なsceneでは、従来通りマウスドラッグはorbit回転です。WASD移動を有効にしたいsceneでは、`NexusCanvas`へ`wasdControls`を渡します。canvasをクリックしてfocusした後、`W` / `A` / `S` / `D`で現在の向きに対して水平移動し、`Q` / `E`で下 / 上へ移動できます。`wasdControls`が有効な場合、マウスドラッグはfirst-personの視点回転になります。移動速度は`wasdMovementSpeed`で調整できます。
 
 ```tsx
 <NexusCanvas

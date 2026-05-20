@@ -193,16 +193,17 @@ Canvas上のユーザー入力をcamera更新へ変換するhookです。`NexusC
 
 - `camera` propsをライブラリ側fallback値で補完し、`SceneStore.setCamera()`へ反映する
 - `SceneStore.subscribe()`で最新のcamera snapshotを読み、`useCamera().set(...)`など外部経路のcamera更新をcontrol stateへ同期する
-- `orbitControls`が有効な場合だけCanvasへpointer / wheel入力イベントを登録する
-- `wasdControls`が有効な場合だけCanvasをfocus可能にし、WASDとQ/E入力を登録する。`wasdControls`未指定時は`orbitControls`と同じ有効状態にする
+- `orbitControls`または`wasdControls`が有効な場合だけCanvasへpointer入力イベントを登録する
+- `orbitControls`のみ有効な場合は、マウスドラッグをorbit回転、wheelをカメラ半径のズームとして扱う
+- `wasdControls`が有効な場合だけCanvasをfocus可能にし、WASDとQ/E入力を登録する。このmodeではマウスドラッグをfirst-person視点回転として扱う
 - 最新の`camera` propsはrefに保持し、Appやsceneの再描画でcamera objectが作り直されても入力中のevent listenerを張り替えない
 - 1本指またはマウスドラッグをyaw / pitchの回転へ変換する
-- wheel操作をカメラ半径のズームへ変換する
+- orbit modeではwheel操作をカメラ半径のズームへ変換する
 - 2本指のPointerEventを追跡し、指同士の距離変化をピンチズームへ変換する
 - WASD入力を、現在のyawに基づく水平前後左右移動として`target`の平行移動へ変換し、Q/E入力を下/上の垂直移動へ変換する
 - `pointerup` / `pointercancel`とアンマウント時にcapture、CSS class、event listenerを片付ける
 
-hook内部では`CameraControlState`として`target`、`fov`、`radius`、`yaw`、`pitch`を保持します。入力ごとにこの状態から`NexusCamera`の`position`を再計算し、`SceneStore`へ渡します。2本指操作中は回転を止め、ポインター間距離の比率で`radius`だけを更新します。WASDとQ/Eの移動は`target`を動かし、`radius`、`yaw`、`pitch`を維持するため、ホイールzoomやorbit回転と同じ状態上で自然に合成されます。
+hook内部では`CameraControlState`として`position`、`target`、`fov`、`radius`、`yaw`、`pitch`を保持します。orbit modeでは`target`を固定して`position`を再計算し、first-person modeでは`position`を固定して`target`を再計算します。2本指操作中は回転を止め、orbit modeではポインター間距離の比率で`radius`だけを更新します。WASDとQ/Eの移動は`position`と`target`を同じ量だけ動かし、`radius`、`yaw`、`pitch`を維持します。
 
 ### nexusgpu/defaults.ts
 

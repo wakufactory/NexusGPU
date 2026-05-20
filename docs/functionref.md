@@ -198,7 +198,7 @@
 
 ## src/nexusgpu/useCameraControls.ts
 
-- `type CameraControlState`: camera操作中のtarget、fov、radius、yaw、pitchなどの内部状態。
+- `type CameraControlState`: camera操作中のposition、target、fov、radius、yaw、pitchなどの内部状態。
 - `type CameraControlsOptions`: camera controls hookへ渡すcanvas ref、camera、orbit / WASD有効状態、store設定。
 - `MIN_POLAR_ANGLE`, `MAX_POLAR_ANGLE`: orbit cameraのpitch制限。
 - `ORBIT_ROTATE_SPEED`: pointer移動量からyaw / pitchへ変換する係数。
@@ -208,7 +208,8 @@
 - `resolveCamera`: camera propsへ既定値を補う。
 - `getPointerDistance`: 2本指pointer間の距離を返す。
 - `createCameraControlState`: camera位置からcontrol内部状態を作る。
-- `createCameraFromControlState`: control内部状態からcamera propsを復元する。
+- `createOrbitCameraFromControlState`: orbit modeのcontrol内部状態からcamera propsを復元する。
+- `createFirstPersonCameraFromControlState`: first-person modeのcontrol内部状態からcamera propsを復元する。
 - `getWasdMovement`: 現在のyawと押下中のWASD / Q/Eキーから水平・垂直移動量を作る。
 
 ## src/nexusgpu/WebGpuSdfRenderer.ts

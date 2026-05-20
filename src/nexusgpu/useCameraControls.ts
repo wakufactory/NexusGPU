@@ -12,6 +12,7 @@ const ORBIT_ZOOM_SPEED = 0.001;
 const DEFAULT_WASD_MOVEMENT_SPEED = 3;
 
 type CameraControlState = {
+  position: Vec3;
   target: Vec3;
   fov: number;
   radius: number;
@@ -66,7 +67,7 @@ export function useCameraControls({
   // Canvas上のドラッグ、ホイール、ピンチを、SDFレンダラ用のカメラpropsへ変換する。
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !orbitEnabled) {
+    if (!canvas || (!orbitEnabled && !wasdEnabled)) {
       return;
     }
 
@@ -75,8 +76,9 @@ export function useCameraControls({
     let previousPinchDistance: number | null = null;
 
     const applyControlState = (state: CameraControlState) => {
-      controlStateRef.current = state;
-      store.setCamera(createCameraFromControlState(state));
+      const camera = wasdEnabled ? createFirstPersonCameraFromControlState(state) : createOrbitCameraFromControlState(state);
+      controlStateRef.current = createCameraControlState(camera);
+      store.setCamera(camera);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -144,6 +146,11 @@ export function useCameraControls({
     };
 
     const handleWheel = (event: WheelEvent) => {
+      if (wasdEnabled) {
+        event.preventDefault();
+        return;
+      }
+
       const state = controlStateRef.current ?? createCameraControlState(resolveCamera(cameraRef.current));
       const radius = clamp(state.radius * Math.exp(event.deltaY * ORBIT_ZOOM_SPEED), 1.2, 80);
       applyControlState({ ...state, radius });
@@ -172,7 +179,7 @@ export function useCameraControls({
       canvas.removeEventListener("pointercancel", stopOrbiting);
       canvas.removeEventListener("wheel", handleWheel);
     };
-  }, [canvasRef, orbitEnabled, store]);
+  }, [canvasRef, orbitEnabled, store, wasdEnabled]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -223,10 +230,12 @@ export function useCameraControls({
         if (movement) {
           const nextState = {
             ...state,
+            position: addVec3(state.position, movement),
             target: addVec3(state.target, movement),
           };
-          controlStateRef.current = nextState;
-          store.setCamera(createCameraFromControlState(nextState));
+          const nextCamera = createFirstPersonCameraFromControlState(nextState);
+          controlStateRef.current = createCameraControlState(nextCamera);
+          store.setCamera(nextCamera);
         }
       }
 
@@ -272,6 +281,7 @@ function createCameraControlState(camera: Required<NexusCamera>): CameraControlS
   const radius = Math.max(lengthVec3(offset), 0.001);
 
   return {
+    position: camera.position,
     target: camera.target,
     fov: camera.fov,
     radius,
@@ -280,7 +290,7 @@ function createCameraControlState(camera: Required<NexusCamera>): CameraControlS
   };
 }
 
-function createCameraFromControlState(state: CameraControlState): Required<NexusCamera> {
+function createOrbitCameraFromControlState(state: CameraControlState): Required<NexusCamera> {
   const cosPitch = Math.cos(state.pitch);
 
   return {
@@ -291,6 +301,17 @@ function createCameraFromControlState(state: CameraControlState): Required<Nexus
       state.target[1] + Math.sin(state.pitch) * state.radius,
       state.target[2] + Math.cos(state.yaw) * cosPitch * state.radius,
     ],
+  };
+}
+
+function createFirstPersonCameraFromControlState(state: CameraControlState): Required<NexusCamera> {
+  const orbitCamera = createOrbitCameraFromControlState(state);
+  const offset = subtractVec3(orbitCamera.position, orbitCamera.target);
+
+  return {
+    position: state.position,
+    target: subtractVec3(state.position, offset),
+    fov: state.fov,
   };
 }
 
