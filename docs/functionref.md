@@ -29,7 +29,7 @@
 - `SdfModifier`: 子SDFの評価前後にWGSL modifierを差し込むcomponent。
 - `SDF_PRIMITIVE_KIND_IDS`: built-in primitive名とGPU側kind IDの対応表。
 - `type Vec3`, `Vec4`, `Quaternion`: 座標、色、GPU vec4、回転で使う基本tuple型。
-- `type NexusCanvasProps`, `NexusCamera`, `NexusLighting`, `NexusLight`, `NexusLightType`, `NexusBackground`: canvas、camera、lighting、背景の公開props型。
+- `type NexusCanvasProps`, `NexusCamera`, `NexusLighting`, `NexusLight`, `NexusLightType`, `NexusBackground`: canvas、camera、lighting、背景、camera controlの公開props型。
 - `type NexusRenderSettings`, `NexusRenderStats`, `NexusCanvasPixelSize`: 描画品質設定と観測値の型。
 - `type NexusTextureSource`, `NexusTextureCrossOrigin`: scene texture指定の型。
 - `type NexusMaterialPreset`, `NexusMaterialRef`: built-in / custom material指定の型。
@@ -43,7 +43,7 @@
   - `SceneStore` を作成し `SceneContext` でchildrenへ渡す。
   - `WebGpuSdfRenderer.create` でWebGPU rendererを初期化する。
   - scene snapshot、render settings、rendering enabled、texturesをrendererへ同期する。
-  - `useOrbitCameraControls` でpointer / wheel / pinch操作をcamera更新へ接続する。
+  - `useCameraControls` でpointer / wheel / pinch / WASD / Q/E操作をcamera更新へ接続する。
   - `requestAnimationFrame` で `useFrame` 購読者へ時刻を渡す。
   - WebGPU初期化失敗時はfallback DOMにerrorを表示する。
 - `resolveBackground`: background propsへ `DEFAULT_BACKGROUND` を補う。
@@ -117,7 +117,7 @@
 - `createExplicitBounds`: `SdfFunction.bounds` / `SdfGroup.bounds` propを正規化し、枝刈り用bounding sphereを作る。
 - `resolveSdfModifierFunctions`: presetと直接指定からpre / post modifier WGSLを解決する。
 - `type SdfModifierPresetFunctions`: presetが提供するpre / post modifier WGSLの入れ物。
-- `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。
+- `resolveSdfModifierPreset`: `twistY`, `preRepeat`, `preScale`, `postInflate`, `postOnion` をWGSL bodyへ変換する。`preRepeat`は`data0.w > 0.5`でmirror repeatに切り替える。
 - `normalizeRadii`: ellipsoid radii propsを正規化する。
 
 ## src/nexusgpu/types.ts
@@ -196,18 +196,21 @@
 - `simplexNoise`: 3D simplex noiseの別名。
 - `hsl2rgb`: HSL色をRGBへ変換する。
 
-## src/nexusgpu/useOrbitCameraControls.ts
+## src/nexusgpu/useCameraControls.ts
 
-- `type OrbitCameraState`: orbit操作中のtarget、fov、radius、yaw、pitchなどの内部状態。
-- `type OrbitCameraControlsOptions`: orbit controls hookへ渡すcanvas ref、camera、enabled、store設定。
+- `type CameraControlState`: camera操作中のposition、target、fov、radius、yaw、pitchなどの内部状態。
+- `type CameraControlsOptions`: camera controls hookへ渡すcanvas ref、camera、orbit / WASD有効状態、store設定。
 - `MIN_POLAR_ANGLE`, `MAX_POLAR_ANGLE`: orbit cameraのpitch制限。
 - `ORBIT_ROTATE_SPEED`: pointer移動量からyaw / pitchへ変換する係数。
 - `ORBIT_ZOOM_SPEED`: wheel deltaからzoom倍率へ変換する係数。
-- `useOrbitCameraControls`: pointer drag、wheel、pinchをcamera更新へ変換するReact hook。
+- `DEFAULT_WASD_MOVEMENT_SPEED`: WASD移動の既定速度。
+- `useCameraControls`: pointer drag、wheel、pinch、WASD、Q/Eをcamera更新へ変換し、SceneStore上のcamera更新を内部状態へ同期するReact hook。
 - `resolveCamera`: camera propsへ既定値を補う。
 - `getPointerDistance`: 2本指pointer間の距離を返す。
-- `createOrbitCameraState`: camera位置からorbit内部状態を作る。
-- `createCameraFromOrbitState`: orbit内部状態からcamera propsを復元する。
+- `createCameraControlState`: camera位置からcontrol内部状態を作る。
+- `createOrbitCameraFromControlState`: orbit modeのcontrol内部状態からcamera propsを復元する。
+- `createFirstPersonCameraFromControlState`: first-person modeのcontrol内部状態からcamera propsを復元する。
+- `getWasdMovement`: 現在のyawと押下中のWASD / Q/Eキーから水平・垂直移動量を作る。
 
 ## src/nexusgpu/WebGpuSdfRenderer.ts
 

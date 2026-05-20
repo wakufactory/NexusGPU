@@ -16,7 +16,7 @@ import {
   SdfGroup,
   SdfSphere,
   SdfTorus,
-} from "../nexusgpu";
+} from "../../nexusgpu";
 import type { NexusSceneCanvasProps } from "./types";
 
 type SimpleSceneProps = {
@@ -49,7 +49,7 @@ export function Scene({ canvasProps }: SimpleSceneProps) {
 }
 ```
 
-sceneファイルは通常`src/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラ、ライト、背景、必要ならscene固有パラメータを1つのファイルにまとめています。
+sceneファイルは通常`src/demo/scenes/`に置きます。現在のデモでは、scene本体、`NexusCanvas`のカメラ、ライト、背景、必要ならscene固有パラメータを1つのファイルにまとめています。
 
 ## 既存のSDF Primitive
 
@@ -120,7 +120,7 @@ primitive固有props:
 `SdfGroup`を使うと、子SDFを1つのCSG/boolean演算としてまとめられます。通常のなめらかな合成は`op="or"`です。
 
 ```tsx
-import { SdfGroup, SdfSphere } from "../nexusgpu";
+import { SdfGroup, SdfSphere } from "../../nexusgpu";
 
 export function SmoothUnionScene() {
   return (
@@ -144,7 +144,7 @@ export function SmoothUnionScene() {
 球で箱をくり抜く場合は、`SdfSubtract`を使うのが一番読みやすいです。
 
 ```tsx
-import { SdfBox, SdfSphere, SdfSubtract } from "../nexusgpu";
+import { SdfBox, SdfSphere, SdfSubtract } from "../../nexusgpu";
 
 export function CutBoxScene() {
   return (
@@ -159,7 +159,7 @@ export function CutBoxScene() {
 `SdfNot`を明示的に使う場合は、`and`と組み合わせるのが基本です。`not`単体は「形状の外側すべて」を表すため、無限に広がる反転空間になります。
 
 ```tsx
-import { SdfBox, SdfGroup, SdfNot, SdfSphere } from "../nexusgpu";
+import { SdfBox, SdfGroup, SdfNot, SdfSphere } from "../../nexusgpu";
 
 export function BoxAndNotSphereScene() {
   return (
@@ -203,8 +203,8 @@ export function BoxAndNotSphereScene() {
 
 ```tsx
 import { useState } from "react";
-import { SdfSphere, useFrame } from "../nexusgpu";
-import type { Vec3 } from "../nexusgpu";
+import { SdfSphere, useFrame } from "../../nexusgpu";
+import type { Vec3 } from "../../nexusgpu";
 
 function FloatingSphere() {
   const [position, setPosition] = useState<Vec3>([0, 0, 0]);
@@ -246,7 +246,7 @@ export type MySceneParameters = typeof initialParameters;
 `useFrame`と組み合わせると、時間に応じてカメラやライトを動かせます。
 
 ```tsx
-import { SdfSphere, useCamera, useFrame, useLighting } from "../nexusgpu";
+import { SdfSphere, useCamera, useFrame, useLighting } from "../../nexusgpu";
 
 function MovingViewContent() {
   const camera = useCamera();
@@ -280,7 +280,21 @@ export function Scene({ canvasProps }: MySceneProps) {
 }
 ```
 
-継続的にカメラを動かすsceneでは、ユーザー操作用の`orbitControls`と制御が競合しやすくなります。スクリプトでカメラを制御するsceneでは、基本的に`orbitControls={false}`にします。
+`useCamera()`で更新したcameraはユーザー操作用のcontrolにも同期されます。スクリプト制御を止めた後は、最後のcamera位置から`orbitControls`や`wasdControls`で操作を続けられます。スクリプト制御とユーザー操作を同時に走らせる場合は、最後にcameraを更新した側の結果が表示に反映されます。
+
+`orbitControls`のみ有効なsceneでは、従来通りマウスドラッグはorbit回転です。WASD移動を有効にしたいsceneでは、`NexusCanvas`へ`wasdControls`を渡します。canvasをクリックしてfocusした後、`W` / `A` / `S` / `D`で現在の向きに対して水平移動し、`Q` / `E`で下 / 上へ移動できます。`wasdControls`が有効な場合、マウスドラッグはfirst-personの視点回転になります。移動速度は`wasdMovementSpeed`で調整できます。
+
+```tsx
+<NexusCanvas
+  {...canvasProps}
+  camera={{ position: [0, 1.4, 5], target: [0, 0, 0], fov: 48 }}
+  orbitControls
+  wasdControls
+  wasdMovementSpeed={3}
+>
+  <SceneContent />
+</NexusCanvas>
+```
 
 `App.tsx`はscene定義を読み込んで、現在のパラメータと共通の`canvasProps`を`Scene` componentへ渡します。scene作者は基本的に、sceneファイル内で`Scene`、必要な初期パラメータ、slider定義を用意し、`scenes.json`へ登録すれば十分です。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて書けます。
 
@@ -302,7 +316,7 @@ smoothness: f32
 短い式や関数bodyだけを渡せます。
 
 ```tsx
-import { SdfFunction } from "../nexusgpu";
+import { SdfFunction } from "../../nexusgpu";
 
 export function CustomSphereScene() {
   return (
@@ -396,7 +410,7 @@ data2: vec4<f32>
 pre modifierは`vec3<f32>`を返します。
 
 ```tsx
-import { SdfModifier, SdfSphere } from "../nexusgpu";
+import { SdfModifier, SdfSphere } from "../../nexusgpu";
 
 export function WavySphereScene() {
   return (
@@ -497,12 +511,20 @@ fn shell(
 | preset | 種類 | 内容 | 主なdata |
 | --- | --- | --- | --- |
 | `"twistY"` | pre + post | Y軸方向にtwistし、postで距離を変形率に合わせて補正する | `data0.x`: twist強度 |
-| `"preRepeat"` | pre | 空間を繰り返す。cellサイズが0の軸は繰り返さない | `data0.xyz`: cellサイズ |
+| `"preRepeat"` | pre | 空間を繰り返す。cellサイズが0の軸は繰り返さない。`data0.w > 0.5`で隣接cellを交互にmirrorする | `data0.xyz`: cellサイズ、`data0.w`: mirror有効化 |
 | `"preScale"` | pre + post | 子SDFへ渡す評価点をXYZ軸ごとにスケーリングし、postで距離を安全側に補正する | `data0.xyz`: scale |
 | `"postInflate"` | post | 距離を外側へ膨らませる | `data0.x`: 膨張量 |
 | `"postOnion"` | post | 表面を殻状にする | `data0.x`: 厚み |
 
 `"preScale"`は`point / data0.xyz`で子SDFを評価します。たとえば`data0={[2, 1, 1, 0]}`ならX方向に2倍へ伸びた形状になります。uniform scaleではpost補正後の距離も厳密です。非一様scaleでは完全なSDF距離には戻らないため、postでは`min(abs(data0.x), abs(data0.y), abs(data0.z))`を掛けてレイマーチング安全側に補正します。
+
+`"preRepeat"`は`data0.xyz`をcellサイズとして空間を繰り返します。`data0.w`を`1`にすると、cell番号の偶奇に応じて局所座標を反転するmirror repeatになります。隣のcellへ移る境界で局所座標が同じ向きにつながるため、通常repeatのように境界でパターンが反転せず、連続した繰り返しを作りやすくなります。
+
+```tsx
+<SdfModifier preset="preRepeat" data0={[1.2, 1.2, 1.2, 1]}>
+  <SdfBox size={[0.8, 0.8, 0.8]} />
+</SdfModifier>
+```
 
 `SdfMix`はchildrenがちょうど2つ必要です。`ratio`を`clamp(..., 0.0, 1.0)`した値として、distance pathでは`mix(child0.distance, child1.distance, ratio)`を返します。eval pathでは色とsmoothnessも同じratioでmixし、materialとlocalPointはratioが0.5未満なら1つ目、0.5以上なら2つ目を使います。
 
@@ -682,10 +704,10 @@ samplerはtextureごとに独立しています。`texture0`をlinear repeat、`
 
 ## Sceneファイルの形
 
-sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
+sceneファイルは`Scene`という名前のReact component、初期パラメータ、slider定義をexportします。初期パラメータとslider定義は`defineSceneParameterControls`でまとめて定義できます。`Scene` componentは`NexusCanvas`を返し、そのpropsにscene固有のカメラ、ライト、背景、`orbitControls`、必要なら`wasdControls`を書きます。`App.tsx`は個別sceneを直接importせず、`src/demo/scenes/scenes.json`に登録された`module`を`registry.ts`が解決して表示します。
 
 ```tsx
-import { NexusCanvas, SdfBox, SdfSphere } from "../nexusgpu";
+import { NexusCanvas, SdfBox, SdfSphere } from "../../nexusgpu";
 import { defineSceneParameterControls } from "./types";
 import type { NexusSceneCanvasProps } from "./types";
 
@@ -740,7 +762,7 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 `background`は未ヒット時の背景色です。`yPositive`がレイ方向のY+側、`yNegative`がY-側の色で、レンダラはこの2色を`direction.y`に応じてグラデーションします。色はprimitiveの`color`と同じRGBの`[r, g, b]`で、各値はおおむね`0.0`から`1.0`で指定します。
 
-作成したsceneをアプリの切り替え対象にするには、`src/scenes/scenes.json`へ追加します。
+作成したsceneをアプリの切り替え対象にするには、`src/demo/scenes/scenes.json`へ追加します。
 
 ```json
 [
@@ -757,9 +779,9 @@ export function Scene({ parameters, canvasProps }: MySceneProps) {
 
 scene追加手順は次の通りです。
 
-1. `src/scenes/MyScene.tsx`に`Scene` componentを作る
+1. `src/demo/scenes/MyScene.tsx`に`Scene` componentを作る
 2. 必要なら同じファイルで`defineSceneParameterControls`を使い、`initialParameters`と`parameterControls`をexportする
-3. `src/scenes/scenes.json`へscene定義を1件追加する
+3. `src/demo/scenes/scenes.json`へscene定義を1件追加する
 4. `npm run build`で型とbundleを確認する
 
 ## create-sceneスクリプトでsceneを追加する
@@ -778,8 +800,8 @@ npm run scene:create -- crystal-field "Crystal Field"
 
 このコマンドは、既定では`sdf-experiment`をコピー元にして次の2つを行います。
 
-1. `src/scenes/CrystalFieldScene.tsx`のようなsceneファイルを作成する
-2. `src/scenes/scenes.json`へscene定義を追加する
+1. `src/demo/scenes/CrystalFieldScene.tsx`のようなsceneファイルを作成する
+2. `src/demo/scenes/scenes.json`へscene定義を追加する
 
 コピー元sceneを指定したい場合は`--from`または`-f`を使います。指定値には`scenes.json`の`id`、`title`、`module`、ファイル名、component名ベースの名前を使えます。
 

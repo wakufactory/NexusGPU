@@ -1,0 +1,92 @@
+[
+  {
+    "id": "spheres",
+    "title": "spheres",
+    "description": "Spheres metaball",
+    "module": "./SpheresScene.tsx"
+  },
+  {
+    "id": "simple-scene",
+    "title": "Simple Scene",
+    "description": "A simple scene with basic SDF primitives.",
+    "module": "./SimpleScene.tsx"
+  },
+  {
+    "id": "added-primitives",
+    "title": "Added Primitives",
+    "description": "A sample scene showing cone, capsule, flat-ended capsule, and regular polyhedra primitives.",
+    "module": "./AddedPrimitivesScene.tsx"
+  },
+  {
+    "id": "animated-sdf",
+    "title": "AnimatedSdfScene",
+    "description": "Orbiting SDF primitives from AnimatedSdfScene2 with smooth blending.",
+    "module": "./AnimatedSdfScene.tsx"
+  },
+  {
+    "id": "sdf-experiment",
+    "title": "SDF Experiment Template",
+    "description": "Template scene for editing and testing custom SdfFunction WGSL.",
+    "module": "./SdfExperimentScene.tsx"
+  },
+  {
+    "id": "mandelbulb",
+    "title": "MandelBulb",
+    "description": "A custom SdfFunction scene using a Mandelbulb distance estimator.",
+    "module": "./MandelBulbScene.tsx"
+  },
+  {
+    "id": "affine-fold-tree",
+    "title": "Affine Fold Tree",
+    "description": "A lightweight fractal tree using affine domain folding inside one custom SdfFunction.",
+    "module": "./AffineFoldTreeScene.tsx"
+  },
+  {
+    "id": "fuji-height-map",
+    "title": "Fuji Height Map",
+    "description": "A 20km Mt. Fuji terrain scene using public/fuji-gsj-z13-20km.png as an RGB height map.",
+    "module": "./FujiHeightMapScene.tsx"
+  },
+  {
+    "id": "sdf-function-test",
+    "title": "SDF function test",
+    "description": "Scene for testing SDF functions with a variety of primitives and operations.",
+    "module": "./SdfTestScene.tsx"
+  },
+  {
+    "id": "sdf-modifier",
+    "title": "SDF modifier test",
+    "description": "Scene for testing SDF modifiers ",
+    "module": "./SdfModifier.tsx"
+  },
+  {
+    "id": "noise0",
+    "title": "noise 0",
+    "description": "Scene for testing noise function ",
+    "module": "./Noise0Scene.tsx"
+  },
+  {
+    "id": "tex-test",
+    "title": "texture test",
+    "description": "Scene for testing texture sampling in SDFs ",
+    "module": "./TexTestScene.tsx"
+  },
+  {
+    "id": "sdf-boids",
+    "title": "SDF boid test",
+    "description": "Scene for testing SDF boids ",
+    "module": "./BoidsSpheresScene.tsx"
+  },
+  {
+    "id": "gyroid0",
+    "title": "gyroid0",
+    "description": "Gyroid test",
+    "module": "./Gyroid0Scene.tsx"
+  },
+  {
+    "id": "mod-test",
+    "title": "modifier test",
+    "description": "modifier test",
+    "module": "./ModTestScene.tsx"
+  }
+]

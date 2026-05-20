@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-const scenesDir = path.resolve("src/scenes");
+const scenesDir = path.resolve("src/demo/scenes");
 const scenesJsonPath = path.join(scenesDir, "scenes.json");
 
 const defaultSourceSceneId = "sdf-experiment";
@@ -200,4 +200,4 @@ scenes.push(nextScene);
 await writeFile(scenesJsonPath, stringifyScenes(scenes));
 
 console.log(`Created ${modulePath}`);
-console.log(`Added ${sceneId} to src/scenes/scenes.json`);
+console.log(`Added ${sceneId} to src/demo/scenes/scenes.json`);

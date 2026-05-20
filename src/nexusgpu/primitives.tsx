@@ -627,7 +627,14 @@ function resolveSdfModifierPreset(preset: SdfModifierPreset) {
       preModifierFunction: /* wgsl */ `
 let repeatAxis = abs(data0.xyz) > vec3<f32>(0.0001);
 let cell = select(vec3<f32>(1.0), abs(data0.xyz), repeatAxis);
-let repeatedPoint = point - cell * round(point / cell);
+var repeatedPoint = point - cell * round(point / cell);
+let cellIndex = floor((point + cell * 0.5) / cell);
+let localPoint = point - cell * cellIndex;
+let oddCell = abs(cellIndex - 2.0 * floor(cellIndex * 0.5)) > vec3<f32>(0.5);
+let mirroredPoint = select(localPoint, -localPoint, oddCell);
+if (data0.w > 0.5) {
+  repeatedPoint = mirroredPoint;
+}
 return select(point, repeatedPoint, repeatAxis);
 `,
     } satisfies SdfModifierPresetFunctions;

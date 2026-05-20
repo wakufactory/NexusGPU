@@ -18,7 +18,7 @@ The renderer expands the React scene tree into WGSL, uploads compact object reco
 
 ## Demo App
 
-The Vite demo app in `src/App.tsx` is a small playground for the framework API. It loads scene modules from `src/scenes/scenes.json`, lets you switch between demos, and exposes per-scene parameters through slider controls.
+The Vite demo app in `src/demo/App.tsx` is a small playground for the framework API. It loads scene modules from `src/demo/scenes/scenes.json`, lets you switch between demos, and exposes per-scene parameters through slider controls.
 
 The sidebar also includes render controls for FPS, resolution scale, raymarch settings, shadows, stereo side-by-side output, and fullscreen/pause controls. Current scene parameters and render settings are saved in `localStorage` so experiments survive reloads.
 
