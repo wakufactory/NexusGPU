@@ -272,7 +272,7 @@ export function Scene({ parameters, canvasProps }: FujiHeightMapSceneProps) {
         intensity: 1.0,
       }}
       background={{ yPositive: [0.56, 0.72, 0.88], yNegative: [0.18, 0.25, 0.27] }}
-      orbitControls
+      wasdControls
       textures={HEIGHT_MAP_TEXTURES}
     >
       <FujiHeightMapSceneContent parameters={parameters} />

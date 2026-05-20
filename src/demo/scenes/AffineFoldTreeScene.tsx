@@ -100,14 +100,12 @@ fn sdfFunction(
     }
 
     let level = f32(i);
-
+   
     // 現在階層で評価する枝ノード。
     // capsule版では原点からtopへ伸びる線分を測っていたが、現在はtop位置の球を測る。
     // leanだけ階層依存で入れて、完全に機械的な反復に見えすぎないようにする。
     let top = vec3<f32>(lean * level * 0.045, trunkLength, 0.0);
 
-    // 変更前のcapsule評価。比較しやすいように残しておく。
-    /*
     let capsuleDistance = sdCapsule(
       p,
       top,
@@ -116,11 +114,6 @@ fn sdfFunction(
       1.0
     ) * worldScale;
     let localDistance = capsuleDistance;
-    */
-
-    // 球で枝ノードを表現する。foldの各階層でこの球が自己相似に複製される。
-    let sphereDistance = (length(p - top) - rootRadius) * worldScale;
-    let localDistance = sphereDistance;
 
     if (localDistance < distance) {
       closestLevel = level;

@@ -1,5 +1,11 @@
 [
   {
+    "id": "spheres",
+    "title": "spheres",
+    "description": "Spheres metaball",
+    "module": "./SpheresScene.tsx"
+  },
+  {
     "id": "simple-scene",
     "title": "Simple Scene",
     "description": "A simple scene with basic SDF primitives.",
@@ -36,22 +42,10 @@
     "module": "./AffineFoldTreeScene.tsx"
   },
   {
-    "id": "lissajous-sweep",
-    "title": "Lissajous Sweep",
-    "description": "A custom SdfFunction scene that sweeps a circular profile along a 3D Lissajous path.",
-    "module": "./LissajousSweepScene.tsx"
-  },
-  {
     "id": "fuji-height-map",
     "title": "Fuji Height Map",
     "description": "A 20km Mt. Fuji terrain scene using public/fuji-gsj-z13-20km.png as an RGB height map.",
     "module": "./FujiHeightMapScene.tsx"
-  },
-  {
-    "id": "noise-terrain",
-    "title": "Noise Terrain",
-    "description": "A procedural height-field terrain scene based on Fuji Height Map, generated from simplex noise instead of height images.",
-    "module": "./NoiseTerrainScene.tsx"
   },
   {
     "id": "sdf-function-test",
@@ -84,69 +78,15 @@
     "module": "./BoidsSpheresScene.tsx"
   },
   {
-    "id": "mat-test",
-    "title": "material test",
-    "description": "Scene copied from texture test.",
-    "module": "./MatTestScene.tsx"
-  },
-  {
-    "id": "spheres",
-    "title": "spheres",
-    "description": "Scene copied from AnimatedSdfScene.",
-    "module": "./SpheresScene.tsx"
-  },
-  {
-    "id": "showcase-neon-garden",
-    "title": "Showcase: Neon Garden",
-    "description": "A repeated, twisted SDF garden using modifiers, smooth unions, PBR, and custom WGSL material bands.",
-    "module": "./ShowcaseNeonGardenScene.tsx"
-  },
-  {
-    "id": "showcase-crystal-reliquary",
-    "title": "Showcase: Crystal Reliquary",
-    "description": "A polished CSG sculpture with subtractive cuts, nested primitives, and adjustable PBR surface response.",
-    "module": "./ShowcaseCrystalReliquaryScene.tsx"
-  },
-  {
-    "id": "showcase-wave-temple",
-    "title": "Showcase: Wave Temple",
-    "description": "An animated SdfFunction water field framed by SDF architecture and metallic trim.",
-    "module": "./ShowcaseWaveTempleScene.tsx"
-  },
-  {
-    "id": "showcase-matcap-gallery",
-    "title": "Showcase: Matcap Gallery",
-    "description": "A moving-camera gallery scene using texture0Matcap, a custom faceted SDF, and dynamic lighting.",
-    "module": "./ShowcaseMatcapGalleryScene.tsx"
-  },
-  {
-    "id": "showcase-orbital-forge",
-    "title": "Showcase: Orbital Forge",
-    "description": "A kinetic gyroid core with onion-shell modifier, animated satellites, rings, and PBR materials.",
-    "module": "./ShowcaseOrbitalForgeScene.tsx"
-  },
-  {
     "id": "gyroid0",
     "title": "gyroid0",
-    "description": "Scene copied from Showcase: Orbital Forge.",
+    "description": "Gyroid test",
     "module": "./Gyroid0Scene.tsx"
   },
   {
     "id": "mod-test",
     "title": "modifier test",
-    "description": "Scene copied from spheres.",
+    "description": "modifier test",
     "module": "./ModTestScene.tsx"
-  },
-  {
-    "id": "gyroid1",
-    "title": "Gyroid 1",
-    "description": "Gyroid set",
-    "module": "./Gyroid1Scene.tsx"
-  },
-  {
-    "id": "noise1",
-    "title": "noise 1",
-    "description": "Scene copied from noise 0.",
-    "module": "./Noise1Scene.tsx"
   }
 ]
