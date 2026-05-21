@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:my-demo": "vite --host 0.0.0.0 --open /my-demo.html",
+    "dev:sdfmap": "vite --host 0.0.0.0 --open /sdfmap.html",
     "build": "tsc && vite build",
     "build:my-demo": "tsc && vite build --mode my-demo --outDir dist-my-demo",
+    "build:sdfmap": "tsc && vite build --mode sdfmap --outDir dist-sdfmap",
     "build:scene": "tsc && vite build --mode single-scene --outDir dist-scene",
     "preview": "vite preview --host 0.0.0.0",
     "scene:create": "node scripts/create-scene.mjs"

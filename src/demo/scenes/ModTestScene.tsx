@@ -50,7 +50,7 @@ type ModTestSceneProps = {
   canvasProps: NexusSceneCanvasProps;
 };
 const textures:NexusTextureSource[] = [
-  { src: `${import.meta.env.BASE_URL}assets/tex1024.png`, magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat"  },
+  { src: new URL("../assets/tex1024.png", import.meta.url).href, magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat"  },
 ]
 
 /** 薄い床の上で、4つの球が別々の軸と周期で周回するデモシーン。 */
