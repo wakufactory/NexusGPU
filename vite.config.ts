@@ -227,6 +227,10 @@ function getBuildInput(mode: string): string | undefined {
     return resolve("my-demo.html");
   }
 
+  if (mode === "sdfmap") {
+    return resolve("sdfmap.html");
+  }
+
   return undefined;
 }
 

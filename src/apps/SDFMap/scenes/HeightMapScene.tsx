@@ -10,63 +10,13 @@ export const initialRenderSettings = defineSceneRenderSettings({
   surfaceEpsilon: 0.004,
 });
 
-export const { initialParameters, parameterControls } = defineSceneParameterControls(
-  {
-    heightScale: 1.,
-    slopeGuard: 1.25,
-    lightElevation: 55,
-    lightAzimuth: 130,
-    surface: 0,
-  },
-  [
-    {
-      key: "heightScale",
-      name: "Height scale",
-      min: 0.1,
-      max: 5,
-      step: 0.05,
-      precision: 2,
-    },
-    {
-      key: "slopeGuard",
-      name: "Slope guard",
-      min: 1,
-      max: 20,
-      step: 0.25,
-      precision: 2,
-    },
-    {
-      key: "lightElevation",
-      name: "Light elevation",
-      min: 0,
-      max: 90,
-      step: 1,
-    },
-    {
-      key: "lightAzimuth",
-      name: "Light azimuth",
-      min: 0,
-      max: 360,
-      step: 1,
-    },
-    {
-      key: "surface",
-      name: "surface mode",
-      min: 0,
-      max: 5,
-      step: 1,
-    },
-  ],
-);
+export type HeightMapTextureSet = readonly [NexusTextureSource, NexusTextureSource, NexusTextureSource];
 
-export type FujiHeightMapSceneParameters = typeof initialParameters;
-
-type FujiHeightMapSceneProps = {
-  parameters: FujiHeightMapSceneParameters;
-  canvasProps: NexusSceneCanvasProps;
+export type HeightMapSceneOptions = {
+  textures: HeightMapTextureSet;
 };
 
-const HEIGHT_MAP_TEXTURES: NexusTextureSource[] = [
+const FUJI_HEIGHT_MAP_TEXTURES: HeightMapTextureSet = [
   {
     src: `${import.meta.env.BASE_URL}assets/fuji-gsj-z13-20km.png`,
     addressModeU: "clamp-to-edge",
@@ -90,7 +40,71 @@ const HEIGHT_MAP_TEXTURES: NexusTextureSource[] = [
   },
 ];
 
-const FUJI_HEIGHT_MAP_SDF = /* wgsl */ `
+export const HEIGHT_MAP_TEXTURES = {
+  fuji: FUJI_HEIGHT_MAP_TEXTURES,
+} satisfies Record<string, HeightMapTextureSet>;
+
+export function createHeightMapParameters(surface: number) {
+  return defineSceneParameterControls(
+    {
+      heightScale: 1.,
+      slopeGuard: 1.25,
+      lightElevation: 55,
+      lightAzimuth: 130,
+      surface,
+    },
+    [
+      {
+        key: "heightScale",
+        name: "Height scale",
+        min: 0.1,
+        max: 5,
+        step: 0.05,
+        precision: 2,
+      },
+      {
+        key: "slopeGuard",
+        name: "Slope guard",
+        min: 1,
+        max: 20,
+        step: 0.25,
+        precision: 2,
+      },
+      {
+        key: "lightElevation",
+        name: "Light elevation",
+        min: 0,
+        max: 90,
+        step: 1,
+      },
+      {
+        key: "lightAzimuth",
+        name: "Light azimuth",
+        min: 0,
+        max: 360,
+        step: 1,
+      },
+      {
+        key: "surface",
+        name: "surface mode",
+        min: 0,
+        max: 5,
+        step: 1,
+      },
+    ],
+  );
+}
+
+export const { initialParameters, parameterControls } = createHeightMapParameters(0);
+
+export type HeightMapSceneParameters = typeof initialParameters;
+
+type HeightMapSceneProps = {
+  parameters: HeightMapSceneParameters;
+  canvasProps: NexusSceneCanvasProps;
+};
+
+const HEIGHT_MAP_SDF = /* wgsl */ `
 // data0:
 //   x = 地形の半幅。XZは -halfSize .. +halfSize の正方形になる。
 //   y = 高さ倍率。RGB高度をscene unitへ変換した後に掛ける。
@@ -231,10 +245,10 @@ return SceneEval(
 );
 `;
 
-function FujiHeightMapSceneContent({ parameters }: { parameters: FujiHeightMapSceneParameters }) {
+function HeightMapSceneContent({ parameters }: { parameters: HeightMapSceneParameters }) {
   return (
     <SdfFunction
-      sdfFunction={FUJI_HEIGHT_MAP_SDF}
+      sdfFunction={HEIGHT_MAP_SDF}
       data0={[20, parameters.heightScale, 0.18, parameters.slopeGuard]}
       data1={[parameters.surface, 0, 0, 0]}
       data2={[0, 0, 0, 0]}
@@ -261,21 +275,27 @@ function getLightDirection(elevationDegrees: number, azimuthDegrees: number): [n
   ];
 }
 
-export function Scene({ parameters, canvasProps }: FujiHeightMapSceneProps) {
-  return (
-    <NexusCanvas
-      {...canvasProps}
-      camera={{ position: [9.5, 6.2, 12.5], target: [0, 1.15, 0], fov: 45 }}
-      lighting={{
-        direction: getLightDirection(parameters.lightElevation, parameters.lightAzimuth),
-        color: [1.0, 0.96, 0.88],
-        intensity: 1.0,
-      }}
-      background={{ yPositive: [0.56, 0.72, 0.88], yNegative: [0.18, 0.25, 0.27] }}
-      wasdControls
-      textures={HEIGHT_MAP_TEXTURES}
-    >
-      <FujiHeightMapSceneContent parameters={parameters} />
-    </NexusCanvas>
-  );
+export function createHeightMapScene({ textures }: HeightMapSceneOptions) {
+  return function HeightMapScene({ parameters, canvasProps }: HeightMapSceneProps) {
+    return (
+      <NexusCanvas
+        {...canvasProps}
+        camera={{ position: [9.5, 6.2, 12.5], target: [0, 1.15, 0], fov: 45 }}
+        lighting={{
+          direction: getLightDirection(parameters.lightElevation, parameters.lightAzimuth),
+          color: [1.0, 0.96, 0.88],
+          intensity: 1.0,
+        }}
+        background={{ yPositive: [0.56, 0.72, 0.88], yNegative: [0.18, 0.25, 0.27] }}
+        wasdControls
+        textures={textures}
+      >
+        <HeightMapSceneContent parameters={parameters} />
+      </NexusCanvas>
+    );
+  };
 }
+
+export const Scene = createHeightMapScene({
+  textures: HEIGHT_MAP_TEXTURES.fuji,
+});

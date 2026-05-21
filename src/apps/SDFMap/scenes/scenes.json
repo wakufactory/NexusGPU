@@ -1,0 +1,20 @@
+[
+  {
+    "id": "fuji-photo-map",
+    "title": "Fuji Photo Map",
+    "description": "A 20km Mt. Fuji terrain scene using RGB height data with photo texture coloring.",
+    "module": "./HeightMapScene.tsx"
+  },
+  {
+    "id": "fuji-standard-map",
+    "title": "Fuji Standard Map",
+    "description": "The same Mt. Fuji height map with standard map texture coloring.",
+    "module": "./FujiStandardSurfaceMapScene.tsx"
+  },
+  {
+    "id": "fuji-elevation-map",
+    "title": "Fuji Elevation Map",
+    "description": "The same Mt. Fuji height map with generated elevation-based terrain coloring.",
+    "module": "./FujiElevationSurfaceMapScene.tsx"
+  }
+]
