@@ -38,7 +38,7 @@ export const { initialParameters, parameterControls } = defineSceneParameterCont
 );
 
 const textures:NexusTextureSource[] = [
-  { src: `${import.meta.env.BASE_URL}assets/tex1024.png`, magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat"  },
+  { src: new URL("../assets/tex1024.png", import.meta.url).href, magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat"  },
 ]
 
 const GROUP_MATERIAL = /* wgsl */ `

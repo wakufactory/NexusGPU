@@ -18,21 +18,21 @@ export type HeightMapSceneOptions = {
 
 const FUJI_HEIGHT_MAP_TEXTURES: HeightMapTextureSet = [
   {
-    src: `${import.meta.env.BASE_URL}assets/fuji-gsj-z13-20km.png`,
+    src: new URL("../assets/fuji-gsj-z13-20km.png", import.meta.url).href,
     addressModeU: "clamp-to-edge",
     addressModeV: "clamp-to-edge",
     magFilter: "nearest",
     minFilter: "nearest",
   },
   {
-    src: `${import.meta.env.BASE_URL}assets/fuji-std-z13-20km.png`,
+    src: new URL("../assets/fuji-std-z13-20km.png", import.meta.url).href,
     addressModeU: "clamp-to-edge",
     addressModeV: "clamp-to-edge",
     magFilter: "linear",
     minFilter: "linear",
   },
   {
-    src: `${import.meta.env.BASE_URL}assets/fuji-gsp-z13-20km.jpg`,
+    src: new URL("../assets/fuji-gsp-z13-20km.jpg", import.meta.url).href,
     addressModeU: "clamp-to-edge",
     addressModeV: "clamp-to-edge",
     magFilter: "linear",

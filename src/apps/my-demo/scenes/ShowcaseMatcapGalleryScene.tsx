@@ -46,7 +46,7 @@ type ShowcaseMatcapGallerySceneProps = {
 
 const textures: NexusTextureSource[] = [
   {
-    src: `${import.meta.env.BASE_URL}assets/mat0.png`,
+    src: new URL("../assets/mat0.png", import.meta.url).href,
     magFilter: "linear",
     minFilter: "linear",
     addressModeU: "clamp-to-edge",
